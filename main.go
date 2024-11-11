@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	PLUGIN_NAME = "katharanp"
+	PLUGIN_NAME = "flannel-np"
 	PLUGIN_GUID = 0
 )
 
@@ -279,7 +279,7 @@ func (k *FlannelNetworkPlugin) RevokeExternalConnectivity(req *network.RevokeExt
 	return nil
 }
 
-func NewFlannelNetworkPlugin(scope string, networks map[string]*flannelNetwork) (*FlannelNetworkPlugin, error) {
+func NewFlannelNetworkPlugin(networks map[string]*flannelNetwork) (*FlannelNetworkPlugin, error) {
 	flannelPlugin := &FlannelNetworkPlugin{
 		networks: networks,
 	}
@@ -288,7 +288,7 @@ func NewFlannelNetworkPlugin(scope string, networks map[string]*flannelNetwork) 
 }
 
 func main() {
-	driver, err := NewFlannelNetworkPlugin("local", map[string]*flannelNetwork{})
+	driver, err := NewFlannelNetworkPlugin(map[string]*flannelNetwork{})
 
 	if err != nil {
 		log.Fatalf("ERROR: %s init failed!", PLUGIN_NAME)

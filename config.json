@@ -37,7 +37,7 @@
         "types": [
             "docker.networkdriver/1.0"
         ],
-        "socket": "/network-plugin-flannel.sock"
+        "socket": "flannel-np.sock"
     },
     "linux": {
         "capabilities": [
