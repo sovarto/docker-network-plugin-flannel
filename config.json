@@ -1,0 +1,49 @@
+{
+    "description": "Flannel plugin for Docker vDEV",
+    "documentation": "https://github.com/sovarto/docker-network-plugin-flannel/",
+    "entrypoint": [
+        "/usr/bin/tini",
+        "--",
+        "/network-plugin-flannel"
+    ],
+    "env": [
+        {
+            "name": "ETCD_ENDPOINTS",
+            "settable": [
+                "value"
+            ],
+            "value": ""
+        },
+        {
+            "name": "ETCD_PREFIX",
+            "settable": [
+                "value"
+            ],
+            "value": ""
+        },
+        {
+            "name": "DEFAULT_FLANNEL_OPTIONS",
+            "settable": [
+                "value"
+            ],
+            "value": ""
+        }
+    ],
+    "network": {
+        "type": "host"
+    },
+    "propagatedMount": "/flannel-env",
+    "interface": {
+        "types": [
+            "docker.networkdriver/1.0"
+        ],
+        "socket": "flannel-plugin.sock"
+    },
+    "linux": {
+        "capabilities": [
+            "CAP_SYS_ADMIN",
+            "CAP_NET_ADMIN",
+            "CAP_SYS_MODULE"
+        ]
+    }
+}

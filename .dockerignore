@@ -1,0 +1,5 @@
+.vscode/
+.devcontainer/
+./build.sh
+./config.json
+build/
