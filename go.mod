@@ -4,7 +4,7 @@ go 1.22.2
 
 require (
 	github.com/apparentlymart/go-cidr v1.1.0
-	github.com/docker/docker v27.3.1+incompatible
+	github.com/docker/docker v26.0.0+incompatible
 	github.com/docker/go-plugins-helpers v0.0.0-20240701071450-45e2431495c8
 	github.com/google/uuid v1.6.0
 	github.com/vishvananda/netlink v1.3.0
@@ -23,7 +23,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/ishidawataru/sctp v0.0.0-20230406120618-7ff4192f6ff2 // indirect
-	github.com/pkg/errors v0.8.1 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.16 // indirect
