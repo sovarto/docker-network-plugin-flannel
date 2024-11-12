@@ -66,7 +66,10 @@ func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) 
 		return err
 	}
 
+	fmt.Println("After detect IP tables")
+
 	if _, ok := k.networks[req.NetworkID]; ok {
+		fmt.Println("Network already exists")
 		return types.ForbiddenErrorf("network %s exists", req.NetworkID)
 	}
 
@@ -79,6 +82,8 @@ func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) 
 		return err
 	}
 	defer cli.Close()
+
+	fmt.Println("After ETCD connect")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -94,16 +99,24 @@ func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) 
 		}
 	}
 
+	fmt.Println("After host subnet length:", hostSubnetLength)
+
 	subnet, err := allocateSubnetAndCreateFlannelConfig(ctx, cli, k.etcdPrefix, req.NetworkID, k.availableSubnets, hostSubnetLength)
 
 	if err != nil {
+		fmt.Println("Failed to allocate subnet:", err)
 		return err
 	}
 
+	fmt.Println("After allocate subnet")
+
 	bridgeName, err := createBridge(req.NetworkID)
 	if err != nil {
+		fmt.Println("Failed to create bridge", err)
 		return err
 	}
+
+	fmt.Println("After create bridge")
 
 	// Start flannel process
 	subnetFile := fmt.Sprintf("/flannel-env/%s.env", req.NetworkID)
