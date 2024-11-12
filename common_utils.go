@@ -117,7 +117,7 @@ func allocateSubnetAndCreateFlannelConfig(ctx context.Context, cli *clientv3.Cli
 
 	resp, err := cli.Get(ctx, networkConfigKey)
 	if err != nil {
-		fmt.Println("Failed to get key from etcd:", err)
+		log.Println("Failed to get key from etcd:", err)
 		return "", err
 	}
 
@@ -139,7 +139,7 @@ func allocateSubnetAndCreateFlannelConfig(ctx context.Context, cli *clientv3.Cli
 		// Serialize the configuration to a JSON string
 		configBytes, err := json.Marshal(configData)
 		if err != nil {
-			fmt.Println("Failed to serialize configuration:", err)
+			log.Println("Failed to serialize configuration:", err)
 			return "", err
 		}
 
@@ -155,14 +155,14 @@ func allocateSubnetAndCreateFlannelConfig(ctx context.Context, cli *clientv3.Cli
 
 		resp, err := txn.Commit()
 		if err != nil {
-			fmt.Println("Transaction failed:", err)
+			log.Println("Transaction failed:", err)
 			return "", err
 		}
 
 		if resp.Succeeded {
-			fmt.Printf("Allocated subnet for network %s: %s\n", networkID, subnetCIDR)
+			log.Printf("Allocated subnet for network %s: %s\n", networkID, subnetCIDR)
 			if i == len(allSubnets)-1 {
-				fmt.Println("All subnets have been allocated. Cleaning up the ones that have since been released.")
+				log.Println("All subnets have been allocated. Cleaning up the ones that have since been released.")
 				err = cleanupEmptySubnetKeys(ctx, cli, etcdPrefix)
 				if err != nil {
 					return "", err
@@ -172,16 +172,16 @@ func allocateSubnetAndCreateFlannelConfig(ctx context.Context, cli *clientv3.Cli
 		} else {
 			resp, err := cli.Get(ctx, networkConfigKey)
 			if err != nil {
-				fmt.Println("Failed to get network config:", err)
+				log.Println("Failed to get network config:", err)
 				return "", err
 			}
 			if len(resp.Kvs) > 0 {
-				fmt.Println("Config was created by another process.")
+				log.Println("Config was created by another process.")
 
 				var configData Config
 				err := json.Unmarshal(resp.Kvs[0].Value, &configData)
 				if err != nil {
-					fmt.Println("Failed to deserialize configuration:", err)
+					log.Println("Failed to deserialize configuration:", err)
 					return "", err
 				}
 
@@ -191,7 +191,7 @@ func allocateSubnetAndCreateFlannelConfig(ctx context.Context, cli *clientv3.Cli
 		}
 	}
 
-	fmt.Println("No subnets available.")
+	log.Println("No subnets available.")
 
 	return "", errors.New("no subnets available")
 }

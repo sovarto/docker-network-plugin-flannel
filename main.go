@@ -63,13 +63,14 @@ func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) 
 	defer k.Unlock()
 
 	if err := detectIpTables(); err != nil {
+		log.Println("Error detecting IP tables: ", err)
 		return err
 	}
 
-	fmt.Println("After detect IP tables")
+	log.Println("After detect IP tables")
 
 	if _, ok := k.networks[req.NetworkID]; ok {
-		fmt.Println("Network already exists")
+		log.Println("Network already exists")
 		return types.ForbiddenErrorf("network %s exists", req.NetworkID)
 	}
 
@@ -78,12 +79,12 @@ func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) 
 		DialTimeout: 5 * time.Second,
 	})
 	if err != nil {
-		fmt.Println("Failed to connect to etcd:", err)
+		log.Println("Failed to connect to etcd:", err)
 		return err
 	}
 	defer cli.Close()
 
-	fmt.Println("After ETCD connect")
+	log.Println("After ETCD connect")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -99,24 +100,24 @@ func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) 
 		}
 	}
 
-	fmt.Println("After host subnet length:", hostSubnetLength)
+	log.Println("After host subnet length:", hostSubnetLength)
 
 	subnet, err := allocateSubnetAndCreateFlannelConfig(ctx, cli, k.etcdPrefix, req.NetworkID, k.availableSubnets, hostSubnetLength)
 
 	if err != nil {
-		fmt.Println("Failed to allocate subnet:", err)
+		log.Println("Failed to allocate subnet:", err)
 		return err
 	}
 
-	fmt.Println("After allocate subnet")
+	log.Println("After allocate subnet")
 
 	bridgeName, err := createBridge(req.NetworkID)
 	if err != nil {
-		fmt.Println("Failed to create bridge", err)
+		log.Println("Failed to create bridge", err)
 		return err
 	}
 
-	fmt.Println("After create bridge")
+	log.Println("After create bridge")
 
 	// Start flannel process
 	subnetFile := fmt.Sprintf("/flannel-env/%s.env", req.NetworkID)
@@ -133,11 +134,11 @@ func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) 
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		fmt.Println("Failed to start flanneld:", err)
+		log.Println("Failed to start flanneld:", err)
 		return err
 	}
 
-	fmt.Println("flanneld started with PID", cmd.Process.Pid)
+	log.Println("flanneld started with PID", cmd.Process.Pid)
 
 	flannelNetwork := &flannelNetwork{
 		bridgeName: bridgeName,
