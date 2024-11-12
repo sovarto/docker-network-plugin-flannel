@@ -46,10 +46,10 @@ func detectIpTables() error {
 		} else {
 			return err
 		}
-	}
-
-	if stat.IsDir() {
-		useNft = true
+	} else {
+		if stat.IsDir() {
+			useNft = true
+		}
 	}
 
 	ipTablesVersion := ""

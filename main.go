@@ -286,8 +286,6 @@ func (k *FlannelNetworkPlugin) Join(req *network.JoinRequest) (*network.JoinResp
 		return nil, types.ForbiddenErrorf("%s endpoint does not exist", req.NetworkID)
 	}
 
-	// TODO: What do we actually need to do here? Do we actually need to create a veth pair?
-
 	endpointInfo := k.networks[req.NetworkID].endpoints[req.EndpointID]
 	vethInside, vethOutside, err := createVethPair(endpointInfo.macAddress)
 	if err != nil {
