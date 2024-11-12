@@ -2,7 +2,7 @@
     "description": "Flannel plugin for Docker vDEV",
     "documentation": "https://github.com/sovarto/docker-network-plugin-flannel/",
     "entrypoint": [
-        "/usr/bin/tini",
+        "tini",
         "--",
         "/network-plugin-flannel"
     ],
