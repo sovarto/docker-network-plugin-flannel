@@ -19,7 +19,7 @@
             "settable": [
                 "value"
             ],
-            "value": ""
+            "value": "/flannel"
         },
         {
             "name": "DEFAULT_FLANNEL_OPTIONS",
@@ -27,6 +27,27 @@
                 "value"
             ],
             "value": ""
+        },
+        {
+            "name": "AVAILABLE_SUBNETS",
+            "settable": [
+                "value"
+            ],
+            "value": ""
+        },
+        {
+            "name": "NETWORK_SUBNET_SIZE",
+            "settable": [
+                "value"
+            ],
+            "value": "20"
+        },
+        {
+            "name": "DEFAULT_HOST_SUBNET_SIZE",
+            "settable": [
+                "value"
+            ],
+            "value": "25"
         }
     ],
     "network": {

@@ -1,11 +1,20 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"github.com/docker/docker/libnetwork/types"
 	"github.com/docker/go-plugins-helpers/network"
 	"log"
 	"net"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"sync"
+	"time"
+
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 var (
@@ -14,16 +23,25 @@ var (
 )
 
 type flannelEndpoint struct {
-	macAddress net.HardwareAddr
+	macAddress  net.HardwareAddr
+	vethInside  string
+	vethOutside string
 }
 
 type flannelNetwork struct {
 	bridgeName string
+	subnet     string
 	endpoints  map[string]*flannelEndpoint
+	pid        int
 }
 
 type FlannelNetworkPlugin struct {
-	networks map[string]*flannelNetwork
+	networks              map[string]*flannelNetwork
+	etcdPrefix            string
+	etcdEndPoints         []string
+	defaultFlannelOptions []string
+	availableSubnets      []string // with size NETWORK_SUBNET_SIZE
+	defaultHostSubnetSize int
 	sync.Mutex
 }
 
@@ -44,18 +62,75 @@ func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) 
 	k.Lock()
 	defer k.Unlock()
 
+	if err := detectIpTables(); err != nil {
+		return err
+	}
+
 	if _, ok := k.networks[req.NetworkID]; ok {
 		return types.ForbiddenErrorf("network %s exists", req.NetworkID)
 	}
 
-	// Check etcd for /<options.prefix>/<req.NetworkID>/config
-	//   Create if it is missing
-	//   Ensure it matches the supplied configuration
-	// Start flannel process:
-	//   flanneld -subnet-file=/flannel-env/<req.NetworkID>.env -etcd-prefix=/<options.prefix>/<req.NetworkID> -iface=<options.interfaceName>
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   k.etcdEndPoints,
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		fmt.Println("Failed to connect to etcd:", err)
+		return err
+	}
+	defer cli.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var hostSubnetLength int
+	hostSubnetLengthString, ok := req.Options["com.sovarto.flannel.host.subnet.size"]
+	if !ok || hostSubnetLengthString == nil {
+		hostSubnetLength = k.defaultHostSubnetSize
+	} else {
+		hostSubnetLength, err = strconv.Atoi(hostSubnetLengthString.(string))
+		if err != nil {
+			hostSubnetLength = k.defaultHostSubnetSize
+		}
+	}
+
+	subnet, err := allocateSubnetAndCreateFlannelConfig(ctx, cli, k.etcdPrefix, req.NetworkID, k.availableSubnets, hostSubnetLength)
+
+	if err != nil {
+		return err
+	}
+
+	bridgeName, err := createBridge(req.NetworkID)
+	if err != nil {
+		return err
+	}
+
+	// Start flannel process
+	subnetFile := fmt.Sprintf("/flannel-env/%s.env", req.NetworkID)
+	etcdPrefix := fmt.Sprintf("/%s/%s", k.etcdPrefix, req.NetworkID)
+
+	args := []string{
+		fmt.Sprintf("-subnet-file=%s", subnetFile),
+		fmt.Sprintf("-etcd-prefix=%s", etcdPrefix),
+	}
+	args = append(args, k.defaultFlannelOptions...)
+
+	cmd := exec.Command("flanneld", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		fmt.Println("Failed to start flanneld:", err)
+		return err
+	}
+
+	fmt.Println("flanneld started with PID", cmd.Process.Pid)
 
 	flannelNetwork := &flannelNetwork{
-		endpoints: make(map[string]*flannelEndpoint),
+		bridgeName: bridgeName,
+		endpoints:  make(map[string]*flannelEndpoint),
+		pid:        cmd.Process.Pid,
+		subnet:     subnet,
 	}
 
 	k.networks[req.NetworkID] = flannelNetwork
@@ -74,8 +149,19 @@ func (k *FlannelNetworkPlugin) DeleteNetwork(req *network.DeleteNetworkRequest) 
 		return nil
 	}
 
+	if err := detectIpTables(); err != nil {
+		return err
+	}
+
+	err := deleteBridge(req.NetworkID)
+	if err != nil {
+		return err
+	}
+
+	// TODO:
 	// Stop flannel process
 	// Delete /<options.prefix>/<req.NetworkID> and all children from etcd
+	// Mark subnet as free in etcd
 
 	delete(k.networks, req.NetworkID)
 
@@ -111,13 +197,9 @@ func (k *FlannelNetworkPlugin) CreateEndpoint(req *network.CreateEndpointRequest
 
 	interfaceInfo := new(network.EndpointInterface)
 
-	if req.Options["kathara.mac_addr"] != nil {
-		// Use a pre-defined MAC Address passed by the user
-		interfaceInfo.MacAddress = req.Options["kathara.mac_addr"].(string)
-	} else if req.Options["kathara.machine"] != nil && req.Options["kathara.iface"] != nil {
-		// Generate the interface MAC Address by concatenating the machine name and the interface idx
-		interfaceInfo.MacAddress = generateMacAddressFromID(req.Options["kathara.machine"].(string) + "-" + req.Options["kathara.iface"].(string))
-	} else if req.Interface == nil {
+	if req.Interface == nil {
+		// TODO: Verify that this guarantees uniqueness. If not, use something else
+
 		// Generate the interface MAC Address by concatenating the network id and the endpoint id
 		interfaceInfo.MacAddress = generateMacAddressFromID(req.NetworkID + "-" + req.EndpointID)
 	}
@@ -206,23 +288,22 @@ func (k *FlannelNetworkPlugin) Join(req *network.JoinRequest) (*network.JoinResp
 
 	// TODO: What do we actually need to do here? Do we actually need to create a veth pair?
 
-	//endpointInfo := k.networks[req.NetworkID].endpoints[req.EndpointID]
-	//vethInside, vethOutside, err := createVethPair(endpointInfo.macAddress)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//
-	//if err := attachInterfaceToBridge(k.networks[req.NetworkID].bridgeName, vethOutside); err != nil {
-	//	return nil, err
-	//}
-	//
-	//k.networks[req.NetworkID].endpoints[req.EndpointID].vethInside = vethInside
-	//k.networks[req.NetworkID].endpoints[req.EndpointID].vethOutside = vethOutside
+	endpointInfo := k.networks[req.NetworkID].endpoints[req.EndpointID]
+	vethInside, vethOutside, err := createVethPair(endpointInfo.macAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := attachInterfaceToBridge(k.networks[req.NetworkID].bridgeName, vethOutside); err != nil {
+		return nil, err
+	}
+
+	k.networks[req.NetworkID].endpoints[req.EndpointID].vethInside = vethInside
+	k.networks[req.NetworkID].endpoints[req.EndpointID].vethOutside = vethOutside
 
 	resp := &network.JoinResponse{
 		InterfaceName: network.InterfaceName{
-			//SrcName:   vethInside,
-			SrcName:   "vethInside",
+			SrcName:   vethInside,
 			DstPrefix: "eth",
 		},
 		DisableGatewayService: true,
@@ -246,11 +327,11 @@ func (k *FlannelNetworkPlugin) Leave(req *network.LeaveRequest) error {
 		return types.ForbiddenErrorf("%s endpoint does not exist", req.NetworkID)
 	}
 
-	//endpointInfo := k.networks[req.NetworkID].endpoints[req.EndpointID]
+	endpointInfo := k.networks[req.NetworkID].endpoints[req.EndpointID]
 
-	//if err := deleteVethPair(endpointInfo.vethOutside); err != nil {
-	//	return err
-	//}
+	if err := deleteVethPair(endpointInfo.vethOutside); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -279,24 +360,44 @@ func (k *FlannelNetworkPlugin) RevokeExternalConnectivity(req *network.RevokeExt
 	return nil
 }
 
-func NewFlannelNetworkPlugin(networks map[string]*flannelNetwork) (*FlannelNetworkPlugin, error) {
+func NewFlannelNetworkPlugin(etcdEndPoints []string, etcdPrefix string, defaultFlannelOptions []string, availableSubnets []string, defaultHostSubnetSize int, networks map[string]*flannelNetwork) (*FlannelNetworkPlugin, error) {
 	flannelPlugin := &FlannelNetworkPlugin{
-		networks: networks,
+		networks:              networks,
+		etcdEndPoints:         etcdEndPoints,
+		etcdPrefix:            etcdPrefix,
+		defaultFlannelOptions: defaultFlannelOptions,
+		availableSubnets:      availableSubnets,
+		defaultHostSubnetSize: defaultHostSubnetSize,
 	}
 
 	return flannelPlugin, nil
 }
 
 func main() {
-	driver, err := NewFlannelNetworkPlugin(map[string]*flannelNetwork{})
+	etcdEndPoints := strings.Split(os.Getenv("ETCD_ENDPOINTS"), ",")
+	etcdPrefix := os.Getenv("ETCD_PREFIX")
+	defaultFlannelOptions := strings.Split(os.Getenv("DEFAULT_FLANNEL_OPTIONS"), ",")
+	availableSubnets := strings.Split(os.Getenv("AVAILABLE_SUBNETS"), ",")
+	networkSubnetSize := getEnvAsInt("NETWORK_SUBNET_SIZE", 20)
+	defaultHostSubnetSize := getEnvAsInt("DEFAULT_HOST_SUBNET_SIZE", 25)
+	allSubnets, err := generateAllSubnets(availableSubnets, networkSubnetSize)
 
 	if err != nil {
-		log.Fatalf("ERROR: %s init failed!", PLUGIN_NAME)
+		log.Fatalf("ERROR: %s init failed, invalid subnets configuration: %v", PLUGIN_NAME, err)
+	}
+
+	driver, err := NewFlannelNetworkPlugin(etcdEndPoints, etcdPrefix, defaultFlannelOptions,
+		allSubnets,
+		defaultHostSubnetSize,
+		map[string]*flannelNetwork{})
+
+	if err != nil {
+		log.Fatalf("ERROR: %s init failed: %v", PLUGIN_NAME, err)
 	}
 
 	requestHandler := network.NewHandler(driver)
 
 	if err := requestHandler.ServeUnix(PLUGIN_NAME, PLUGIN_GUID); err != nil {
-		log.Fatalf("ERROR: %s init failed!", PLUGIN_NAME)
+		log.Fatalf("ERROR: %s init failed, can't open socket: %v", PLUGIN_NAME, err)
 	}
 }
