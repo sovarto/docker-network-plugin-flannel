@@ -49,7 +49,7 @@ func (k *FlannelNetworkPlugin) GetCapabilities() (*network.CapabilitiesResponse,
 	log.Printf("Received GetCapabilities req")
 
 	capabilities := &network.CapabilitiesResponse{
-		Scope:             "local",
+		Scope:             "global",
 		ConnectivityScope: "global",
 	}
 
@@ -423,7 +423,7 @@ func main() {
 		log.Fatalf("ERROR: %s init failed, invalid subnets configuration: %v", PLUGIN_NAME, err)
 	}
 
-	driver, err := NewFlannelNetworkPlugin(etcdEndPoints, etcdPrefix, defaultFlannelOptions,
+	driver, err := NewFlannelNetworkPlugin(etcdEndPoints, strings.TrimRight(etcdPrefix, "/"), defaultFlannelOptions,
 		allSubnets,
 		defaultHostSubnetSize,
 		map[string]*flannelNetwork{})

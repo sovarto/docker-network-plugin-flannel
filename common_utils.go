@@ -113,7 +113,7 @@ func generateAllSubnets(availableSubnets []string, networkSubnetSize int) ([]str
 }
 
 func allocateSubnetAndCreateFlannelConfig(ctx context.Context, cli *clientv3.Client, etcdPrefix string, networkID string, allSubnets []string, hostSubnetLength int) (string, error) {
-	networkConfigKey := fmt.Sprintf("/%s/%s/config", etcdPrefix, networkID)
+	networkConfigKey := fmt.Sprintf("%s/%s/config", etcdPrefix, networkID)
 
 	resp, err := cli.Get(ctx, networkConfigKey)
 	if err != nil {
@@ -126,7 +126,7 @@ func allocateSubnetAndCreateFlannelConfig(ctx context.Context, cli *clientv3.Cli
 	}
 
 	for i, subnetCIDR := range allSubnets {
-		subnetKey := fmt.Sprintf("/%s/subnets/%s", etcdPrefix, subnetCIDR)
+		subnetKey := fmt.Sprintf("%s/subnets/%s", etcdPrefix, subnetCIDR)
 
 		configData := Config{
 			Network:   subnetCIDR,
@@ -197,7 +197,7 @@ func allocateSubnetAndCreateFlannelConfig(ctx context.Context, cli *clientv3.Cli
 }
 
 func cleanupEmptySubnetKeys(ctx context.Context, cli *clientv3.Client, etcdPrefix string) error {
-	prefix := fmt.Sprintf("/%s/subnets/", etcdPrefix)
+	prefix := fmt.Sprintf("%s/subnets/", etcdPrefix)
 	resp, err := cli.Get(ctx, prefix, clientv3.WithPrefix())
 	if err != nil {
 		return err
@@ -227,7 +227,7 @@ func cleanupEmptySubnetKeys(ctx context.Context, cli *clientv3.Client, etcdPrefi
 
 // Function to deallocate a subnet
 func deallocateSubnet(ctx context.Context, cli *clientv3.Client, etcdPrefix string, networkID, subnetCIDR string) error {
-	subnetKey := fmt.Sprintf("/%s/subnets/%s", etcdPrefix, subnetCIDR)
+	subnetKey := fmt.Sprintf("%s/subnets/%s", etcdPrefix, subnetCIDR)
 	// Attempt to set the value to empty if it is currently allocated to the network
 	txn := cli.Txn(ctx).If(
 		clientv3.Compare(clientv3.Value(subnetKey), "=", networkID),
