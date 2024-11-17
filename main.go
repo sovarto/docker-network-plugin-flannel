@@ -121,11 +121,12 @@ func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) 
 
 	// Start flannel process
 	subnetFile := fmt.Sprintf("/flannel-env/%s.env", req.NetworkID)
-	etcdPrefix := fmt.Sprintf("/%s/%s", k.etcdPrefix, req.NetworkID)
+	etcdPrefix := fmt.Sprintf("%s/%s", k.etcdPrefix, req.NetworkID)
 
 	args := []string{
 		fmt.Sprintf("-subnet-file=%s", subnetFile),
 		fmt.Sprintf("-etcd-prefix=%s", etcdPrefix),
+		fmt.Sprintf("-etcd-endpopints=%s", strings.Join(k.etcdEndPoints, ",")),
 	}
 	args = append(args, k.defaultFlannelOptions...)
 
@@ -185,6 +186,8 @@ func (k *FlannelNetworkPlugin) DeleteNetwork(req *network.DeleteNetworkRequest) 
 func (k *FlannelNetworkPlugin) AllocateNetwork(req *network.AllocateNetworkRequest) (*network.AllocateNetworkResponse, error) {
 	log.Printf("Received AllocateNetwork req: %+v\n", req)
 
+	// This happens during docker network create
+	// CreateNetwork happens when a container is being started that uses this network
 	// Maybe start flannel process?
 
 	return nil, nil
