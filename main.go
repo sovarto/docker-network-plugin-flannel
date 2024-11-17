@@ -57,7 +57,7 @@ func (k *FlannelNetworkPlugin) GetCapabilities() (*network.CapabilitiesResponse,
 }
 
 func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) error {
-	log.Printf("Received CreateNetwork req:\n%+v\n", req)
+	log.Printf("Received CreateNetwork req: %+v\n", req)
 
 	k.Lock()
 	defer k.Unlock()
@@ -135,8 +135,6 @@ func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) 
 
 	if err := cmd.Start(); err != nil {
 		log.Println("Failed to start flanneld:", err)
-		log.Println(getDirectoryContents("/"))
-		log.Println(getDirectoryContents("/rootfs"))
 		return err
 	}
 
@@ -154,31 +152,8 @@ func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) 
 	return nil
 }
 
-func getDirectoryContents(folderPath string) (string, error) {
-	// Read the directory entries
-	entries, err := os.ReadDir(folderPath)
-	if err != nil {
-		return "", err
-	}
-
-	// Slice to hold the names of the entries
-	var names []string
-	for _, entry := range entries {
-		// Prefix directories with a "/" for clarity (optional)
-		name := entry.Name()
-		if entry.IsDir() {
-			name += "/"
-		}
-		names = append(names, name)
-	}
-
-	// Join all names into a single string separated by newlines
-	contents := strings.Join(names, "\n")
-	return contents, nil
-}
-
 func (k *FlannelNetworkPlugin) DeleteNetwork(req *network.DeleteNetworkRequest) error {
-	log.Printf("Received DeleteNetwork req:\n%+v\n", req)
+	log.Printf("Received DeleteNetwork req: %+v\n", req)
 
 	k.Lock()
 	defer k.Unlock()
@@ -208,7 +183,7 @@ func (k *FlannelNetworkPlugin) DeleteNetwork(req *network.DeleteNetworkRequest) 
 }
 
 func (k *FlannelNetworkPlugin) AllocateNetwork(req *network.AllocateNetworkRequest) (*network.AllocateNetworkResponse, error) {
-	log.Printf("Received AllocateNetwork req:\n%+v\n", req)
+	log.Printf("Received AllocateNetwork req: %+v\n", req)
 
 	// Maybe start flannel process?
 
@@ -216,7 +191,7 @@ func (k *FlannelNetworkPlugin) AllocateNetwork(req *network.AllocateNetworkReque
 }
 
 func (k *FlannelNetworkPlugin) FreeNetwork(req *network.FreeNetworkRequest) error {
-	log.Printf("Received FreeNetwork req:\n%+v\n", req)
+	log.Printf("Received FreeNetwork req: %+v\n", req)
 
 	// Maybe stop flannel process?
 
@@ -224,7 +199,7 @@ func (k *FlannelNetworkPlugin) FreeNetwork(req *network.FreeNetworkRequest) erro
 }
 
 func (k *FlannelNetworkPlugin) CreateEndpoint(req *network.CreateEndpointRequest) (*network.CreateEndpointResponse, error) {
-	log.Printf("Received CreateEndpoint req:\n%+v\n", req)
+	log.Printf("Received CreateEndpoint req: %+v\n", req)
 
 	k.Lock()
 	defer k.Unlock()
@@ -261,7 +236,7 @@ func (k *FlannelNetworkPlugin) CreateEndpoint(req *network.CreateEndpointRequest
 }
 
 func (k *FlannelNetworkPlugin) DeleteEndpoint(req *network.DeleteEndpointRequest) error {
-	log.Printf("Received DeleteEndpoint req:\n%+v\n", req)
+	log.Printf("Received DeleteEndpoint req: %+v\n", req)
 
 	k.Lock()
 	defer k.Unlock()
@@ -283,7 +258,7 @@ func (k *FlannelNetworkPlugin) DeleteEndpoint(req *network.DeleteEndpointRequest
 }
 
 func (k *FlannelNetworkPlugin) EndpointInfo(req *network.InfoRequest) (*network.InfoResponse, error) {
-	log.Printf("Received EndpointOperInfo req:\n%+v\n", req)
+	log.Printf("Received EndpointOperInfo req: %+v\n", req)
 
 	k.Lock()
 	defer k.Unlock()
@@ -311,7 +286,7 @@ func (k *FlannelNetworkPlugin) EndpointInfo(req *network.InfoRequest) (*network.
 }
 
 func (k *FlannelNetworkPlugin) Join(req *network.JoinRequest) (*network.JoinResponse, error) {
-	log.Printf("Received Join req:\n%+v\n", req)
+	log.Printf("Received Join req: %+v\n", req)
 
 	k.Lock()
 	defer k.Unlock()
@@ -350,7 +325,7 @@ func (k *FlannelNetworkPlugin) Join(req *network.JoinRequest) (*network.JoinResp
 }
 
 func (k *FlannelNetworkPlugin) Leave(req *network.LeaveRequest) error {
-	log.Printf("Received Leave req:\n%+v\n", req)
+	log.Printf("Received Leave req: %+v\n", req)
 
 	k.Lock()
 	defer k.Unlock()
@@ -374,25 +349,25 @@ func (k *FlannelNetworkPlugin) Leave(req *network.LeaveRequest) error {
 }
 
 func (k *FlannelNetworkPlugin) DiscoverNew(req *network.DiscoveryNotification) error {
-	log.Printf("Received DiscoverNew req:\n%+v\n", req)
+	log.Printf("Received DiscoverNew req: %+v\n", req)
 
 	return nil
 }
 
 func (k *FlannelNetworkPlugin) DiscoverDelete(req *network.DiscoveryNotification) error {
-	log.Printf("Received DiscoverDelete req:\n%+v\n", req)
+	log.Printf("Received DiscoverDelete req: %+v\n", req)
 
 	return nil
 }
 
 func (k *FlannelNetworkPlugin) ProgramExternalConnectivity(req *network.ProgramExternalConnectivityRequest) error {
-	log.Printf("Received ProgramExternalConnectivity req:\n%+v\n", req)
+	log.Printf("Received ProgramExternalConnectivity req: %+v\n", req)
 
 	return nil
 }
 
 func (k *FlannelNetworkPlugin) RevokeExternalConnectivity(req *network.RevokeExternalConnectivityRequest) error {
-	log.Printf("Received RevokeExternalConnectivity req:\n%+v\n", req)
+	log.Printf("Received RevokeExternalConnectivity req: %+v\n", req)
 
 	return nil
 }
