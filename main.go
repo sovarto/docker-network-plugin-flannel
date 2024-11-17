@@ -129,12 +129,14 @@ func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) 
 	}
 	args = append(args, k.defaultFlannelOptions...)
 
-	cmd := exec.Command("flanneld", args...)
+	cmd := exec.Command("/flanneld", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
 		log.Println("Failed to start flanneld:", err)
+		log.Println(getDirectoryContents("/"))
+		log.Println(getDirectoryContents("/rootfs"))
 		return err
 	}
 
@@ -150,6 +152,29 @@ func (k *FlannelNetworkPlugin) CreateNetwork(req *network.CreateNetworkRequest) 
 	k.networks[req.NetworkID] = flannelNetwork
 
 	return nil
+}
+
+func getDirectoryContents(folderPath string) (string, error) {
+	// Read the directory entries
+	entries, err := os.ReadDir(folderPath)
+	if err != nil {
+		return "", err
+	}
+
+	// Slice to hold the names of the entries
+	var names []string
+	for _, entry := range entries {
+		// Prefix directories with a "/" for clarity (optional)
+		name := entry.Name()
+		if entry.IsDir() {
+			name += "/"
+		}
+		names = append(names, name)
+	}
+
+	// Join all names into a single string separated by newlines
+	contents := strings.Join(names, "\n")
+	return contents, nil
 }
 
 func (k *FlannelNetworkPlugin) DeleteNetwork(req *network.DeleteNetworkRequest) error {

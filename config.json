@@ -2,8 +2,6 @@
     "description": "Flannel plugin for Docker vDEV",
     "documentation": "https://github.com/sovarto/docker-network-plugin-flannel/",
     "entrypoint": [
-        "tini",
-        "--",
         "/network-plugin-flannel"
     ],
     "env": [
