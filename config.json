@@ -6,7 +6,34 @@
   ],
   "mounts": [
     {
-      "destination": "/run",
+      "destination": "/run/docker/plugins",
+      "name": "run_docker_plugins",
+      "options": [
+        "rbind"
+      ],
+      "source": "/run/docker/plugins",
+      "type": "bind"
+    },
+    {
+      "destination": "/var/run/docker",
+      "name": "var_run_docker",
+      "options": [
+        "rbind"
+      ],
+      "source": "/var/run/docker",
+      "type": "bind"
+    },
+    {
+      "destination": "/var/run/docker.sock",
+      "name": "var_run_docker_sock",
+      "options": [
+        "rbind"
+      ],
+      "source": "/var/run/docker.sock",
+      "type": "bind"
+    },
+    {
+      "destination": "/var/run/xtables.lock",
       "name": "xtables_lock",
       "options": [
         "rbind"
@@ -14,7 +41,7 @@
       "settable": [
         "source"
       ],
-      "source": "/run",
+      "source": "",
       "type": "bind"
     }
   ],

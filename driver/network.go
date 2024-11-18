@@ -11,12 +11,12 @@ func (d *FlannelDriver) CreateNetwork(req *network.CreateNetworkRequest) error {
 	d.Lock()
 	defer d.Unlock()
 
-	if err := detectIpTables(); err != nil {
-		log.Println("Error detecting IP tables: ", err)
-		return err
-	}
-
-	log.Println("After detect IP tables")
+	//if err := detectIpTables(); err != nil {
+	//	log.Println("Error detecting IP tables: ", err)
+	//	return err
+	//}
+	//
+	//log.Println("After detect IP tables")
 
 	if _, ok := d.networks[req.NetworkID]; ok {
 		log.Println("Network already exists")
@@ -35,9 +35,9 @@ func (d *FlannelDriver) DeleteNetwork(req *network.DeleteNetworkRequest) error {
 		return nil
 	}
 
-	if err := detectIpTables(); err != nil {
-		return err
-	}
+	//if err := detectIpTables(); err != nil {
+	//	return err
+	//}
 
 	err := deleteBridge(req.NetworkID)
 	if err != nil {
