@@ -401,6 +401,7 @@ func (d *FlannelDriver) loadNetworks() error {
 	}
 
 	for _, file := range files {
+		fmt.Println("Loading network configuration:", file)
 		config, err := loadFlannelConfig(file)
 		if err != nil {
 			log.Printf("Error loading flanneld env file %s, skipping. err: %+v\n", file, err)
