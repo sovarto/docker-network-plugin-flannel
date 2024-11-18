@@ -55,7 +55,7 @@ type FlannelDriver struct {
 func NewFlannelDriver(etcdClient *EtcdClient, defaultFlannelOptions []string) *FlannelDriver {
 	return &FlannelDriver{
 		networks:                    make(map[string]*FlannelNetwork),
-		networkIdToFlannelNetworkId: make(map[string]string)
+		networkIdToFlannelNetworkId: make(map[string]string),
 		defaultFlannelOptions:       defaultFlannelOptions,
 		etcdClient:                  etcdClient,
 	}
