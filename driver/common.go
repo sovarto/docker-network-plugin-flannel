@@ -68,7 +68,7 @@ func ServeFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlanne
 		log.Fatalf("ERROR: %s init Network failed, can't open socket: %v", "flannel-np", err)
 	}
 	if err := ipam.NewHandler(flannelIpamPlugin).ServeUnix("flannel-np", 0); err != nil {
-		log.Fatalf("ERROR: %s init Network failed, can't open socket: %v", "flannel-np", err)
+		log.Fatalf("ERROR: %s init Ipam failed, can't open socket: %v", "flannel-np", err)
 	}
 }
 

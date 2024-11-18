@@ -16,7 +16,7 @@ func (k *FlannelNetworkPlugin) GetCapabilities() (*network.CapabilitiesResponse,
 		Scope:             "global",
 		ConnectivityScope: "global",
 	}
-	log.Printf("CreateNetwork response: %+v\n", capabilities)
+	log.Printf("GetCapabilities response: %+v\n", capabilities)
 	return capabilities, nil
 }
 
@@ -35,7 +35,7 @@ func (k *FlannelNetworkPlugin) DeleteNetwork(req *network.DeleteNetworkRequest) 
 
 	err := k.driver.DeleteNetwork(req)
 
-	log.Printf("CreateNetwork response: %+v\n", err)
+	log.Printf("DeleteNetwork response: %+v\n", err)
 
 	return err
 }

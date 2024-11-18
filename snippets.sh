@@ -14,7 +14,7 @@ docker plugin enable flannel:latest
 docker plugin disable --force flannel:dev && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev
 
 docker network rm fweb
-docker network create --attachable=true --driver=flannel:latest --scope=swarm fweb
+docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opts=id=fweb123 fweb
 
 docker service update --network-rm fweb whoami
 docker service update --network-add fweb whoami
