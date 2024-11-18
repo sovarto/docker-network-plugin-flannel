@@ -204,7 +204,7 @@ func loadFlannelConfig(filename string) (FlannelConfig, error) {
 	defer cancel()
 	err := waitForFileWithContext(ctx, filename)
 	if err != nil {
-		return FlannelConfig{}, fmt.Errorf("flannel config missing: %w", err)
+		return FlannelConfig{}, fmt.Errorf("flannel env missing: %w", err)
 	}
 	file, err := os.Open(filename)
 	if err != nil {
