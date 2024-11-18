@@ -61,7 +61,7 @@ type FlannelDriver struct {
 func NewFlannelDriver(etcdClient *EtcdClient, defaultFlannelOptions []string) (*FlannelDriver, error) {
 
 	dockerCli, err := dockerCliAPI.NewClientWithOpts(
-		dockerCliAPI.WithHost("/var/run/docker.sock"),
+		dockerCliAPI.WithHost("unix:///var/run/docker.sock"),
 		dockerCliAPI.WithAPIVersionNegotiation(),
 	)
 
