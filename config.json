@@ -6,7 +6,7 @@
   ],
   "mounts": [
     {
-      "destination": "/var/run/xtables.lock",
+      "destination": "/run/xtables.lock",
       "name": "xtables_lock",
       "options": [
         "rbind"
