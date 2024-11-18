@@ -94,8 +94,8 @@ func (e *EtcdClient) EnsureFlannelConfig(flannelNetworkId string) (string, error
 		return "", err
 	}
 
-	subnet, err := e.readExistingNetworkConfig(etcd, networkConfigKey)
-	if err == nil {
+	subnet, found, err := e.readExistingNetworkConfig(etcd, networkConfigKey)
+	if found && err == nil {
 		return subnet, nil
 	}
 

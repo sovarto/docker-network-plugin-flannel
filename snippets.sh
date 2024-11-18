@@ -4,7 +4,7 @@ ssh root@188.245.202.183
 ssh root@116.203.53.199
 ssh root@157.90.157.1
 
-ALIAS=flannel:test2; \
+ALIAS=flannel:test3; \
 PREFIX=/flannel; \
 VERSION=latest; \
 docker plugin disable --force $ALIAS || true && docker plugin rm $ALIAS || true && \
@@ -13,6 +13,8 @@ docker plugin set $ALIAS ETCD_PREFIX=$PREFIX && \
 docker plugin set $ALIAS ETCD_ENDPOINTS=172.16.0.2:2379,172.16.0.3:2379,172.16.0.4:2379 && \
 docker plugin set $ALIAS DEFAULT_FLANNEL_OPTIONS="-iface=enp7s0" && \
 docker plugin set $ALIAS AVAILABLE_SUBNETS="10.1.0.0/16,10.10.0.0/16,10.50.0.0/16" && \
+docker plugin set $ALIAS NETWORK_SUBNET_SIZE=18 && \
+docker plugin set $ALIAS DEFAULT_HOST_SUBNET_SIZE=23 && \
 docker plugin enable $ALIAS && \
 docker plugin inspect $ALIAS --format "{{.ID}}"
 
@@ -24,7 +26,7 @@ docker network create --attachable=true --driver=flannel:dev --ipam-driver=flann
 docker service update --network-rm fweb whoami
 docker service update --network-add fweb whoami
 
-journalctl -u docker.service --since "5m ago"
+journalctl -u docker.service --since "5m ago" | grep plugin=
 journalctl -u docker.service | grep plugin=
 
 docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl get /flannel --prefix --keys-only
