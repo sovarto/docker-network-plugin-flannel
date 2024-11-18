@@ -22,7 +22,7 @@ RUN mkdir -p /var/lib/rsyslog
 
 WORKDIR /app
 
-RUN update-alternatives --install /sbin/iptables iptables /sbin/iptables-legacy 1
+# RUN update-alternatives --install /sbin/iptables iptables /sbin/iptables-legacy 1
 
 RUN wget https://github.com/flannel-io/flannel/releases/latest/download/flanneld-amd64 && \
     mv flanneld-amd64 /flanneld && \
