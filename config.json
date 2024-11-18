@@ -14,7 +14,7 @@
       "settable": [
         "source"
       ],
-      "source": "",
+      "source": "/run/xtables.lock",
       "type": "bind"
     }
   ],

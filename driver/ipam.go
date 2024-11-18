@@ -50,7 +50,7 @@ func (d *FlannelDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ip
 		return nil, err
 	}
 
-	return &ipam.RequestAddressResponse{Address: address}, nil
+	return &ipam.RequestAddressResponse{Address: fmt.Sprintf("%s/32", address)}, nil
 }
 
 func (d *FlannelDriver) ReleaseAddress(request *ipam.ReleaseAddressRequest) error {
