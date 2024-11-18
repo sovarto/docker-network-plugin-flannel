@@ -146,12 +146,17 @@ func (e *EtcdClient) EnsureFlannelConfig(flannelNetworkId string) (string, error
 		} else {
 			log.Println("Config was created by another process.")
 
-			subnet, err := e.readExistingNetworkConfig(etcd, networkConfigKey)
-			if err != nil {
-				return "", err
-			}
+			subnet, found, err := e.readExistingNetworkConfig(etcd, networkConfigKey)
+			if found {
+				if err != nil {
+					return "", err
+				}
 
-			return subnet, nil
+				return subnet, nil
+			} else {
+				// Not found means: network config didn't exist, but network key did
+				// -> The network/subnet is already registered for a different docker network
+			}
 		}
 	}
 
@@ -160,24 +165,24 @@ func (e *EtcdClient) EnsureFlannelConfig(flannelNetworkId string) (string, error
 	return "", errors.New("no subnets available")
 }
 
-func (e *EtcdClient) readExistingNetworkConfig(etcd *etcdConnection, networkConfigKey string) (string, error) {
+func (e *EtcdClient) readExistingNetworkConfig(etcd *etcdConnection, networkConfigKey string) (string, bool, error) {
 	resp, err := etcd.client.Get(etcd.ctx, networkConfigKey)
 	if err != nil {
 		log.Printf("Failed to get network config %s:\n%+v", networkConfigKey, err)
-		return "", err
+		return "", false, err
 	}
 	if len(resp.Kvs) > 0 {
 		var configData Config
 		err := json.Unmarshal(resp.Kvs[0].Value, &configData)
 		if err != nil {
 			log.Println("Failed to deserialize configuration:", err)
-			return "", err
+			return "", true, err
 		}
 
-		return configData.Network, nil
+		return configData.Network, true, nil
 	}
 	message := fmt.Sprintf("Expected network config '%s' missing", networkConfigKey)
-	return "", errors.New(message)
+	return "", false, errors.New(message)
 }
 
 func (e *EtcdClient) cleanupEmptyNetworkKeys(etcd *etcdConnection) error {
