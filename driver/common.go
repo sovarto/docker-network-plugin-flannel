@@ -408,7 +408,7 @@ func (d *FlannelDriver) loadNetworks() error {
 			continue
 		}
 
-		flannelNetworkId := strings.TrimSuffix(strings.TrimPrefix("/flannel-env/", file), ".env")
+		flannelNetworkId := strings.TrimSuffix(strings.TrimPrefix(file, "/flannel-env/"), ".env")
 
 		reservedAddresses, err := d.etcdClient.LoadReservedAddresses(&config)
 
