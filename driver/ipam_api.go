@@ -10,44 +10,51 @@ type FlannelIpamPlugin struct {
 }
 
 func (f *FlannelIpamPlugin) GetCapabilities() (*ipam.CapabilitiesResponse, error) {
-	return &ipam.CapabilitiesResponse{}, nil
+	log.Printf("[IPAM] Received GetCapabilities")
+	response := &ipam.CapabilitiesResponse{}
+	log.Printf("[IPAM] GetCapabilities response: %+v\n", response)
+	return response, nil
 }
 
 func (f *FlannelIpamPlugin) GetDefaultAddressSpaces() (*ipam.AddressSpacesResponse, error) {
-	return &ipam.AddressSpacesResponse{
+	log.Printf("[IPAM] Received GetCapabilities")
+	response := &ipam.AddressSpacesResponse{
 		LocalDefaultAddressSpace:  "FlannelLocal",
 		GlobalDefaultAddressSpace: "FlannelGlobal",
-	}, nil
+	}
+	log.Printf("[IPAM] GetDefaultAddressSpaces response: %+v\n", response)
+
+	return response, nil
 }
 
 func (f *FlannelIpamPlugin) RequestPool(request *ipam.RequestPoolRequest) (*ipam.RequestPoolResponse, error) {
-	log.Printf("Received RequestPool req: %+v\n", request)
+	log.Printf("[IPAM] Received RequestPool req: %+v\n", request)
 
 	response, err := f.driver.RequestPool(request)
-	log.Printf("RequestPool response: %+v; error:%+v\n", response, err)
+	log.Printf("[IPAM] RequestPool response: %+v; error:%+v\n", response, err)
 	return response, err
 }
 
 func (f *FlannelIpamPlugin) ReleasePool(request *ipam.ReleasePoolRequest) error {
-	log.Printf("Received ReleasePool req: %+v\n", request)
+	log.Printf("[IPAM] Received ReleasePool req: %+v\n", request)
 
 	err := f.driver.ReleasePool(request)
-	log.Printf("ReleasePool response: %+v\n", err)
+	log.Printf("[IPAM] ReleasePool response: %+v\n", err)
 	return err
 }
 
 func (f *FlannelIpamPlugin) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.RequestAddressResponse, error) {
-	log.Printf("Received RequestAddress req: %+v\n", request)
+	log.Printf("[IPAM] Received RequestAddress req: %+v\n", request)
 
 	response, err := f.driver.RequestAddress(request)
-	log.Printf("RequestAddress response: %+v; error:%+v\n", response, err)
+	log.Printf("[IPAM] RequestAddress response: %+v; error:%+v\n", response, err)
 	return response, err
 }
 
 func (f *FlannelIpamPlugin) ReleaseAddress(request *ipam.ReleaseAddressRequest) error {
-	log.Printf("Received ReleaseAddress req: %+v\n", request)
+	log.Printf("[IPAM] Received ReleaseAddress req: %+v\n", request)
 
 	err := f.driver.ReleaseAddress(request)
-	log.Printf("ReleaseAddress response: %+v\n", err)
+	log.Printf("[IPAM] ReleaseAddress response: %+v\n", err)
 	return err
 }
