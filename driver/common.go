@@ -387,7 +387,7 @@ func maskToPrefix(mask net.IPMask) int {
 	return ones
 }
 
-func loadNetworks(etcdClient *EtcdClient) (map[string]*FlannelNetwork, error) {
+func (d *FlannelDriver) loadNetworks() (map[string]*FlannelNetwork, error) {
 
 	result := make(map[string]*FlannelNetwork)
 
@@ -406,15 +406,26 @@ func loadNetworks(etcdClient *EtcdClient) (map[string]*FlannelNetwork, error) {
 		config, err := loadFlannelConfig(file)
 		if err != nil {
 			log.Printf("Error loading flanneld env file %s, skipping. err: %+v\n", file, err)
+			continue
 		}
 
 		flannelNetworkId := strings.TrimSuffix(strings.TrimPrefix("/flannel-env/", file), ".env")
 
-		reservedAddresses, err := etcdClient.LoadReservedAddresses(&config)
+		reservedAddresses, err := d.etcdClient.LoadReservedAddresses(&config)
 
-		result[flannelNetworkId] = &FlannelNetwork{
-			config:            config,
-			reservedAddresses: reservedAddresses,
+		if err != nil {
+			log.Printf("Error loading reserved addresses for flanneld env %s. err: %+v\n", file, err)
+		}
+
+		network := NewFlannelNetwork()
+		network.config = config
+		network.reservedAddresses = reservedAddresses
+
+		result[flannelNetworkId] = network
+
+		err = d.startFlannel(flannelNetworkId, network)
+		if err != nil {
+			log.Printf("Error starting flanneld for network %s. err: %+v\n", flannelNetworkId, err)
 		}
 	}
 
