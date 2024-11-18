@@ -43,6 +43,11 @@ func (d *FlannelDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ip
 		return nil, err
 	}
 
+	requestType, exists := request.Options["RequestAddressType"]
+	if exists && requestType == "com.docker.network.gateway" {
+		return &ipam.RequestAddressResponse{Address: fmt.Sprintf("%s/32", network.config.Gateway)}, nil
+	}
+
 	address, err := d.etcdClient.ReserveAddress(network)
 
 	if err != nil {
