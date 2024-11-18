@@ -24,7 +24,7 @@ func initIpamMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		sdk.EncodeResponse(w, res, false)
 	})
 	h.HandleFunc(addressSpacesPath, func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("[IPAM] Received GetCapabilities")
+		log.Printf("[IPAM] Received GetDefaultAddressSpaces")
 		res := &ipam.AddressSpacesResponse{
 			LocalDefaultAddressSpace:  "FlannelLocal",
 			GlobalDefaultAddressSpace: "FlannelGlobal",

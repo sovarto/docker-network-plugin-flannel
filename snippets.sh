@@ -11,7 +11,7 @@ docker plugin set flannel:latest DEFAULT_FLANNEL_OPTIONS="-iface=enp7s0" && \
 docker plugin set flannel:latest AVAILABLE_SUBNETS="192.168.32.0/19,192.168.64.0/19,192.168.96.0/19,192.168.128.0/19,192.168.160.0/19,192.168.192.0/19" && \
 docker plugin enable flannel:latest
 
-docker plugin disable --force flannel:dev && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev
+docker plugin disable --force flannel:dev || true && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev
 
 docker network rm fweb
 docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opts=id=fweb123 fweb

@@ -9,8 +9,6 @@ import (
 )
 
 func (d *FlannelDriver) RequestPool(request *ipam.RequestPoolRequest) (*ipam.RequestPoolResponse, error) {
-	log.Printf("Received RequestPool req: %+v\n", request)
-
 	if request.V6 {
 		return nil, errors.New("flannel plugin does not support ipv6")
 	}
@@ -32,15 +30,12 @@ func (d *FlannelDriver) RequestPool(request *ipam.RequestPoolRequest) (*ipam.Req
 }
 
 func (d *FlannelDriver) ReleasePool(request *ipam.ReleasePoolRequest) error {
-	log.Printf("Received ReleasePool req: %+v\n", request)
 	//TODO implement me
 	//panic("implement me")
 	return nil
 }
 
 func (d *FlannelDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.RequestAddressResponse, error) {
-	log.Printf("Received RequestAddress req: %+v\n", request)
-
 	flannelNetworkId := strings.Join(strings.Split(request.PoolID, "-")[1:], "-")
 
 	network, err := d.ensureFlannelIsConfiguredAndRunning(flannelNetworkId)
@@ -59,7 +54,6 @@ func (d *FlannelDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ip
 }
 
 func (d *FlannelDriver) ReleaseAddress(request *ipam.ReleaseAddressRequest) error {
-	log.Printf("Received ReleaseAddress req: %+v\n", request)
 	//TODO implement me
 	//panic("implement me")
 	return nil
