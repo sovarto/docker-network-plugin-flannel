@@ -1,6 +1,6 @@
 // from https://github.com/KatharaFramework/NetworkPlugin/blob/main/bridge/go-src/src/veth_utils.go
 
-package main
+package driver
 
 import (
 	"net"

@@ -4,7 +4,7 @@ error() {
 }
 
 
-export TAG=${1:-latest}
+export TAG=$1
 export ARCH=${2:-"$(uname -m)"}
 
 build() {
@@ -21,8 +21,10 @@ build() {
     if [ $ARCH == "x86_64" ]
     then
         docker plugin rm -f sovarto/$1:$TAG || true
+        docker plugin rm -f sovarto/$1:latest || true
     else
         docker plugin rm -f sovarto/$1-$ARCH:$TAG || true
+        docker plugin rm -f sovarto/$1-$ARCH:latest || true
     fi
     docker rmi -f rootfsimage || true
     docker buildx build --load --platform ${BPLATFORM} \
@@ -38,10 +40,14 @@ build() {
     if [ $ARCH == "x86_64" ]
     then
         docker plugin create sovarto/$1:$TAG build
+        docker plugin create sovarto/$1:latest build
         docker plugin push sovarto/$1:$TAG
+        docker plugin push sovarto/$1:latest
     else
         docker plugin create sovarto/$1-$ARCH:$TAG build
+        docker plugin create sovarto/$1-$ARCH:latest build
         docker plugin push sovarto/$1-$ARCH:$TAG
+        docker plugin push sovarto/$1-$ARCH:latest
     fi
 }
 
