@@ -1,9 +1,8 @@
 # syntax=docker/dockerfile:1.4
-FROM --platform=${TARGETPLATFORM:-linux/amd64} golang:1.22-alpine AS builder
+FROM --platform=${TARGETPLATFORM:-linux/amd64} golang:1.23-alpine AS builder
 
 RUN apk update && apk add git
 
-RUN go version
 COPY go.mod /src/
 COPY go.sum /src/
 RUN --mount=type=cache,target=/go/pkg/mod cd /src/ && go mod download

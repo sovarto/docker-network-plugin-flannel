@@ -1,6 +1,6 @@
 module github.com/sovarto/FlannelNetworkPlugin
 
-go 1.22.2
+go 1.23.1
 
 require (
 	github.com/apparentlymart/go-cidr v1.1.0
