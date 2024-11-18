@@ -4,8 +4,8 @@ ssh root@188.245.202.183
 ssh root@116.203.53.199
 ssh root@157.90.157.1
 
-ALIAS=flannel:test; \
-PREFIX=/flannel-test; \
+ALIAS=flannel:test2; \
+PREFIX=/flannel; \
 VERSION=latest; \
 docker plugin disable --force $ALIAS || true && docker plugin rm $ALIAS || true && \
 docker plugin install sovarto/docker-network-plugin-flannel:$VERSION --alias $ALIAS --grant-all-permissions --disable && \

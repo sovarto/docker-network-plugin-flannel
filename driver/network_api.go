@@ -40,6 +40,8 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		req := &network.CreateNetworkRequest{}
 		err := sdk.DecodeRequest(w, r, req)
 		if err != nil {
+			log.Println("[Network] CreateNetwork decode request err:", err)
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
 		log.Printf("[Network] Received CreateNetwork req: %+v\n", req)
@@ -56,6 +58,8 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		req := &network.AllocateNetworkRequest{}
 		err := sdk.DecodeRequest(w, r, req)
 		if err != nil {
+			log.Println("[Network] AllocateNetwork decode request err:", err)
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
 		log.Printf("[Network] Received AllocateNetwork req: %+v\n", req)
@@ -72,6 +76,8 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		req := &network.DeleteNetworkRequest{}
 		err := sdk.DecodeRequest(w, r, req)
 		if err != nil {
+			log.Println("[Network] DeleteNetwork decode request err:", err)
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
 		log.Printf("[Network] Received DeleteNetwork req: %+v\n", req)
@@ -88,6 +94,8 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		req := &network.FreeNetworkRequest{}
 		err := sdk.DecodeRequest(w, r, req)
 		if err != nil {
+			log.Println("[Network] FreeNetwork decode request err:", err)
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
 		log.Printf("[Network] Received FreeNetwork req: %+v\n", req)
@@ -103,6 +111,8 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		req := &network.CreateEndpointRequest{}
 		err := sdk.DecodeRequest(w, r, req)
 		if err != nil {
+			log.Println("[Network] CreateEndpoint decode request err:", err)
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
 		log.Printf("[Network] Received CreateEndpoint req: %+v\n", req)
@@ -119,6 +129,8 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		req := &network.DeleteEndpointRequest{}
 		err := sdk.DecodeRequest(w, r, req)
 		if err != nil {
+			log.Println("[Network] DeleteEndpoint decode request err:", err)
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
 		log.Printf("[Network] Received DeleteEndpoint req: %+v\n", req)
@@ -135,6 +147,8 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		req := &network.InfoRequest{}
 		err := sdk.DecodeRequest(w, r, req)
 		if err != nil {
+			log.Println("[Network] EndpointInfo decode request err:", err)
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
 		log.Printf("[Network] Received EndpointOperInfo req: %+v\n", req)
@@ -151,6 +165,8 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		req := &network.JoinRequest{}
 		err := sdk.DecodeRequest(w, r, req)
 		if err != nil {
+			log.Println("[Network] Join decode request err:", err)
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
 		log.Printf("[Network] Received Join req: %+v\n", req)
@@ -167,6 +183,8 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		req := &network.LeaveRequest{}
 		err := sdk.DecodeRequest(w, r, req)
 		if err != nil {
+			log.Println("[Network] Leave decode request err:", err)
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
 		log.Printf("[Network] Received Leave req: %+v\n", req)
@@ -183,6 +201,8 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		req := &network.DiscoveryNotification{}
 		err := sdk.DecodeRequest(w, r, req)
 		if err != nil {
+			log.Println("[Network] DiscoverNew decode request err:", err)
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
 		log.Printf("[Network] Received DiscoverNew req: %+v\n", req)
@@ -198,6 +218,8 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		req := &network.DiscoveryNotification{}
 		err := sdk.DecodeRequest(w, r, req)
 		if err != nil {
+			log.Println("[Network] DiscoverDelete decode request err:", err)
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
 		log.Printf("[Network] Received DiscoverDelete req: %+v\n", req)
@@ -213,6 +235,8 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		req := &network.ProgramExternalConnectivityRequest{}
 		err := sdk.DecodeRequest(w, r, req)
 		if err != nil {
+			log.Println("[Network] ProgramExternalConnectivity decode request err:", err)
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
 		log.Printf("[Network] Received ProgramExternalConnectivity req: %+v\n", req)
@@ -228,6 +252,8 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		req := &network.RevokeExternalConnectivityRequest{}
 		err := sdk.DecodeRequest(w, r, req)
 		if err != nil {
+			log.Println("[Network] RevokeExternalConnectivity decode request err:", err)
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
 		log.Printf("[Network] Received RevokeExternalConnectivity req: %+v\n", req)
