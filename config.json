@@ -6,24 +6,6 @@
   ],
   "mounts": [
     {
-      "destination": "/run/docker/plugins",
-      "name": "run_docker_plugins",
-      "options": [
-        "rbind"
-      ],
-      "source": "/run/docker/plugins",
-      "type": "bind"
-    },
-    {
-      "destination": "/var/run/docker",
-      "name": "var_run_docker",
-      "options": [
-        "rbind"
-      ],
-      "source": "/var/run/docker",
-      "type": "bind"
-    },
-    {
       "destination": "/var/run/docker.sock",
       "name": "var_run_docker_sock",
       "options": [
