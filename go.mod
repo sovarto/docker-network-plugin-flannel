@@ -4,11 +4,11 @@ go 1.22.2
 
 require (
 	github.com/apparentlymart/go-cidr v1.1.0
-	github.com/docker/docker v26.0.0+incompatible
+	github.com/docker/docker v27.3.1+incompatible
 	github.com/docker/go-plugins-helpers v0.0.0-20240701071450-45e2431495c8
 	github.com/google/uuid v1.6.0
 	github.com/vishvananda/netlink v1.3.0
-	go.etcd.io/etcd/client/v3 v3.5.16
+	go.etcd.io/etcd/client/v3 v3.5.17
 	golang.org/x/sys v0.27.0
 )
 
@@ -36,8 +36,8 @@ require (
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
-	go.etcd.io/etcd/api/v3 v3.5.16 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.5.16 // indirect
+	go.etcd.io/etcd/api/v3 v3.5.17 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.5.17 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.57.0 // indirect
 	go.opentelemetry.io/otel v1.32.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.32.0 // indirect
