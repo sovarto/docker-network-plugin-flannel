@@ -40,14 +40,10 @@ build() {
     if [ $ARCH == "x86_64" ]
     then
         docker plugin create sovarto/$1:$TAG build
-        docker plugin create sovarto/$1:latest build
         docker plugin push sovarto/$1:$TAG
-        docker plugin push sovarto/$1:latest
     else
         docker plugin create sovarto/$1-$ARCH:$TAG build
-        docker plugin create sovarto/$1-$ARCH:latest build
         docker plugin push sovarto/$1-$ARCH:$TAG
-        docker plugin push sovarto/$1-$ARCH:latest
     fi
 }
 
