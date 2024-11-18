@@ -40,6 +40,7 @@ func NewFlannelNetwork() *FlannelNetwork {
 type FlannelConfig struct {
 	Network string // The subnet of the network across all hosts
 	Subnet  string // The subnet for this network on the current host. Inside the network subnet
+	Gateway string
 	MTU     int
 	IPMasq  bool
 }
@@ -171,6 +172,10 @@ func (d *FlannelDriver) startFlannel(flannelNetworkId string, network *FlannelNe
 	network.pid = cmd.Process.Pid
 	network.config = config
 
+	err = d.etcdClient.EnsureGatewayIsMarkedAsReserved(&config)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -279,7 +284,14 @@ func loadFlannelConfig(filename string) (FlannelConfig, error) {
 		case "NETWORK":
 			config.Network = value
 		case "SUBNET":
-			config.Subnet = value
+			ip, ipNet, err := net.ParseCIDR(value)
+			if err != nil {
+				return FlannelConfig{}, fmt.Errorf("invalid CIDR format: %v", err)
+			}
+			network := ip.Mask(ipNet.Mask)
+			subnet := fmt.Sprintf("%s/%d", network.String(), maskToPrefix(ipNet.Mask))
+			config.Subnet = subnet
+			config.Gateway = ip.String()
 		case "MTU":
 			mtu, err := strconv.Atoi(value)
 			if err != nil {
@@ -302,4 +314,9 @@ func loadFlannelConfig(filename string) (FlannelConfig, error) {
 	}
 
 	return config, nil
+}
+
+func maskToPrefix(mask net.IPMask) int {
+	ones, _ := mask.Size()
+	return ones
 }

@@ -45,11 +45,11 @@ func (e *EtcdClient) networkKey(subnet string) string {
 	return fmt.Sprintf("%s/%s", e.networksKey(), subnetToKey(subnet))
 }
 
-func (e *EtcdClient) networkHostSubnetKey(config FlannelConfig) string {
+func (e *EtcdClient) networkHostSubnetKey(config *FlannelConfig) string {
 	return fmt.Sprintf("%s/host-subnets/%s", e.networkKey(config.Network), subnetToKey(config.Subnet))
 }
 
-func (e *EtcdClient) reservedIpKey(config FlannelConfig, ip string) string {
+func (e *EtcdClient) reservedIpKey(config *FlannelConfig, ip string) string {
 	return fmt.Sprintf("%s/reserved-ips/%s", e.networkHostSubnetKey(config), ip)
 }
 
@@ -209,7 +209,7 @@ func (e *EtcdClient) cleanupEmptyNetworkKeys(etcd *etcdConnection) error {
 }
 
 func (e *EtcdClient) cleanupFreedIPs(etcd *etcdConnection, network *FlannelNetwork) error {
-	resp, err := etcd.client.Get(etcd.ctx, e.networkHostSubnetKey(network.config), clientv3.WithPrefix())
+	resp, err := etcd.client.Get(etcd.ctx, e.networkHostSubnetKey(&network.config), clientv3.WithPrefix())
 	if err != nil {
 		return err
 	}
@@ -259,7 +259,7 @@ func (e *EtcdClient) ReserveAddress(network *FlannelNetwork) (string, error) {
 		network.Mutex.Lock()
 
 		if _, reserved := network.reservedAddresses[ipStr]; !reserved {
-			reserved, err := e.tryReserveIP(etcd, e.reservedIpKey(network.config, ipStr))
+			reserved, err := e.tryReserveIP(etcd, e.reservedIpKey(&network.config, ipStr))
 			if err != nil {
 				network.Mutex.Unlock()
 				return "", err
@@ -299,40 +299,32 @@ func (e *EtcdClient) tryReserveIP(etcd *etcdConnection, key string) (bool, error
 	return txnResp.Succeeded, nil
 }
 
-func ipsInSubnet(subnet *net.IPNet) []net.IP {
-	var ips []net.IP
-	ip := subnet.IP.Mask(subnet.Mask)
-	for {
-		ip = nextIP(ip)
-		if !subnet.Contains(ip) {
-			break
-		}
-		// Exclude network and broadcast addresses
-		if ip.Equal(subnet.IP) {
-			continue
-		}
-		ips = append(ips, append(net.IP(nil), ip...))
+func (e *EtcdClient) EnsureGatewayIsMarkedAsReserved(config *FlannelConfig) error {
+	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
+	defer etcd.Close()
+	if err != nil {
+		log.Println("Failed to connect to etcd:", err)
+		return err
 	}
-	return ips
-}
 
-func nextIP(ip net.IP) net.IP {
-	ip = append(net.IP(nil), ip...)
-	for j := len(ip) - 1; j >= 0; j-- {
-		ip[j]++
-		if ip[j] != 0 {
-			break
-		}
-	}
-	return ip
-}
+	key := e.reservedIpKey(config, config.Gateway)
 
-func isLastIP(allIPs []net.IP, reserved map[string]struct{}) bool {
-	for _, ip := range allIPs {
-		ipStr := ip.String()
-		if _, r := reserved[ipStr]; !r {
-			return false
-		}
+	txn := etcd.client.Txn(etcd.ctx).
+		If(clientv3.Compare(clientv3.Value(key), "!=", "reserved")).
+		Then(clientv3.OpPut(key, "gateway")).
+		Else()
+	txnResp, err := txn.Commit()
+
+	if err != nil {
+		return fmt.Errorf("etcd transaction failed: %v", err)
 	}
-	return true
+
+	if txnResp.Succeeded {
+		// The key was either "gateway" or "freed" and has been set to "gateway".
+		// This is considered a success.
+		return nil
+	} else {
+		// The key was "reserved", so the operation failed.
+		return fmt.Errorf("gateway IP is already reserved")
+	}
 }
