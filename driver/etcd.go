@@ -310,10 +310,24 @@ func (e *EtcdClient) EnsureGatewayIsMarkedAsReserved(config *FlannelConfig) erro
 	key := e.reservedIpKey(config, config.Gateway)
 
 	txn := etcd.client.Txn(etcd.ctx).
+		If(clientv3.Compare(clientv3.CreateRevision(key), "=", 0)).
+		Then(clientv3.OpPut(key, "gateway")).
+		Else()
+
+	txnResp, err := txn.Commit()
+	if err != nil {
+		return fmt.Errorf("etcd transaction failed: %v", err)
+	}
+
+	if txnResp.Succeeded {
+		return nil
+	}
+
+	txn = etcd.client.Txn(etcd.ctx).
 		If(clientv3.Compare(clientv3.Value(key), "!=", "reserved")).
 		Then(clientv3.OpPut(key, "gateway")).
 		Else()
-	txnResp, err := txn.Commit()
+	txnResp, err = txn.Commit()
 
 	if err != nil {
 		return fmt.Errorf("etcd transaction failed: %v", err)
@@ -325,6 +339,6 @@ func (e *EtcdClient) EnsureGatewayIsMarkedAsReserved(config *FlannelConfig) erro
 		return nil
 	} else {
 		// The key was "reserved", so the operation failed.
-		return fmt.Errorf("gateway IP is already reserved")
+		return fmt.Errorf("gateway IP is already reserved as a normal endpoint IP")
 	}
 }

@@ -4,18 +4,22 @@ ssh root@188.245.202.183
 ssh root@116.203.53.199
 ssh root@157.90.157.1
 
-docker plugin disable --force flannel:dev || true && docker plugin rm flannel:dev && \
-docker plugin install sovarto/docker-network-plugin-flannel:0.0.38 --alias flannel:dev --grant-all-permissions --disable && \
-docker plugin set flannel:dev ETCD_PREFIX=/flannel/ && \
-docker plugin set flannel:dev ETCD_ENDPOINTS=172.16.0.2:2379,172.16.0.3:2379,172.16.0.4:2379 && \
-docker plugin set flannel:dev DEFAULT_FLANNEL_OPTIONS="-iface=enp7s0" && \
-docker plugin set flannel:dev AVAILABLE_SUBNETS="10.1.0.0/16,10.10.0.0/16,10.50.0.0/16" && \
-docker plugin enable flannel:dev
+ALIAS=flannel:test; \
+PREFIX=/flannel-test; \
+VERSION=latest; \
+docker plugin disable --force $ALIAS || true && docker plugin rm $ALIAS || true && \
+docker plugin install sovarto/docker-network-plugin-flannel:$VERSION --alias $ALIAS --grant-all-permissions --disable && \
+docker plugin set $ALIAS ETCD_PREFIX=$PREFIX && \
+docker plugin set $ALIAS ETCD_ENDPOINTS=172.16.0.2:2379,172.16.0.3:2379,172.16.0.4:2379 && \
+docker plugin set $ALIAS DEFAULT_FLANNEL_OPTIONS="-iface=enp7s0" && \
+docker plugin set $ALIAS AVAILABLE_SUBNETS="10.1.0.0/16,10.10.0.0/16,10.50.0.0/16" && \
+docker plugin enable $ALIAS && \
+docker plugin inspect $ALIAS --format "{{.ID}}"
 
 docker plugin disable --force flannel:dev || true && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev
 
 docker network rm fweb
-docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opts=id=fweb123 fweb
+docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=id=fweb123 fweb
 
 docker service update --network-rm fweb whoami
 docker service update --network-add fweb whoami
