@@ -70,19 +70,19 @@ func NewFlannelDriver(etcdClient *EtcdClient, defaultFlannelOptions []string) (*
 		return nil, err
 	}
 
-	networks, err := loadNetworks(etcdClient)
-
-	if err != nil {
-		log.Println("Failed to load networks: ", err)
-		return nil, err
-	}
-
 	driver := &FlannelDriver{
-		networks:                    networks,
+		networks:                    make(map[string]*FlannelNetwork),
 		networkIdToFlannelNetworkId: make(map[string]string),
 		defaultFlannelOptions:       defaultFlannelOptions,
 		etcdClient:                  etcdClient,
 		dockerClient:                dockerCli,
+	}
+
+	err := driver.loadNetworks(etcdClient)
+
+	if err != nil {
+		log.Println("Failed to load networks: ", err)
+		return nil, err
 	}
 
 	err = driver.BuildNetworkIdMappings()
@@ -387,19 +387,17 @@ func maskToPrefix(mask net.IPMask) int {
 	return ones
 }
 
-func (d *FlannelDriver) loadNetworks() (map[string]*FlannelNetwork, error) {
-
-	result := make(map[string]*FlannelNetwork)
+func (d *FlannelDriver) loadNetworks() error {
 
 	files, err := filepath.Glob("/flannel-env/*.env")
 	if err != nil {
 		fmt.Printf("Error loading networks: %v", err)
-		return nil, err
+		return err
 	}
 
 	if len(files) == 0 {
 		fmt.Println("No previous network configurations found in /flannel-env")
-		return result, nil
+		return nil
 	}
 
 	for _, file := range files {
@@ -421,7 +419,7 @@ func (d *FlannelDriver) loadNetworks() (map[string]*FlannelNetwork, error) {
 		network.config = config
 		network.reservedAddresses = reservedAddresses
 
-		result[flannelNetworkId] = network
+		d.networks[flannelNetworkId] = network
 
 		err = d.startFlannel(flannelNetworkId, network)
 		if err != nil {
@@ -429,7 +427,7 @@ func (d *FlannelDriver) loadNetworks() (map[string]*FlannelNetwork, error) {
 		}
 	}
 
-	return result, nil
+	return nil
 }
 
 func (d *FlannelDriver) BuildNetworkIdMappings() error {
