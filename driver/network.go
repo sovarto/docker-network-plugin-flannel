@@ -107,7 +107,7 @@ func (d *FlannelDriver) CreateEndpoint(req *network.CreateEndpointRequest) (*net
 		macAddress: parsedMac,
 	}
 
-	d.networks[req.NetworkID].endpoints[req.EndpointID] = endpoint
+	d.networks[flannelNetworkId].endpoints[req.EndpointID] = endpoint
 
 	resp := &network.CreateEndpointResponse{
 		Interface: interfaceInfo,
