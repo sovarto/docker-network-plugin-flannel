@@ -78,7 +78,7 @@ func NewFlannelDriver(etcdClient *EtcdClient, defaultFlannelOptions []string) (*
 		dockerClient:                dockerCli,
 	}
 
-	err := driver.loadNetworks(etcdClient)
+	err = driver.loadNetworks()
 
 	if err != nil {
 		log.Println("Failed to load networks: ", err)
