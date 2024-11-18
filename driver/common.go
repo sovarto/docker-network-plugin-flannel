@@ -113,6 +113,7 @@ func (d *FlannelDriver) ensureFlannelIsConfiguredAndRunning(flannelNetworkId str
 			}
 		}
 
+		log.Println("ensureFlannelIsConfiguredAndRunning - flannel is running")
 		return flannelNetwork, nil
 	}
 }
