@@ -75,19 +75,26 @@ func ServeFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlanne
 }
 
 func (d *FlannelDriver) ensureFlannelIsConfiguredAndRunning(flannelNetworkId string) (*FlannelNetwork, error) {
+	log.Println("ensureFlannelIsConfiguredAndRunning - before mutex")
+
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
 
+	log.Println("ensureFlannelIsConfiguredAndRunning - after mutex")
+
 	flannelNetwork, exists := d.networks[flannelNetworkId]
 	if !exists {
+		log.Println("ensureFlannelIsConfiguredAndRunning - no network entry")
 		_, err := d.etcdClient.EnsureFlannelConfig(flannelNetworkId)
+		log.Println("ensureFlannelIsConfiguredAndRunning - after EnsureFlannelConfig")
 		if err != nil {
 			return nil, err
 		}
 
 		flannelNetwork = NewFlannelNetwork()
 
-		err = d.ensureFlannelIsRunning(flannelNetworkId, flannelNetwork)
+		err = d.startFlannel(flannelNetworkId, flannelNetwork)
+		log.Println("ensureFlannelIsConfiguredAndRunning - after startFlannel")
 		if err != nil {
 			return nil, err
 		}
@@ -96,8 +103,11 @@ func (d *FlannelDriver) ensureFlannelIsConfiguredAndRunning(flannelNetworkId str
 
 		return flannelNetwork, nil
 	} else {
+		log.Println("ensureFlannelIsConfiguredAndRunning - has network entry")
 		if flannelNetwork.pid == 0 || !isProcessRunning(flannelNetwork.pid) {
-			err := d.ensureFlannelIsRunning(flannelNetworkId, flannelNetwork)
+			log.Println("ensureFlannelIsConfiguredAndRunning - pid 0 or process not running")
+			err := d.startFlannel(flannelNetworkId, flannelNetwork)
+			log.Println("ensureFlannelIsConfiguredAndRunning - after startFlannel")
 			if err != nil {
 				return nil, err
 			}
@@ -107,7 +117,7 @@ func (d *FlannelDriver) ensureFlannelIsConfiguredAndRunning(flannelNetworkId str
 	}
 }
 
-func (d *FlannelDriver) ensureFlannelIsRunning(flannelNetworkId string, network *FlannelNetwork) error {
+func (d *FlannelDriver) startFlannel(flannelNetworkId string, network *FlannelNetwork) error {
 	subnetFile := fmt.Sprintf("/flannel-env/%s.env", flannelNetworkId)
 	etcdPrefix := fmt.Sprintf("%s/%s", d.etcdClient.prefix, flannelNetworkId)
 
