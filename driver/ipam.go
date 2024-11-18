@@ -1,14 +1,11 @@
 package driver
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"github.com/docker/go-plugins-helpers/ipam"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"log"
 	"strings"
-	"time"
 )
 
 func (d *FlannelDriver) RequestPool(request *ipam.RequestPoolRequest) (*ipam.RequestPoolResponse, error) {
@@ -51,7 +48,14 @@ func (d *FlannelDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ip
 		return nil, err
 	}
 
-	return &ipam.RequestAddressResponse{Address: request.Address}, nil
+	address, err := d.etcdClient.ReserveAddress(network)
+
+	if err != nil {
+		log.Printf("Failed to reserve address for network %s: %+v", flannelNetworkId, err)
+		return nil, err
+	}
+
+	return &ipam.RequestAddressResponse{Address: address}, nil
 }
 
 func (d *FlannelDriver) ReleaseAddress(request *ipam.ReleaseAddressRequest) error {
