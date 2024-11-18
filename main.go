@@ -6,16 +6,12 @@ import (
 	"log"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 )
 
 func main() {
-	ls("/")
-	ls("/run")
-	ls("/var/run")
-	ls("/sbin")
+	log.Println("Starting Flannel plugin")
 
 	etcdEndPoints := strings.Split(os.Getenv("ETCD_ENDPOINTS"), ",")
 	etcdPrefix := strings.TrimRight(os.Getenv("ETCD_PREFIX"), "/")
@@ -32,15 +28,6 @@ func main() {
 	driver.ServeFlannelDriver(etcdEndPoints, etcdPrefix, defaultFlannelOptions,
 		allSubnets,
 		defaultHostSubnetSize)
-}
-
-func ls(folder string) {
-	log.Printf("Folder %s:\n", folder)
-	cmd := exec.Command("ls", "-lisah", folder)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Start()
-	cmd.Wait()
 }
 
 func getEnvAsInt(name string, defaultVal int) int {
@@ -72,27 +59,4 @@ func generateAllSubnets(availableSubnets []string, networkSubnetSize int) ([]str
 		}
 	}
 	return allSubnets, nil
-}
-
-func getDirectoryContents(folderPath string) (string, error) {
-	// Read the directory entries
-	entries, err := os.ReadDir(folderPath)
-	if err != nil {
-		return "", err
-	}
-
-	// Slice to hold the names of the entries
-	var names []string
-	for _, entry := range entries {
-		// Prefix directories with a "/" for clarity (optional)
-		name := entry.Name()
-		if entry.IsDir() {
-			name += "/"
-		}
-		names = append(names, name)
-	}
-
-	// Join all names into a single string separated by newlines
-	contents := strings.Join(names, "\n")
-	return contents, nil
 }

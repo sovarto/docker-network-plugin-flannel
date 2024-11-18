@@ -4,12 +4,13 @@ ssh root@188.245.202.183
 ssh root@116.203.53.199
 ssh root@157.90.157.1
 
-docker plugin disable --force flannel:latest && docker plugin upgrade flannel:latest --grant-all-permissions
-docker plugin set flannel:latest ETCD_PREFIX=/flannel/ && \
-docker plugin set flannel:latest ETCD_ENDPOINTS=172.16.0.2:2379 && \
-docker plugin set flannel:latest DEFAULT_FLANNEL_OPTIONS="-iface=enp7s0" && \
-docker plugin set flannel:latest AVAILABLE_SUBNETS="192.168.32.0/19,192.168.64.0/19,192.168.96.0/19,192.168.128.0/19,192.168.160.0/19,192.168.192.0/19" && \
-docker plugin enable flannel:latest
+docker plugin disable --force flannel:dev || true && docker plugin rm flannel:dev && \
+docker plugin install sovarto/docker-network-plugin-flannel:0.0.38 --alias flannel:dev --grant-all-permissions --disable && \
+docker plugin set flannel:dev ETCD_PREFIX=/flannel/ && \
+docker plugin set flannel:dev ETCD_ENDPOINTS=172.16.0.2:2379,172.16.0.3:2379,172.16.0.4:2379 && \
+docker plugin set flannel:dev DEFAULT_FLANNEL_OPTIONS="-iface=enp7s0" && \
+docker plugin set flannel:dev AVAILABLE_SUBNETS="10.1.0.0/16,10.10.0.0/16,10.50.0.0/16" && \
+docker plugin enable flannel:dev
 
 docker plugin disable --force flannel:dev || true && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev
 
@@ -26,6 +27,9 @@ docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl get /fla
 docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl --endpoints=http://172.16.0.2:2379,http://172.16.0.3:2379,http://172.16.0.4:2379 get /flannel --prefix --keys-only
 docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl del /flannel --prefix
 
+curl --unix-socket /var/run/docker/plugins/$(docker plugin inspect flannel:dev --format "{{.ID}}")/flannel-np.sock http://x/Plugin.Activate
+
+docker network rm f1 && docker plugin disable --force flannel:dev || true && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev && docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=id=f1_123 f1 && journalctl -u docker.service --since "1m ago" --follow | grep plugin=
 # Add Docker's official GPG key:
 apt-get update
 apt-get install ca-certificates curl
