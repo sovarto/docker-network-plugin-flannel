@@ -49,8 +49,12 @@ func (e *EtcdClient) networkHostSubnetKey(config *FlannelConfig) string {
 	return fmt.Sprintf("%s/host-subnets/%s", e.networkKey(config.Network), subnetToKey(config.Subnet))
 }
 
+func (e *EtcdClient) reservedIpsKey(config *FlannelConfig) string {
+	return fmt.Sprintf("%s/reserved-ips", e.networkHostSubnetKey(config))
+}
+
 func (e *EtcdClient) reservedIpKey(config *FlannelConfig, ip string) string {
-	return fmt.Sprintf("%s/reserved-ips/%s", e.networkHostSubnetKey(config), ip)
+	return fmt.Sprintf("%s/%s", e.reservedIpsKey(config), ip)
 }
 
 func (e *EtcdClient) flannelConfigKey(flannelNetworkId string) string {
@@ -346,4 +350,68 @@ func (e *EtcdClient) EnsureGatewayIsMarkedAsReserved(config *FlannelConfig) erro
 		// The key was "reserved", so the operation failed.
 		return fmt.Errorf("gateway IP is already reserved as a normal endpoint IP")
 	}
+}
+
+//func (e *EtcdClient) LoadNetworks() (map[string]*FlannelNetwork, error) {
+//	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
+//	defer etcd.Close()
+//	if err != nil {
+//		log.Println("Failed to connect to etcd:", err)
+//		return nil, err
+//	}
+//
+//	prefix := e.networksKey()
+//	resp, err := etcd.client.Get(etcd.ctx, prefix, clientv3.WithPrefix())
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	resultByNetwork := make(map[string]*FlannelNetwork)
+//	result := make(map[string]*FlannelNetwork)
+//
+//	for _, kv := range resp.Kvs {
+//		key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
+//		value := string(kv.Value)
+//
+//		keyParts := strings.Split(key, "/")
+//
+//		networkSubnet := strings.ReplaceAll(keyParts[0], "-", "/")
+//		network, exists := resultByNetwork[networkSubnet]
+//		if !exists {
+//			network = &FlannelNetwork{
+//				reservedAddresses: make(map[string]struct{}),
+//			}
+//			resultByNetwork[networkSubnet] = network
+//		}
+//		if len(keyParts) == 1 {
+//			result[value] = network
+//		}
+//	}
+//
+//	return result, nil
+//}
+
+func (e *EtcdClient) LoadReservedAddresses(config *FlannelConfig) (map[string]struct{}, error) {
+	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
+	defer etcd.Close()
+	if err != nil {
+		log.Println("Failed to connect to etcd:", err)
+		return nil, err
+	}
+
+	prefix := e.reservedIpsKey(config)
+	resp, err := etcd.client.Get(etcd.ctx, prefix, clientv3.WithPrefix())
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]struct{})
+
+	for _, kv := range resp.Kvs {
+		key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
+
+		result[key] = struct{}{}
+	}
+
+	return result, nil
 }

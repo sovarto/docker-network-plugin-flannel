@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -65,10 +66,19 @@ func NewFlannelDriver(etcdClient *EtcdClient, defaultFlannelOptions []string) (*
 	)
 
 	if err != nil {
+		log.Println("Failed to create docker client: ", err)
 		return nil, err
 	}
+
+	networks, err := loadNetworks(etcdClient)
+
+	if err != nil {
+		log.Println("Failed to load networks: ", err)
+		return nil, err
+	}
+
 	driver := &FlannelDriver{
-		networks:                    make(map[string]*FlannelNetwork),
+		networks:                    networks,
 		networkIdToFlannelNetworkId: make(map[string]string),
 		defaultFlannelOptions:       defaultFlannelOptions,
 		etcdClient:                  etcdClient,
@@ -217,13 +227,15 @@ func (d *FlannelDriver) startFlannel(flannelNetworkId string, network *FlannelNe
 	network.Mutex.Lock()
 	defer network.Mutex.Unlock()
 
-	network.pid = cmd.Process.Pid
-	network.config = config
-
 	err = d.etcdClient.EnsureGatewayIsMarkedAsReserved(&config)
 	if err != nil {
 		return err
 	}
+
+	network.pid = cmd.Process.Pid
+	network.config = config
+	network.reservedAddresses[config.Gateway] = struct{}{}
+
 	return nil
 }
 
@@ -367,4 +379,38 @@ func loadFlannelConfig(filename string) (FlannelConfig, error) {
 func maskToPrefix(mask net.IPMask) int {
 	ones, _ := mask.Size()
 	return ones
+}
+
+func loadNetworks(etcdClient *EtcdClient) (map[string]*FlannelNetwork, error) {
+
+	result := make(map[string]*FlannelNetwork)
+
+	files, err := filepath.Glob("/flannel-env/*.env")
+	if err != nil {
+		fmt.Printf("Error loading networks: %v", err)
+		return nil, err
+	}
+
+	if len(files) == 0 {
+		fmt.Println("No previous network configurations found in /flannel-env")
+		return result, nil
+	}
+
+	for _, file := range files {
+		config, err := loadFlannelConfig(file)
+		if err != nil {
+			log.Printf("Error loading flanneld env file %s, skipping. err: %+v\n", file, err)
+		}
+
+		flannelNetworkId := strings.TrimSuffix(strings.TrimPrefix("/flannel-env/", file), ".env")
+
+		reservedAddresses, err := etcdClient.LoadReservedAddresses(&config)
+
+		result[flannelNetworkId] = &FlannelNetwork{
+			config:            config,
+			reservedAddresses: reservedAddresses,
+		}
+	}
+
+	return result, nil
 }
