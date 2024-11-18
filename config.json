@@ -68,7 +68,8 @@
   "propagatedMount": "/flannel-env",
   "interface": {
     "types": [
-      "docker.networkdriver/1.0"
+      "docker.networkdriver/1.0",
+      "docker.ipamdriver/1.0"
     ],
     "socket": "flannel-np.sock"
   },
