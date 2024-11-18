@@ -1,26 +1,51 @@
 package driver
 
 import (
+	"context"
+	dockerAPItypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/libnetwork/types"
 	"github.com/docker/go-plugins-helpers/network"
 	"log"
 	"net"
 )
 
+// CreateNetwork happens when a container is being started that uses this network
 func (d *FlannelDriver) CreateNetwork(req *network.CreateNetworkRequest) error {
 	d.Lock()
 	defer d.Unlock()
 
-	//if err := detectIpTables(); err != nil {
-	//	log.Println("Error detecting IP tables: ", err)
-	//	return err
-	//}
-	//
-	//log.Println("After detect IP tables")
+	flannelNetworkId, exists := d.networkIdToFlannelNetworkId[req.NetworkID]
 
-	if _, ok := d.networks[req.NetworkID]; ok {
-		log.Println("Network already exists")
-		return types.ForbiddenErrorf("network %s exists", req.NetworkID)
+	if !exists {
+		networks, err := d.dockerClient.NetworkList(context.Background(), dockerAPItypes.NetworkListOptions{})
+
+		if err != nil {
+			return types.UnavailableErrorf("Failed to list docker networks: %s", err)
+		}
+		for _, n := range networks {
+			id, exists := n.IPAM.Options["id"]
+			if !exists {
+				log.Printf("Network %s has no 'id' option, it's misconfigured or not for us\n", n.ID)
+				break
+			}
+
+			d.networkIdToFlannelNetworkId[n.ID] = id
+
+			if n.ID == req.NetworkID {
+				flannelNetworkId = id
+				exists = true
+			}
+		}
+	}
+
+	if !exists {
+		log.Printf("Network %s not managed by us", req.NetworkID)
+		return types.ForbiddenErrorf("Network %s not managed by us", req.NetworkID)
+	}
+
+	if _, ok := d.networks[flannelNetworkId]; ok {
+		log.Printf("We've no internal state for network %s although we should", req.NetworkID)
+		return types.InternalErrorf("We've no internal state for network %s although we should", req.NetworkID)
 	}
 
 	return nil
@@ -56,7 +81,6 @@ func (d *FlannelDriver) DeleteNetwork(req *network.DeleteNetworkRequest) error {
 
 func (d *FlannelDriver) AllocateNetwork(req *network.AllocateNetworkRequest) (*network.AllocateNetworkResponse, error) {
 	// This happens during docker network create
-	// CreateNetwork happens when a container is being started that uses this network
 	// Maybe start flannel process?
 	return nil, nil
 }
@@ -70,8 +94,13 @@ func (d *FlannelDriver) CreateEndpoint(req *network.CreateEndpointRequest) (*net
 	d.Lock()
 	defer d.Unlock()
 
+	flannelNetworkId, exists := d.networkIdToFlannelNetworkId[req.NetworkID]
+
+	if !exists {
+		return nil, types.ForbiddenErrorf("%s network does not exist", req.NetworkID)
+	}
 	/* Throw error if not in map */
-	if _, ok := d.networks[req.NetworkID]; !ok {
+	if _, ok := d.networks[flannelNetworkId]; !ok {
 		return nil, types.ForbiddenErrorf("%s network does not exist", req.NetworkID)
 	}
 
@@ -151,27 +180,32 @@ func (d *FlannelDriver) Join(req *network.JoinRequest) (*network.JoinResponse, e
 	d.Lock()
 	defer d.Unlock()
 
+	flannelNetworkId, exists := d.networkIdToFlannelNetworkId[req.NetworkID]
+
+	if !exists {
+		return nil, types.ForbiddenErrorf("%s network does not exist", req.NetworkID)
+	}
 	/* Throw error (both network and endpoint) */
-	if _, netOk := d.networks[req.NetworkID]; !netOk {
+	if _, netOk := d.networks[flannelNetworkId]; !netOk {
 		return nil, types.ForbiddenErrorf("%s network does not exist", req.NetworkID)
 	}
 
-	if _, epOk := d.networks[req.NetworkID].endpoints[req.EndpointID]; !epOk {
+	if _, epOk := d.networks[flannelNetworkId].endpoints[req.EndpointID]; !epOk {
 		return nil, types.ForbiddenErrorf("%s endpoint does not exist", req.NetworkID)
 	}
 
-	endpointInfo := d.networks[req.NetworkID].endpoints[req.EndpointID]
+	endpointInfo := d.networks[flannelNetworkId].endpoints[req.EndpointID]
 	vethInside, vethOutside, err := createVethPair(endpointInfo.macAddress)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := attachInterfaceToBridge(d.networks[req.NetworkID].bridgeName, vethOutside); err != nil {
+	if err := attachInterfaceToBridge(d.networks[flannelNetworkId].bridgeName, vethOutside); err != nil {
 		return nil, err
 	}
 
-	d.networks[req.NetworkID].endpoints[req.EndpointID].vethInside = vethInside
-	d.networks[req.NetworkID].endpoints[req.EndpointID].vethOutside = vethOutside
+	d.networks[flannelNetworkId].endpoints[req.EndpointID].vethInside = vethInside
+	d.networks[flannelNetworkId].endpoints[req.EndpointID].vethOutside = vethOutside
 
 	resp := &network.JoinResponse{
 		InterfaceName: network.InterfaceName{

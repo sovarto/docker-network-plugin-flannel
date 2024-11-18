@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	log.Println("Starting Flannel plugin")
+	log.Println("Starting Flannel plugin...")
 
 	etcdEndPoints := strings.Split(os.Getenv("ETCD_ENDPOINTS"), ",")
 	etcdPrefix := strings.TrimRight(os.Getenv("ETCD_PREFIX"), "/")
@@ -28,6 +28,8 @@ func main() {
 	driver.ServeFlannelDriver(etcdEndPoints, etcdPrefix, defaultFlannelOptions,
 		allSubnets,
 		defaultHostSubnetSize)
+
+	log.Println("Flannel plugin is ready")
 }
 
 func getEnvAsInt(name string, defaultVal int) int {
