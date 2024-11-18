@@ -33,6 +33,10 @@ type FlannelNetwork struct {
 	sync.Mutex
 }
 
+func NewFlannelNetwork() *FlannelNetwork {
+	return &FlannelNetwork{endpoints: make(map[string]*FlannelEndpoint), reservedAddresses: make(map[string]struct{})}
+}
+
 type FlannelConfig struct {
 	Network string // The subnet of the network across all hosts
 	Subnet  string // The subnet for this network on the current host. Inside the network subnet
@@ -48,13 +52,18 @@ type FlannelDriver struct {
 	sync.Mutex
 }
 
+func NewFlannelDriver(etcdClient *EtcdClient, defaultFlannelOptions []string) *FlannelDriver {
+	return &FlannelDriver{
+		networks:                    make(map[string]*FlannelNetwork),
+		networkIdToFlannelNetworkId: make(map[string]string)
+		defaultFlannelOptions:       defaultFlannelOptions,
+		etcdClient:                  etcdClient,
+	}
+}
+
 func ServeFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelOptions []string, availableSubnets []string, defaultHostSubnetSize int) {
 
-	flannelDriver := &FlannelDriver{
-		networks:              make(map[string]*FlannelNetwork),
-		defaultFlannelOptions: defaultFlannelOptions,
-		etcdClient:            NewEtcdClient(etcdEndPoints, 5*time.Second, etcdPrefix, availableSubnets, defaultHostSubnetSize),
-	}
+	flannelDriver := NewFlannelDriver(NewEtcdClient(etcdEndPoints, 5*time.Second, etcdPrefix, availableSubnets, defaultHostSubnetSize), defaultFlannelOptions)
 
 	handler := sdk.NewHandler(`{"Implements": ["IpamDriver", "NetworkDriver"]}`)
 	initIpamMux(&handler, flannelDriver)
@@ -76,9 +85,7 @@ func (d *FlannelDriver) ensureFlannelIsConfiguredAndRunning(flannelNetworkId str
 			return nil, err
 		}
 
-		flannelNetwork = &FlannelNetwork{
-			endpoints: make(map[string]*FlannelEndpoint),
-		}
+		flannelNetwork = NewFlannelNetwork()
 
 		err = d.ensureFlannelIsRunning(flannelNetworkId, flannelNetwork)
 		if err != nil {
