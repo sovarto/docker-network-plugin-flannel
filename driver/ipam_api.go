@@ -2,59 +2,94 @@ package driver
 
 import (
 	"github.com/docker/go-plugins-helpers/ipam"
+	"github.com/docker/go-plugins-helpers/sdk"
 	"log"
+	"net/http"
 )
 
-type FlannelIpamPlugin struct {
-	driver *FlannelDriver
-}
+const (
+	ipamCapabilitiesPath = "/IpamDriver.GetCapabilities"
+	addressSpacesPath    = "/IpamDriver.GetDefaultAddressSpaces"
+	requestPoolPath      = "/IpamDriver.RequestPool"
+	releasePoolPath      = "/IpamDriver.ReleasePool"
+	requestAddressPath   = "/IpamDriver.RequestAddress"
+	releaseAddressPath   = "/IpamDriver.ReleaseAddress"
+)
 
-func (f *FlannelIpamPlugin) GetCapabilities() (*ipam.CapabilitiesResponse, error) {
-	log.Printf("[IPAM] Received GetCapabilities")
-	response := &ipam.CapabilitiesResponse{}
-	log.Printf("[IPAM] GetCapabilities response: %+v\n", response)
-	return response, nil
-}
-
-func (f *FlannelIpamPlugin) GetDefaultAddressSpaces() (*ipam.AddressSpacesResponse, error) {
-	log.Printf("[IPAM] Received GetCapabilities")
-	response := &ipam.AddressSpacesResponse{
-		LocalDefaultAddressSpace:  "FlannelLocal",
-		GlobalDefaultAddressSpace: "FlannelGlobal",
-	}
-	log.Printf("[IPAM] GetDefaultAddressSpaces response: %+v\n", response)
-
-	return response, nil
-}
-
-func (f *FlannelIpamPlugin) RequestPool(request *ipam.RequestPoolRequest) (*ipam.RequestPoolResponse, error) {
-	log.Printf("[IPAM] Received RequestPool req: %+v\n", request)
-
-	response, err := f.driver.RequestPool(request)
-	log.Printf("[IPAM] RequestPool response: %+v; error:%+v\n", response, err)
-	return response, err
-}
-
-func (f *FlannelIpamPlugin) ReleasePool(request *ipam.ReleasePoolRequest) error {
-	log.Printf("[IPAM] Received ReleasePool req: %+v\n", request)
-
-	err := f.driver.ReleasePool(request)
-	log.Printf("[IPAM] ReleasePool response: %+v\n", err)
-	return err
-}
-
-func (f *FlannelIpamPlugin) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.RequestAddressResponse, error) {
-	log.Printf("[IPAM] Received RequestAddress req: %+v\n", request)
-
-	response, err := f.driver.RequestAddress(request)
-	log.Printf("[IPAM] RequestAddress response: %+v; error:%+v\n", response, err)
-	return response, err
-}
-
-func (f *FlannelIpamPlugin) ReleaseAddress(request *ipam.ReleaseAddressRequest) error {
-	log.Printf("[IPAM] Received ReleaseAddress req: %+v\n", request)
-
-	err := f.driver.ReleaseAddress(request)
-	log.Printf("[IPAM] ReleaseAddress response: %+v\n", err)
-	return err
+func initIpamMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
+	h.HandleFunc(ipamCapabilitiesPath, func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[IPAM] Received GetCapabilities")
+		res := &ipam.CapabilitiesResponse{}
+		log.Printf("[IPAM] GetCapabilities response: %+v\n", res)
+		sdk.EncodeResponse(w, res, false)
+	})
+	h.HandleFunc(addressSpacesPath, func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("[IPAM] Received GetCapabilities")
+		res := &ipam.AddressSpacesResponse{
+			LocalDefaultAddressSpace:  "FlannelLocal",
+			GlobalDefaultAddressSpace: "FlannelGlobal",
+		}
+		log.Printf("[IPAM] GetDefaultAddressSpaces response: %+v\n", res)
+		sdk.EncodeResponse(w, res, false)
+	})
+	h.HandleFunc(requestPoolPath, func(w http.ResponseWriter, r *http.Request) {
+		req := &ipam.RequestPoolRequest{}
+		err := sdk.DecodeRequest(w, r, req)
+		if err != nil {
+			return
+		}
+		log.Printf("[IPAM] Received RequestPool req: %+v\n", req)
+		res, err := flannelDriver.RequestPool(req)
+		log.Printf("[IPAM] RequestPool response: %+v; error:%+v\n", res, err)
+		if err != nil {
+			sdk.EncodeResponse(w, ipam.NewErrorResponse(err.Error()), true)
+			return
+		}
+		sdk.EncodeResponse(w, res, false)
+	})
+	h.HandleFunc(releasePoolPath, func(w http.ResponseWriter, r *http.Request) {
+		req := &ipam.ReleasePoolRequest{}
+		err := sdk.DecodeRequest(w, r, req)
+		if err != nil {
+			return
+		}
+		log.Printf("[IPAM] Received ReleasePool req: %+v\n", req)
+		err = flannelDriver.ReleasePool(req)
+		log.Printf("[IPAM] ReleasePool response: %+v\n", err)
+		if err != nil {
+			sdk.EncodeResponse(w, ipam.NewErrorResponse(err.Error()), true)
+			return
+		}
+		sdk.EncodeResponse(w, struct{}{}, false)
+	})
+	h.HandleFunc(requestAddressPath, func(w http.ResponseWriter, r *http.Request) {
+		req := &ipam.RequestAddressRequest{}
+		err := sdk.DecodeRequest(w, r, req)
+		if err != nil {
+			return
+		}
+		log.Printf("[IPAM] Received RequestAddress req: %+v\n", req)
+		res, err := flannelDriver.RequestAddress(req)
+		log.Printf("[IPAM] RequestAddress res: %+v; error:%+v\n", res, err)
+		if err != nil {
+			sdk.EncodeResponse(w, ipam.NewErrorResponse(err.Error()), true)
+			return
+		}
+		sdk.EncodeResponse(w, res, false)
+	})
+	h.HandleFunc(releaseAddressPath, func(w http.ResponseWriter, r *http.Request) {
+		req := &ipam.ReleaseAddressRequest{}
+		err := sdk.DecodeRequest(w, r, req)
+		if err != nil {
+			return
+		}
+		log.Printf("[IPAM] Received ReleaseAddress req: %+v\n", req)
+		err = flannelDriver.ReleaseAddress(req)
+		log.Printf("[IPAM] ReleaseAddress response: %+v\n", err)
+		if err != nil {
+			sdk.EncodeResponse(w, ipam.NewErrorResponse(err.Error()), true)
+			return
+		}
+		sdk.EncodeResponse(w, struct{}{}, false)
+	})
 }

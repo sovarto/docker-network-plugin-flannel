@@ -54,6 +54,18 @@ func (d *FlannelDriver) DeleteNetwork(req *network.DeleteNetworkRequest) error {
 	return nil
 }
 
+func (d *FlannelDriver) AllocateNetwork(req *network.AllocateNetworkRequest) (*network.AllocateNetworkResponse, error) {
+	// This happens during docker network create
+	// CreateNetwork happens when a container is being started that uses this network
+	// Maybe start flannel process?
+	return nil, nil
+}
+
+func (d *FlannelDriver) FreeNetwork(req *network.FreeNetworkRequest) error {
+	// Maybe stop flannel process?
+	return nil
+}
+
 func (d *FlannelDriver) CreateEndpoint(req *network.CreateEndpointRequest) (*network.CreateEndpointResponse, error) {
 	d.Lock()
 	defer d.Unlock()
@@ -191,5 +203,21 @@ func (d *FlannelDriver) Leave(req *network.LeaveRequest) error {
 		return err
 	}
 
+	return nil
+}
+
+func (d *FlannelDriver) DiscoverNew(req *network.DiscoveryNotification) error {
+	return nil
+}
+
+func (d *FlannelDriver) DiscoverDelete(req *network.DiscoveryNotification) error {
+	return nil
+}
+
+func (d *FlannelDriver) ProgramExternalConnectivity(req *network.ProgramExternalConnectivityRequest) error {
+	return nil
+}
+
+func (k *FlannelDriver) RevokeExternalConnectivity(req *network.RevokeExternalConnectivityRequest) error {
 	return nil
 }

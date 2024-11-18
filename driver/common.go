@@ -4,8 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/docker/go-plugins-helpers/ipam"
-	"github.com/docker/go-plugins-helpers/network"
+	"github.com/docker/go-plugins-helpers/sdk"
 	"log"
 	"net"
 	"os"
@@ -56,19 +55,12 @@ func ServeFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlanne
 		etcdClient:            NewEtcdClient(etcdEndPoints, 5*time.Second, etcdPrefix, availableSubnets, defaultHostSubnetSize),
 	}
 
-	flannelNetworkPlugin := &FlannelNetworkPlugin{
-		driver: flannelDriver,
-	}
+	handler := sdk.NewHandler(`{"Implements": ["IpamDriver", "NetworkDriver"]}`)
+	initIpamMux(&handler, flannelDriver)
+	initNetworkMux(&handler, flannelDriver)
 
-	flannelIpamPlugin := &FlannelIpamPlugin{
-		driver: flannelDriver,
-	}
-
-	if err := network.NewHandler(flannelNetworkPlugin).ServeUnix("flannel-np", 0); err != nil {
-		log.Fatalf("ERROR: %s init Network failed, can't open socket: %v", "flannel-np", err)
-	}
-	if err := ipam.NewHandler(flannelIpamPlugin).ServeUnix("flannel-np", 0); err != nil {
-		log.Fatalf("ERROR: %s init Ipam failed, can't open socket: %v", "flannel-np", err)
+	if err := handler.ServeUnix("flannel-np", 0); err != nil {
+		log.Fatalf("ERROR: %s init failed, can't open socket: %v", "flannel-np", err)
 	}
 }
 
