@@ -2,6 +2,7 @@ package driver
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"github.com/docker/go-plugins-helpers/sdk"
@@ -165,7 +166,46 @@ func isProcessRunning(pid int) bool {
 	return false
 }
 
+func waitForFileWithContext(ctx context.Context, path string) error {
+	const pollInterval = 100 * time.Millisecond
+
+	for {
+		select {
+		case <-ctx.Done():
+			// Context has been canceled or timed out
+			return fmt.Errorf("timed out waiting for file %s: %w", path, ctx.Err())
+		default:
+			// Continue to check for the file
+		}
+
+		// Attempt to get file info
+		_, err := os.Stat(path)
+		if err == nil {
+			// File exists
+			return nil
+		}
+		if !os.IsNotExist(err) {
+			// An error other than "not exists" occurred
+			return fmt.Errorf("error checking file %s: %w", path, err)
+		}
+
+		// Wait for the next polling interval or context cancellation
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting for file %s: %w", path, ctx.Err())
+		case <-time.After(pollInterval):
+			// Continue looping
+		}
+	}
+}
+
 func loadFlannelConfig(filename string) (FlannelConfig, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := waitForFileWithContext(ctx, filename)
+	if err != nil {
+		return FlannelConfig{}, fmt.Errorf("flannel config missing: %w", err)
+	}
 	file, err := os.Open(filename)
 	if err != nil {
 		return FlannelConfig{}, fmt.Errorf("failed to open file: %w", err)
