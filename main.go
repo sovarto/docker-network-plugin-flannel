@@ -40,6 +40,7 @@ func ls(folder string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Start()
+	cmd.Wait()
 }
 
 func getEnvAsInt(name string, defaultVal int) int {
