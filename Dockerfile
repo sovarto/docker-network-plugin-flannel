@@ -24,7 +24,7 @@ RUN mkdir -p /var/lib/rsyslog
 
 WORKDIR /app
 
-RUN update-alternatives --install /sbin/iptables iptables /sbin/iptables-legacy 1 &&
+RUN update-alternatives --install /sbin/iptables iptables /sbin/iptables-legacy 1 # && \
 #    update-alternatives --install /sbin/iptables iptables /sbin/iptables-nft 2 && \
 #    update-alternatives --install /sbin/ip6tables ip6tables /sbin/ip6tables-legacy 1 && \
 #    update-alternatives --install /sbin/ip6tables ip6tables /sbin/ip6tables-nft 2
