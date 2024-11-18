@@ -6,7 +6,7 @@
   ],
   "mounts": [
     {
-      "destination": "/run/xtables.lock",
+      "destination": "/run",
       "name": "xtables_lock",
       "options": [
         "rbind"
@@ -14,7 +14,7 @@
       "settable": [
         "source"
       ],
-      "source": "/run/xtables.lock",
+      "source": "/run",
       "type": "bind"
     }
   ],
