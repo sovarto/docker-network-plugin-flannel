@@ -11,6 +11,8 @@ import (
 )
 
 func main() {
+	log.Println(getDirectoryContents("/run"))
+
 	etcdEndPoints := strings.Split(os.Getenv("ETCD_ENDPOINTS"), ",")
 	etcdPrefix := strings.TrimRight(os.Getenv("ETCD_PREFIX"), "/")
 	defaultFlannelOptions := strings.Split(os.Getenv("DEFAULT_FLANNEL_OPTIONS"), ",")
@@ -57,4 +59,27 @@ func generateAllSubnets(availableSubnets []string, networkSubnetSize int) ([]str
 		}
 	}
 	return allSubnets, nil
+}
+
+func getDirectoryContents(folderPath string) (string, error) {
+	// Read the directory entries
+	entries, err := os.ReadDir(folderPath)
+	if err != nil {
+		return "", err
+	}
+
+	// Slice to hold the names of the entries
+	var names []string
+	for _, entry := range entries {
+		// Prefix directories with a "/" for clarity (optional)
+		name := entry.Name()
+		if entry.IsDir() {
+			name += "/"
+		}
+		names = append(names, name)
+	}
+
+	// Join all names into a single string separated by newlines
+	contents := strings.Join(names, "\n")
+	return contents, nil
 }
