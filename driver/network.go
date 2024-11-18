@@ -1,8 +1,6 @@
 package driver
 
 import (
-	"context"
-	dockerAPItypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/libnetwork/types"
 	"github.com/docker/go-plugins-helpers/network"
 	"log"
@@ -17,26 +15,14 @@ func (d *FlannelDriver) CreateNetwork(req *network.CreateNetworkRequest) error {
 	flannelNetworkId, exists := d.networkIdToFlannelNetworkId[req.NetworkID]
 
 	if !exists {
-		networks, err := d.dockerClient.NetworkList(context.Background(), dockerAPItypes.NetworkListOptions{})
+		err := d.BuildNetworkIdMappings()
 
 		if err != nil {
-			return types.UnavailableErrorf("Failed to list docker networks: %s", err)
-		}
-		for _, n := range networks {
-			id, exists := n.IPAM.Options["id"]
-			if !exists {
-				log.Printf("Network %s has no 'id' option, it's misconfigured or not for us\n", n.ID)
-				break
-			}
-
-			d.networkIdToFlannelNetworkId[n.ID] = id
-
-			if n.ID == req.NetworkID {
-				flannelNetworkId = id
-				exists = true
-			}
+			return types.UnavailableErrorf("Failed to build network mappings: %s", err)
 		}
 	}
+
+	flannelNetworkId, exists = d.networkIdToFlannelNetworkId[req.NetworkID]
 
 	if !exists {
 		log.Printf("Network %s not managed by us", req.NetworkID)

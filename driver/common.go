@@ -85,6 +85,12 @@ func NewFlannelDriver(etcdClient *EtcdClient, defaultFlannelOptions []string) (*
 		dockerClient:                dockerCli,
 	}
 
+	err = driver.BuildNetworkIdMappings()
+	if err != nil {
+		log.Println("Failed to build network ID mappings: ", err)
+		return nil, err
+	}
+
 	go func() {
 		eventsCh, errCh := dockerCli.Events(context.Background(), dockerAPItypes.EventsOptions{})
 		for {
@@ -413,4 +419,23 @@ func loadNetworks(etcdClient *EtcdClient) (map[string]*FlannelNetwork, error) {
 	}
 
 	return result, nil
+}
+
+func (d *FlannelDriver) BuildNetworkIdMappings() error {
+	networks, err := d.dockerClient.NetworkList(context.Background(), dockerAPItypes.NetworkListOptions{})
+
+	if err != nil {
+		return fmt.Errorf("failed to list docker networks: %s", err)
+	}
+	for _, n := range networks {
+		id, exists := n.IPAM.Options["id"]
+		if !exists {
+			log.Printf("Network %s has no 'id' option, it's misconfigured or not for us\n", n.ID)
+			break
+		}
+
+		d.networkIdToFlannelNetworkId[n.ID] = id
+	}
+
+	return nil
 }
