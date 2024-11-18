@@ -6,12 +6,16 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 )
 
 func main() {
-	log.Println(getDirectoryContents("/run"))
+	ls("/")
+	ls("/run")
+	ls("/var/run")
+	ls("/sbin")
 
 	etcdEndPoints := strings.Split(os.Getenv("ETCD_ENDPOINTS"), ",")
 	etcdPrefix := strings.TrimRight(os.Getenv("ETCD_PREFIX"), "/")
@@ -28,6 +32,14 @@ func main() {
 	driver.ServeFlannelDriver(etcdEndPoints, etcdPrefix, defaultFlannelOptions,
 		allSubnets,
 		defaultHostSubnetSize)
+}
+
+func ls(folder string) {
+	log.Printf("Folder %s:\n", folder)
+	cmd := exec.Command("ls", "-lisah", folder)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Start()
 }
 
 func getEnvAsInt(name string, defaultVal int) int {

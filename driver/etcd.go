@@ -278,6 +278,8 @@ func (e *EtcdClient) ReserveAddress(network *FlannelNetwork) (string, error) {
 			}
 			// If reservation failed, another thread might have reserved it. Continue to next IP.
 		}
+
+		network.Mutex.Unlock()
 	}
 
 	return "", errors.New("no available IP addresses to reserve")
