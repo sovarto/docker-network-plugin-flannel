@@ -122,6 +122,25 @@ func (d *FlannelDriver) ensureFlannelIsRunning(flannelNetworkId string, network 
 
 	log.Println("flanneld started with PID", cmd.Process.Pid)
 
+	exitChan := make(chan error, 1)
+
+	// Goroutine to wait for the process to exit
+	go func() {
+		err := cmd.Wait()
+		exitChan <- err
+	}()
+
+	// Wait for 1.5 seconds
+	select {
+	case err := <-exitChan:
+		// Process exited before 1.5 seconds
+		log.Printf("flanneld process exited prematurely: %v", err)
+		return fmt.Errorf("flanneld exited prematurely: %v", err)
+	case <-time.After(1500 * time.Millisecond):
+		// Process is still running after 1.5 seconds
+		log.Println("flanneld is running and stable after 1.5 seconds")
+	}
+
 	config, err := loadFlannelConfig(subnetFile)
 	if err != nil {
 		cmd.Process.Kill()
