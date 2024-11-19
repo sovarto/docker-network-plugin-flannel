@@ -82,7 +82,7 @@ func ensureBridge(network *FlannelNetwork) error {
 		Protocol:  unix.RTPROT_KERNEL,
 	}
 
-	if err := netlink.RouteAdd(route); err != nil {
+	if err := netlink.RouteReplace(route); err != nil {
 		log.Printf("Failed to add route: %+v, err:%+v\n", route, err)
 		return err
 	}
