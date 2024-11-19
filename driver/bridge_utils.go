@@ -74,6 +74,21 @@ func ensureBridge(network *FlannelNetwork) error {
 		return err
 	}
 
+	addrs, err := netlink.AddrList(bridge, netlink.FAMILY_ALL)
+	if err != nil {
+		log.Printf("Failed to get IP addresses from interface: %v\n", err)
+		return err
+	}
+
+	for _, a := range addrs {
+		if !addressesEqual(a, *addr) {
+			if err := netlink.AddrDel(bridge, &a); err != nil {
+				log.Printf("Failed to remove IP address %v from interface: %v\n", a.IPNet, err)
+				return err
+			}
+		}
+	}
+
 	route := &netlink.Route{
 		Dst:       network.config.Subnet,
 		Src:       network.config.Gateway,
@@ -93,6 +108,10 @@ func ensureBridge(network *FlannelNetwork) error {
 	}
 
 	return nil
+}
+
+func addressesEqual(a1, a2 netlink.Addr) bool {
+	return a1.IPNet.String() == a2.IPNet.String()
 }
 
 func patchBridge(bridge netlink.Link) error {
