@@ -438,7 +438,7 @@ func (d *FlannelDriver) restoreNetworks() error {
 			log.Printf("Error starting flanneld for network %s. err: %+v\n", flannelNetworkId, err)
 		}
 
-		err = ensureBridge(flannelNetworkId)
+		err = ensureBridge(network.bridgeName)
 		if err != nil {
 			log.Printf("Error ensuring flanneld bridge is created. err: %+v\n", err)
 		}
