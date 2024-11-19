@@ -81,7 +81,7 @@ func NewFlannelDriver(etcdClient *EtcdClient, defaultFlannelOptions []string) (*
 		dockerClient:                dockerCli,
 	}
 
-	err = driver.loadNetworks()
+	err = driver.restoreNetworks()
 
 	if err != nil {
 		log.Println("Failed to load networks: ", err)
@@ -390,7 +390,7 @@ func maskToPrefix(mask net.IPMask) int {
 	return ones
 }
 
-func (d *FlannelDriver) loadNetworks() error {
+func (d *FlannelDriver) restoreNetworks() error {
 
 	files, err := filepath.Glob("/flannel-env/*.env")
 	if err != nil {
@@ -425,12 +425,18 @@ func (d *FlannelDriver) loadNetworks() error {
 		network := NewFlannelNetwork()
 		network.config = config
 		network.reservedAddresses = reservedAddresses
+		network.bridgeName = getBridgeName(flannelNetworkId)
 
 		d.networks[flannelNetworkId] = network
 
 		err = d.startFlannel(flannelNetworkId, network)
 		if err != nil {
 			log.Printf("Error starting flanneld for network %s. err: %+v\n", flannelNetworkId, err)
+		}
+
+		err = ensureBridge(flannelNetworkId)
+		if err != nil {
+			log.Printf("Error ensuring flanneld bridge is created. err: %+v\n", err)
 		}
 	}
 

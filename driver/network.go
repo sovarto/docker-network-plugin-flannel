@@ -35,12 +35,10 @@ func (d *FlannelDriver) CreateNetwork(req *network.CreateNetworkRequest) error {
 		return types.InternalErrorf("We've no internal state for network %s although we should", req.NetworkID)
 	}
 
-	bridgeName, err := createBridge(req.NetworkID)
+	err := ensureBridge(flannelNetwork.bridgeName)
 	if err != nil {
 		return err
 	}
-
-	flannelNetwork.bridgeName = bridgeName
 
 	return nil
 }

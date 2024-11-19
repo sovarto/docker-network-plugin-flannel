@@ -344,32 +344,44 @@ func (e *EtcdClient) tryRereserveIP(etcd *etcdConnection, key string, mac string
 
 	macKey := e.macKey(key)
 
-	txn := etcd.client.Txn(etcd.ctx).
-		If(
+	comparisons := [][]clientv3.Cmp{
+		// It was already reserved for this same MAC
+		{
 			clientv3.Compare(clientv3.Value(key), "=", "reserved"),
 			clientv3.Compare(clientv3.Value(macKey), "=", mac),
-		).
-		Then(clientv3.OpPut(key, "reserved"), clientv3.OpPut(macKey, mac)).
-		Else()
-
-	txnResp, err := txn.Commit()
-	if err != nil {
-		return false, fmt.Errorf("etcd transaction failed: %v", err)
+		},
+		// It was already reserved, but without a MAC - usually first pass IPAM, before a container exists
+		{
+			clientv3.Compare(clientv3.Value(key), "=", "reserved"),
+			clientv3.Compare(clientv3.CreateRevision(macKey), "=", 0),
+		},
+		// It was never before reserved -> shouldn't ever happen
+		{
+			clientv3.Compare(clientv3.CreateRevision(key), "=", 0),
+		},
+		// It was previously reserved but has since been freed -> shouldn't ever happen
+		{
+			clientv3.Compare(clientv3.Value(key), "=", "reserved"),
+		},
 	}
 
-	if !txnResp.Succeeded {
+	for _, comparison := range comparisons {
 		txn := etcd.client.Txn(etcd.ctx).
-			If(clientv3.Compare(clientv3.Value(key), "=", "freed")).
+			If(comparison...).
 			Then(clientv3.OpPut(key, "reserved"), clientv3.OpPut(macKey, mac)).
 			Else()
 
-		txnResp, err = txn.Commit()
+		txnResp, err := txn.Commit()
 		if err != nil {
 			return false, fmt.Errorf("etcd transaction failed: %v", err)
 		}
+
+		if txnResp.Succeeded {
+			return true, nil
+		}
 	}
 
-	return txnResp.Succeeded, nil
+	return false, nil
 }
 
 func (e *EtcdClient) EnsureGatewayIsMarkedAsReserved(config *FlannelConfig) error {

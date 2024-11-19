@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	bridgePrefix = "kt"
+	bridgePrefix = "fl"
 	bridgeLen    = 12
 )
 
@@ -23,12 +23,10 @@ func getBridgeName(netID string) string {
 	return bridgePrefix + "-" + netID[:bridgeLen]
 }
 
-func createBridge(netID string) (string, error) {
-	bridgeName := getBridgeName(netID)
-
+func ensureBridge(bridgeName string) error {
 	exists, err := bridgeInterfaceExists(bridgeName)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	if !exists {
@@ -38,13 +36,13 @@ func createBridge(netID string) (string, error) {
 		if err := netlink.LinkAdd(&netlink.Bridge{
 			LinkAttrs: linkAttrs,
 		}); err != nil {
-			return "", err
+			return err
 		}
 	}
 
 	bridge, err := netlink.LinkByName(bridgeName)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	var bridgeRule = []string{"-i", bridgeName, "-o", bridgeName, "-j", "ACCEPT"}
@@ -53,14 +51,14 @@ func createBridge(netID string) (string, error) {
 	iptablev4 := iptables.GetIptable(iptables.IPv4)
 	if err := iptablev4.ProgramRule(iptables.Filter, "FORWARD", iptables.Append, bridgeRule); err != nil {
 		log.Printf("Error creating iptables rule for bridge %v: %v", bridgeName, err)
-		return "", err
+		return err
 	}
 
 	if err := patchBridge(bridge); err != nil {
-		return "", err
+		return err
 	}
 
-	return bridgeName, nil
+	return nil
 }
 
 func patchBridge(bridge netlink.Link) error {
