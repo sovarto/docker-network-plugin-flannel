@@ -26,5 +26,7 @@ RUN wget https://github.com/flannel-io/flannel/releases/latest/download/flanneld
     mv flanneld-amd64 /flanneld && \
     chmod +x /flanneld
 
+RUN update-alternatives --set ip6tables
+
 COPY --from=builder /network-plugin-flannel /
 RUN ls /run

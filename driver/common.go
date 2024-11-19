@@ -128,9 +128,9 @@ func NewFlannelDriver(etcdClient *EtcdClient, defaultFlannelOptions []string) (*
 
 func ServeFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelOptions []string, availableSubnets []string, defaultHostSubnetSize int) {
 
-	err := detectIpTables()
+	err := setIp6TablesToIpTables()
 	if err != nil {
-		log.Fatalf("ERROR: %s init failed, can't detect IP tables: %v", "flannel-np", err)
+		log.Fatalf("ERROR: %s init failed, can't set ip6tables to iptables: %v", "flannel-np", err)
 	}
 	flannelDriver, err := NewFlannelDriver(NewEtcdClient(etcdEndPoints, 5*time.Second, etcdPrefix, availableSubnets, defaultHostSubnetSize), defaultFlannelOptions)
 	if err != nil {

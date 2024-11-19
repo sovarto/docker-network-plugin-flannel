@@ -32,6 +32,14 @@ type BackendConfig struct {
 	Type string `json:"Type"`
 }
 
+func setIp6TablesToIpTables() error {
+	output, err := exec.Command("update-alternatives", "--set", "ip6tables", "iptables").CombinedOutput()
+	if err != nil {
+		log.Printf("Error setting ip6tables to iptables: %s, err: %s\n", output, err)
+	}
+	return err
+}
+
 func detectIpTables() error {
 	useNft := false
 
@@ -60,12 +68,12 @@ func detectIpTables() error {
 
 	output, err := exec.Command("update-alternatives", "--set", "iptables", ipTablesVersion).CombinedOutput()
 	if err != nil {
-		log.Printf("Error setting iptables: %s, err: %s\n", output, err)
+		log.Printf("Error setting iptables to %s: %s, err: %s\n", output, err)
 		return err
 	}
 	_, err = exec.Command("update-alternatives", "--set", "ip6tables", ip6TablesVersion).CombinedOutput()
 	if err != nil {
-		log.Printf("Error setting ip6tables: %s, err: %s\n", output, err)
+		log.Printf("Error setting ip6tables to %s: %s, err: %s\n", ip6TablesVersion, output, err)
 	}
 	return err
 }
