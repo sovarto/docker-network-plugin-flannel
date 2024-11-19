@@ -20,7 +20,11 @@ const (
 )
 
 func getBridgeName(netID string) string {
-	return bridgePrefix + "-" + netID[:bridgeLen]
+	bridgeSuffix := netID
+	if len(bridgeSuffix) > bridgeLen {
+		bridgeSuffix = bridgeSuffix[:bridgeLen]
+	}
+	return bridgePrefix + "-" + bridgeSuffix
 }
 
 func ensureBridge(bridgeName string) error {
