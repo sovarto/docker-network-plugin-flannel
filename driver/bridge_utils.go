@@ -80,6 +80,11 @@ func ensureBridge(network *FlannelNetwork) error {
 		}
 	}
 
+	if err := patchBridge(bridge); err != nil {
+		log.Printf("Error patching bridge %v: %v", bridgeName, err)
+		return err
+	}
+
 	route := &netlink.Route{
 		Dst:       network.config.Subnet,
 		Src:       network.config.Gateway,
@@ -90,11 +95,6 @@ func ensureBridge(network *FlannelNetwork) error {
 
 	if err := netlink.RouteReplace(route); err != nil {
 		log.Printf("Failed to add route: %+v, err:%+v\n", route, err)
-		return err
-	}
-
-	if err := patchBridge(bridge); err != nil {
-		log.Printf("Error patching bridge %v: %v", bridgeName, err)
 		return err
 	}
 
