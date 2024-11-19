@@ -46,7 +46,7 @@ func (d *FlannelDriver) getFlannelNetworkFromDockerNetworkID(networkID string) (
 	}
 	flannelNetwork, ok := d.networks[flannelNetworkId]
 	if !ok {
-		log.Printf("We've no internal state for network %s - flannel network ID: %s - although we should. We've state for these flannel network IDs: %+v", req.NetworkID, flannelNetworkId, maps.Keys(d.networks))
+		log.Printf("We've no internal state for network %s - flannel network ID: %s - although we should. We've state for these flannel network IDs: %+v", networkID, flannelNetworkId, maps.Keys(d.networks))
 		return nil, types.InternalErrorf("We've no internal state for network %s although we should", networkID)
 	}
 	return flannelNetwork, nil
@@ -99,10 +99,14 @@ func (d *FlannelDriver) CreateEndpoint(req *network.CreateEndpointRequest) (*net
 	interfaceInfo := new(network.EndpointInterface)
 
 	if req.Interface == nil {
+		log.Println("Received no interface info, generating MAC")
 		// TODO: Verify that this guarantees uniqueness. If not, use something else
 
 		// Generate the interface MAC Address by concatenating the network id and the endpoint id
 		interfaceInfo.MacAddress = generateMacAddressFromID(req.NetworkID + "-" + req.EndpointID)
+	} else {
+		log.Printf("Received interface info: %+v\n", req.Interface)
+		log.Printf("Received interface info: MAC: %s\n, IP: %s", req.Interface.MacAddress, req.Interface.Address)
 	}
 
 	// Should we set the IP address here? Should we record it somewhere?
