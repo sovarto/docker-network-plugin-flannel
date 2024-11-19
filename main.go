@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/apparentlymart/go-cidr/cidr"
 	"github.com/sovarto/FlannelNetworkPlugin/driver"
 	"log"
@@ -11,7 +12,7 @@ import (
 )
 
 func main() {
-	log.Println("Starting Flannel plugin...")
+	fmt.Println("Starting Flannel plugin...")
 
 	etcdEndPoints := strings.Split(os.Getenv("ETCD_ENDPOINTS"), ",")
 	etcdPrefix := strings.TrimRight(os.Getenv("ETCD_PREFIX"), "/")
@@ -29,7 +30,7 @@ func main() {
 		allSubnets,
 		defaultHostSubnetSize)
 
-	log.Println("Flannel plugin is ready")
+	fmt.Println("Flannel plugin is ready")
 }
 
 func getEnvAsInt(name string, defaultVal int) int {

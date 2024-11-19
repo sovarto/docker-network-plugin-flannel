@@ -146,18 +146,12 @@ func ServeFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlanne
 }
 
 func (d *FlannelDriver) ensureFlannelIsConfiguredAndRunning(flannelNetworkId string) (*FlannelNetwork, error) {
-	log.Println("ensureFlannelIsConfiguredAndRunning - before mutex")
-
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
 
-	log.Println("ensureFlannelIsConfiguredAndRunning - after mutex")
-
 	flannelNetwork, exists := d.networks[flannelNetworkId]
 	if !exists {
-		log.Println("ensureFlannelIsConfiguredAndRunning - no network entry")
 		_, err := d.etcdClient.EnsureFlannelConfig(flannelNetworkId)
-		log.Println("ensureFlannelIsConfiguredAndRunning - after EnsureFlannelConfig")
 		if err != nil {
 			return nil, err
 		}
@@ -165,7 +159,6 @@ func (d *FlannelDriver) ensureFlannelIsConfiguredAndRunning(flannelNetworkId str
 		flannelNetwork = NewFlannelNetwork()
 
 		err = d.startFlannel(flannelNetworkId, flannelNetwork)
-		log.Println("ensureFlannelIsConfiguredAndRunning - after startFlannel")
 		if err != nil {
 			return nil, err
 		}
@@ -174,17 +167,13 @@ func (d *FlannelDriver) ensureFlannelIsConfiguredAndRunning(flannelNetworkId str
 
 		return flannelNetwork, nil
 	} else {
-		log.Println("ensureFlannelIsConfiguredAndRunning - has network entry")
 		if flannelNetwork.pid == 0 || !isProcessRunning(flannelNetwork.pid) {
-			log.Println("ensureFlannelIsConfiguredAndRunning - pid 0 or process not running")
 			err := d.startFlannel(flannelNetworkId, flannelNetwork)
-			log.Println("ensureFlannelIsConfiguredAndRunning - after startFlannel")
 			if err != nil {
 				return nil, err
 			}
 		}
 
-		log.Println("ensureFlannelIsConfiguredAndRunning - flannel is running")
 		return flannelNetwork, nil
 	}
 }
@@ -259,7 +248,7 @@ func (d *FlannelDriver) startFlannel(flannelNetworkId string, network *FlannelNe
 		return fmt.Errorf("flanneld exited prematurely: %v", err)
 	case <-bootstrapDoneChan:
 		// "bootstrap done" was found
-		log.Println("flanneld bootstrap completed successfully")
+		fmt.Println("flanneld bootstrap completed successfully")
 	case <-time.After(1500 * time.Millisecond):
 		// Timeout occurred before "bootstrap done"
 		log.Println("flanneld failed to bootstrap within 1.5 seconds")
@@ -476,10 +465,10 @@ func (d *FlannelDriver) restoreNetworks() error {
 			log.Printf("Error loading reserved addresses for flanneld env %s. err: %+v\n", file, err)
 		} else {
 			if len(reservedAddresses) == 0 {
-				log.Println("No reserved addresses loaded")
+				fmt.Println("No reserved addresses loaded")
 			} else {
 				smallestIP, biggestIP, count := getInfoAboutIPList(reservedAddresses)
-				log.Printf("Loaded %v IP addresses for network %s that are currently or have previously been reserved, with %s being the smallest and %s being the biggest", count, flannelNetworkId, smallestIP, biggestIP)
+				fmt.Printf("Loaded %v IP addresses for network %s that are currently or have previously been reserved, with %s being the smallest and %s being the biggest", count, flannelNetworkId, smallestIP, biggestIP)
 			}
 		}
 

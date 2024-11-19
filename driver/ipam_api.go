@@ -1,9 +1,9 @@
 package driver
 
 import (
+	"fmt"
 	"github.com/docker/go-plugins-helpers/ipam"
 	"github.com/docker/go-plugins-helpers/sdk"
-	"log"
 	"net/http"
 )
 
@@ -18,18 +18,18 @@ const (
 
 func initIpamMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 	h.HandleFunc(ipamCapabilitiesPath, func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("[IPAM] Received GetCapabilities")
+		fmt.Printf("[IPAM] Received GetCapabilities")
 		res := &ipam.CapabilitiesResponse{RequiresMACAddress: true}
-		log.Printf("[IPAM] GetCapabilities response: %+v\n", res)
+		fmt.Printf("[IPAM] GetCapabilities response: %+v\n", res)
 		sdk.EncodeResponse(w, res, false)
 	})
 	h.HandleFunc(addressSpacesPath, func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("[IPAM] Received GetDefaultAddressSpaces")
+		fmt.Printf("[IPAM] Received GetDefaultAddressSpaces")
 		res := &ipam.AddressSpacesResponse{
 			LocalDefaultAddressSpace:  "FlannelLocal",
 			GlobalDefaultAddressSpace: "FlannelGlobal",
 		}
-		log.Printf("[IPAM] GetDefaultAddressSpaces response: %+v\n", res)
+		fmt.Printf("[IPAM] GetDefaultAddressSpaces response: %+v\n", res)
 		sdk.EncodeResponse(w, res, false)
 	})
 	h.HandleFunc(requestPoolPath, func(w http.ResponseWriter, r *http.Request) {
@@ -38,9 +38,9 @@ func initIpamMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		if err != nil {
 			return
 		}
-		log.Printf("[IPAM] Received RequestPool req: %+v\n", req)
+		fmt.Printf("[IPAM] Received RequestPool req: %+v\n", req)
 		res, err := flannelDriver.RequestPool(req)
-		log.Printf("[IPAM] RequestPool response: %+v; error:%+v\n", res, err)
+		fmt.Printf("[IPAM] RequestPool response: %+v; error:%+v\n", res, err)
 		if err != nil {
 			sdk.EncodeResponse(w, ipam.NewErrorResponse(err.Error()), true)
 			return
@@ -53,9 +53,9 @@ func initIpamMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		if err != nil {
 			return
 		}
-		log.Printf("[IPAM] Received ReleasePool req: %+v\n", req)
+		fmt.Printf("[IPAM] Received ReleasePool req: %+v\n", req)
 		err = flannelDriver.ReleasePool(req)
-		log.Printf("[IPAM] ReleasePool response: %+v\n", err)
+		fmt.Printf("[IPAM] ReleasePool response: %+v\n", err)
 		if err != nil {
 			sdk.EncodeResponse(w, ipam.NewErrorResponse(err.Error()), true)
 			return
@@ -68,9 +68,9 @@ func initIpamMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		if err != nil {
 			return
 		}
-		log.Printf("[IPAM] Received RequestAddress req: %+v\n", req)
+		fmt.Printf("[IPAM] Received RequestAddress req: %+v\n", req)
 		res, err := flannelDriver.RequestAddress(req)
-		log.Printf("[IPAM] RequestAddress res: %+v; error:%+v\n", res, err)
+		fmt.Printf("[IPAM] RequestAddress res: %+v; error:%+v\n", res, err)
 		if err != nil {
 			sdk.EncodeResponse(w, ipam.NewErrorResponse(err.Error()), true)
 			return
@@ -83,9 +83,9 @@ func initIpamMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 		if err != nil {
 			return
 		}
-		log.Printf("[IPAM] Received ReleaseAddress req: %+v\n", req)
+		fmt.Printf("[IPAM] Received ReleaseAddress req: %+v\n", req)
 		err = flannelDriver.ReleaseAddress(req)
-		log.Printf("[IPAM] ReleaseAddress response: %+v\n", err)
+		fmt.Printf("[IPAM] ReleaseAddress response: %+v\n", err)
 		if err != nil {
 			sdk.EncodeResponse(w, ipam.NewErrorResponse(err.Error()), true)
 			return
