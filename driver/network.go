@@ -30,8 +30,8 @@ func (d *FlannelDriver) CreateNetwork(req *network.CreateNetworkRequest) error {
 		return types.ForbiddenErrorf("Network %s not managed by us", req.NetworkID)
 	}
 
-	if _, ok := d.networks[flannelNetworkId]; ok {
-		log.Printf("We've no internal state for network %s although we should. We've state for these flannel network IDs: %+v", req.NetworkID, maps.Keys(d.networks))
+	if _, ok := d.networks[flannelNetworkId]; !ok {
+		log.Printf("We've no internal state for network %s - flannel network ID: %s - although we should. We've state for these flannel network IDs: %+v", req.NetworkID, flannelNetworkId, maps.Keys(d.networks))
 		return types.InternalErrorf("We've no internal state for network %s although we should", req.NetworkID)
 	}
 
