@@ -7,6 +7,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -57,11 +58,15 @@ func detectIpTables() error {
 		ip6TablesVersion = IP6TABLES_PATH + LEGACY_SUFFIX
 	}
 
-	_, err = exec.Command("update-alternatives", "--set", "iptables", ipTablesVersion).CombinedOutput()
+	output, err := exec.Command("update-alternatives", "--set", "iptables", ipTablesVersion).CombinedOutput()
 	if err != nil {
+		log.Printf("Error setting iptables: %s, err: %s\n", output, err)
 		return err
 	}
 	_, err = exec.Command("update-alternatives", "--set", "ip6tables", ip6TablesVersion).CombinedOutput()
+	if err != nil {
+		log.Printf("Error setting ip6tables: %s, err: %s\n", output, err)
+	}
 	return err
 }
 
