@@ -208,7 +208,7 @@ func (d *FlannelDriver) Join(req *network.JoinRequest) (*network.JoinResponse, e
 				NextHop:     flannelNetwork.config.Gateway.String(),
 			},
 		},
-		DisableGatewayService: true,
+		DisableGatewayService: false,
 	}
 
 	return resp, nil
