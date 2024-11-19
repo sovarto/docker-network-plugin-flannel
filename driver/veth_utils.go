@@ -21,7 +21,7 @@ func randomVethName() string {
 	return vethPrefix + strings.Replace(randomUuid.String(), "-", "", -1)[:vethLen]
 }
 
-func createVethPair(macAddress string) (string, string, error) {
+func createVethPair(network *FlannelNetwork, macAddress string) (string, string, error) {
 	vethName1 := randomVethName()
 	vethName2 := randomVethName()
 
@@ -34,6 +34,7 @@ func createVethPair(macAddress string) (string, string, error) {
 	linkAttrs := netlink.NewLinkAttrs()
 	linkAttrs.Name = vethName1
 	linkAttrs.HardwareAddr = parsedMacAddress
+	linkAttrs.MTU = network.config.MTU - 50
 
 	err = netlink.LinkAdd(&netlink.Veth{
 		LinkAttrs: linkAttrs,

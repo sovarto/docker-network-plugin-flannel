@@ -180,7 +180,7 @@ func (d *FlannelDriver) Join(req *network.JoinRequest) (*network.JoinResponse, e
 	}
 
 	endpointInfo := flannelNetwork.endpoints[req.EndpointID]
-	vethInside, vethOutside, err := createVethPair(endpointInfo.macAddress)
+	vethInside, vethOutside, err := createVethPair(flannelNetwork, endpointInfo.macAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -196,6 +196,17 @@ func (d *FlannelDriver) Join(req *network.JoinRequest) (*network.JoinResponse, e
 		InterfaceName: network.InterfaceName{
 			SrcName:   vethInside,
 			DstPrefix: "eth",
+		},
+		StaticRoutes: []*network.StaticRoute{
+			{
+				Destination: flannelNetwork.config.Subnet,
+				RouteType:   types.CONNECTED,
+			},
+			{
+				Destination: flannelNetwork.config.Network,
+				RouteType:   types.NEXTHOP,
+				NextHop:     flannelNetwork.config.Gateway,
+			},
 		},
 		DisableGatewayService: true,
 	}

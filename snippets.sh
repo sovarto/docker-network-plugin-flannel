@@ -1,5 +1,6 @@
-./flanneld-amd64 -iface=enp7s0 -etcd-prefix=/manual-flannel/config
-docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl put /manual-flannel/config '{ "Network": "192.168.64.0/20", "SubnetLen": 24, "Backend": {"Type": "vxlan"}}'
+docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl --endpoints=http://172.16.0.2:2379,http://172.16.0.3:2379,http://172.16.0.4:2379 put /manual-flannel/config '{ "Network": "10.200.0.0/16", "SubnetLen": 24, "Backend": {"Type": "vxlan"}}'
+./flanneld-amd64 -iface=enp7s0 -etcd-endpoints=http://172.16.0.2:2379,http://172.16.0.3:2379,http://172.16.0.4:2379 -etcd-prefix=/manual-flannel
+bg 1
 source /var/run/flannel/subnet.env
 docker network create --attachable=true --subnet=${FLANNEL_SUBNET} -o "com.docker.network.driver.mtu"=${FLANNEL_MTU} manual-flannel
 
