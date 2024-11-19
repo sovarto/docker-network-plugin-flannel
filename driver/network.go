@@ -186,7 +186,7 @@ func (d *FlannelDriver) Join(req *network.JoinRequest) (*network.JoinResponse, e
 		return nil, err
 	}
 
-	if err := attachInterfaceToBridge(d.networks[flannelNetworkId].bridgeName, vethOutside); err != nil {
+	if err := attachInterfaceToBridge("flannel.1", vethOutside); err != nil {
 		return nil, err
 	}
 
