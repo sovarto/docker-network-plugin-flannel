@@ -54,10 +54,6 @@ func (d *FlannelDriver) DeleteNetwork(req *network.DeleteNetworkRequest) error {
 		return nil
 	}
 
-	//if err := detectIpTables(); err != nil {
-	//	return err
-	//}
-
 	err := deleteBridge(req.NetworkID)
 	if err != nil {
 		return err

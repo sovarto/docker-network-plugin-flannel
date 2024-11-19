@@ -61,6 +61,10 @@ func (e *EtcdClient) flannelConfigKey(flannelNetworkId string) string {
 	return fmt.Sprintf("%s/%s/config", e.prefix, flannelNetworkId)
 }
 
+func (e *EtcdClient) macKey(reservedIpKey string) string {
+	return fmt.Sprintf("%s/mac", reservedIpKey)
+}
+
 func newEtcdConnection(endpoints []string, dialTimeout time.Duration) (*etcdConnection, error) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
@@ -246,7 +250,7 @@ func (e *EtcdClient) cleanupFreedIPs(etcd *etcdConnection, network *FlannelNetwo
 	return nil
 }
 
-func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPossible string) (string, error) {
+func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPossible string, mac string) (string, error) {
 	_, subnet, err := net.ParseCIDR(network.config.Subnet)
 	if err != nil {
 		return "", fmt.Errorf("invalid subnet: %v", err)
@@ -260,6 +264,13 @@ func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPos
 		return "", err
 	}
 
+	if addressToReuseIfPossible != "" && mac != "" {
+		reserved, _ := e.tryRereserveIP(etcd, e.reservedIpKey(&network.config, addressToReuseIfPossible), mac)
+		if reserved {
+			return addressToReuseIfPossible, nil
+		}
+	}
+
 	allIPs := ipsInSubnet(subnet)
 
 	for _, ip := range allIPs {
@@ -268,7 +279,7 @@ func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPos
 		network.Mutex.Lock()
 
 		if _, reserved := network.reservedAddresses[ipStr]; !reserved {
-			reserved, err := e.tryReserveIP(etcd, e.reservedIpKey(&network.config, ipStr))
+			reserved, err := e.tryReserveIP(etcd, e.reservedIpKey(&network.config, ipStr), mac)
 			if err != nil {
 				network.Mutex.Unlock()
 				return "", err
@@ -294,15 +305,64 @@ func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPos
 	return "", errors.New("no available IP addresses to reserve")
 }
 
-func (e *EtcdClient) tryReserveIP(etcd *etcdConnection, key string) (bool, error) {
+func (e *EtcdClient) tryReserveIP(etcd *etcdConnection, key string, mac string) (bool, error) {
+	ops := []clientv3.Op{
+		clientv3.OpPut(key, "reserved"),
+	}
+
+	if mac != "" {
+		ops = append(ops, clientv3.OpPut(e.macKey(key), mac))
+	}
+
 	txn := etcd.client.Txn(etcd.ctx).
 		If(clientv3.Compare(clientv3.CreateRevision(key), "=", 0)).
-		Then(clientv3.OpPut(key, "reserved")).
+		Then(ops...).
 		Else()
 
 	txnResp, err := txn.Commit()
 	if err != nil {
 		return false, fmt.Errorf("etcd transaction failed: %v", err)
+	}
+
+	return txnResp.Succeeded, nil
+}
+
+func (e *EtcdClient) tryRereserveIP(etcd *etcdConnection, key string, mac string) (bool, error) {
+
+	reserved, err := e.tryReserveIP(etcd, key, mac)
+	if err != nil {
+		return false, err
+	}
+
+	if reserved {
+		return true, nil
+	}
+
+	macKey := e.macKey(key)
+
+	txn := etcd.client.Txn(etcd.ctx).
+		If(
+			clientv3.Compare(clientv3.Value(key), "==", "reserved"),
+			clientv3.Compare(clientv3.Value(macKey), "==", mac),
+		).
+		Then(clientv3.OpPut(key, "reserved"), clientv3.OpPut(macKey, mac)).
+		Else()
+
+	txnResp, err := txn.Commit()
+	if err != nil {
+		return false, fmt.Errorf("etcd transaction failed: %v", err)
+	}
+
+	if !txnResp.Succeeded {
+		txn := etcd.client.Txn(etcd.ctx).
+			If(clientv3.Compare(clientv3.Value(key), "==", "freed")).
+			Then(clientv3.OpPut(key, "reserved"), clientv3.OpPut(macKey, mac)).
+			Else()
+
+		txnResp, err = txn.Commit()
+		if err != nil {
+			return false, fmt.Errorf("etcd transaction failed: %v", err)
+		}
 	}
 
 	return txnResp.Succeeded, nil
