@@ -5,13 +5,14 @@ import (
 	"github.com/docker/go-plugins-helpers/network"
 	"golang.org/x/exp/maps"
 	"log"
-	"net"
 )
 
 // CreateNetwork happens when a container is being started that uses this network
 func (d *FlannelDriver) CreateNetwork(req *network.CreateNetworkRequest) error {
 	d.Lock()
 	defer d.Unlock()
+
+	log.Printf("IPv4Data: Count: %d, First: %+v", len(req.IPv4Data), req.IPv4Data[0])
 
 	flannelNetwork, err := d.getFlannelNetworkFromDockerNetworkID(req.NetworkID)
 	if err != nil {
@@ -96,31 +97,24 @@ func (d *FlannelDriver) CreateEndpoint(req *network.CreateEndpointRequest) (*net
 		return nil, err
 	}
 
-	interfaceInfo := new(network.EndpointInterface)
-
-	if req.Interface == nil {
-		log.Println("Received no interface info, generating MAC")
-		// TODO: Verify that this guarantees uniqueness. If not, use something else
-
-		// Generate the interface MAC Address by concatenating the network id and the endpoint id
-		interfaceInfo.MacAddress = generateMacAddressFromID(req.NetworkID + "-" + req.EndpointID)
-	} else {
-		log.Printf("Received interface info: %+v\n", req.Interface)
-		log.Printf("Received interface info: MAC: %s\n, IP: %s", req.Interface.MacAddress, req.Interface.Address)
+	if req.Interface == nil || req.Interface.Address == "" || req.Interface.MacAddress == "" {
+		log.Println("Received no interface info or interface info without address or mac address. This is not supported")
+		return nil, types.InvalidParameterErrorf("Need interface info with IPv4 address and MAC address as input.")
 	}
 
-	// Should we set the IP address here? Should we record it somewhere?
-
-	parsedMac, _ := net.ParseMAC(interfaceInfo.MacAddress)
+	log.Printf("Received interface info %+v\n", req.Interface)
 
 	endpoint := &FlannelEndpoint{
-		macAddress: parsedMac,
+		macAddress: req.Interface.MacAddress,
+		ipAddress:  req.Interface.Address,
 	}
+
+	//d.etcdClient.StoreEndpointInfo()
 
 	flannelNetwork.endpoints[req.EndpointID] = endpoint
 
 	resp := &network.CreateEndpointResponse{
-		Interface: interfaceInfo,
+		Interface: req.Interface,
 	}
 
 	return resp, nil
@@ -163,8 +157,8 @@ func (d *FlannelDriver) EndpointInfo(req *network.InfoRequest) (*network.InfoRes
 	endpointInfo := flannelNetwork.endpoints[req.EndpointID]
 	value := make(map[string]string)
 
-	value["ip_address"] = ""
-	value["mac_address"] = endpointInfo.macAddress.String()
+	value["ip_address"] = endpointInfo.ipAddress
+	value["mac_address"] = endpointInfo.macAddress
 
 	resp := &network.InfoResponse{
 		Value: value,

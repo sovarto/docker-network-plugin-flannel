@@ -26,7 +26,7 @@ import (
 
 type FlannelEndpoint struct {
 	ipAddress   string
-	macAddress  net.HardwareAddr
+	macAddress  string
 	vethInside  string
 	vethOutside string
 }
