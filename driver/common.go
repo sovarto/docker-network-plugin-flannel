@@ -198,9 +198,51 @@ func (d *FlannelDriver) startFlannel(flannelNetworkId string, network *FlannelNe
 	args = append(args, d.defaultFlannelOptions...)
 
 	cmd := exec.Command("/flanneld", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 
+	// Capture stdout and stderr
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Println("Failed to get stdout pipe:", err)
+		return err
+	}
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		log.Println("Failed to get stderr pipe:", err)
+		return err
+	}
+
+	bootstrapDoneChan := make(chan struct{})
+
+	// Goroutine to read stdout and look for "bootstrap done"
+	go func() {
+		scanner := bufio.NewScanner(stdoutPipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			fmt.Fprintln(os.Stdout, line) // Write to os.Stdout
+			if strings.Contains(line, "bootstrap done") {
+				close(bootstrapDoneChan)
+				return
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			log.Println("Error reading stdout:", err)
+		}
+	}()
+
+	// Goroutine to read stderr
+	go func() {
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			line := scanner.Text()
+			fmt.Fprintln(os.Stderr, line) // Write to os.Stderr
+		}
+		if err := scanner.Err(); err != nil {
+			log.Println("Error reading stderr:", err)
+		}
+	}()
+
+	// Start the process
 	if err := cmd.Start(); err != nil {
 		log.Println("Failed to start flanneld:", err)
 		return err
@@ -216,15 +258,23 @@ func (d *FlannelDriver) startFlannel(flannelNetworkId string, network *FlannelNe
 		exitChan <- err
 	}()
 
-	// Wait for 1.5 seconds
+	// Wait for "bootstrap done", process exit, or timeout
 	select {
 	case err := <-exitChan:
-		// Process exited before 1.5 seconds
+		// Process exited before "bootstrap done" or timeout
 		log.Printf("flanneld process exited prematurely: %v", err)
 		return fmt.Errorf("flanneld exited prematurely: %v", err)
+	case <-bootstrapDoneChan:
+		// "bootstrap done" was found
+		log.Println("flanneld bootstrap completed successfully")
 	case <-time.After(1500 * time.Millisecond):
-		// Process is still running after 1.5 seconds
-		log.Println("flanneld is running and stable after 1.5 seconds")
+		// Timeout occurred before "bootstrap done"
+		log.Println("flanneld failed to bootstrap within 1.5 seconds")
+		// Kill the process
+		if err := cmd.Process.Kill(); err != nil {
+			log.Println("Failed to kill flanneld process:", err)
+		}
+		return fmt.Errorf("flanneld failed to bootstrap within 1.5 seconds")
 	}
 
 	config, err := loadFlannelConfig(subnetFile)
