@@ -13,34 +13,43 @@ func (d *FlannelDriver) CreateNetwork(req *network.CreateNetworkRequest) error {
 	d.Lock()
 	defer d.Unlock()
 
-	flannelNetworkId, exists := d.networkIdToFlannelNetworkId[req.NetworkID]
-
-	if !exists {
-		err := d.BuildNetworkIdMappings()
-
-		if err != nil {
-			return types.UnavailableErrorf("Failed to build network mappings: %s", err)
-		}
-
-		flannelNetworkId, exists = d.networkIdToFlannelNetworkId[req.NetworkID]
+	flannelNetwork, err := d.getFlannelNetworkFromDockerNetworkID(req.NetworkID)
+	if err != nil {
+		return err
 	}
 
-	if !exists {
-		log.Printf("Network %s not managed by us", req.NetworkID)
-		return types.ForbiddenErrorf("Network %s not managed by us", req.NetworkID)
-	}
-	flannelNetwork, ok := d.networks[flannelNetworkId]
-	if !ok {
-		log.Printf("We've no internal state for network %s - flannel network ID: %s - although we should. We've state for these flannel network IDs: %+v", req.NetworkID, flannelNetworkId, maps.Keys(d.networks))
-		return types.InternalErrorf("We've no internal state for network %s although we should", req.NetworkID)
-	}
-
-	err := ensureBridge(flannelNetwork.bridgeName)
+	err = ensureBridge(flannelNetwork.bridgeName)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (d *FlannelDriver) getFlannelNetworkFromDockerNetworkID(networkID string) (*FlannelNetwork, error) {
+
+	flannelNetworkId, exists := d.networkIdToFlannelNetworkId[networkID]
+
+	if !exists {
+		err := d.BuildNetworkIdMappings()
+
+		if err != nil {
+			return nil, types.UnavailableErrorf("Failed to build network mappings: %s", err)
+		}
+
+		flannelNetworkId, exists = d.networkIdToFlannelNetworkId[networkID]
+	}
+
+	if !exists {
+		log.Printf("Network %s not managed by us", networkID)
+		return nil, types.ForbiddenErrorf("Network %s not managed by us", networkID)
+	}
+	flannelNetwork, ok := d.networks[flannelNetworkId]
+	if !ok {
+		log.Printf("We've no internal state for network %s - flannel network ID: %s - although we should. We've state for these flannel network IDs: %+v", req.NetworkID, flannelNetworkId, maps.Keys(d.networks))
+		return nil, types.InternalErrorf("We've no internal state for network %s although we should", networkID)
+	}
+	return flannelNetwork, nil
 }
 
 func (d *FlannelDriver) DeleteNetwork(req *network.DeleteNetworkRequest) error {
@@ -82,14 +91,9 @@ func (d *FlannelDriver) CreateEndpoint(req *network.CreateEndpointRequest) (*net
 	d.Lock()
 	defer d.Unlock()
 
-	flannelNetworkId, exists := d.networkIdToFlannelNetworkId[req.NetworkID]
-
-	if !exists {
-		return nil, types.ForbiddenErrorf("%s network does not exist", req.NetworkID)
-	}
-	/* Throw error if not in map */
-	if _, ok := d.networks[flannelNetworkId]; !ok {
-		return nil, types.ForbiddenErrorf("%s network does not exist", req.NetworkID)
+	flannelNetwork, err := d.getFlannelNetworkFromDockerNetworkID(req.NetworkID)
+	if err != nil {
+		return nil, err
 	}
 
 	interfaceInfo := new(network.EndpointInterface)
@@ -109,7 +113,7 @@ func (d *FlannelDriver) CreateEndpoint(req *network.CreateEndpointRequest) (*net
 		macAddress: parsedMac,
 	}
 
-	d.networks[flannelNetworkId].endpoints[req.EndpointID] = endpoint
+	flannelNetwork.endpoints[req.EndpointID] = endpoint
 
 	resp := &network.CreateEndpointResponse{
 		Interface: interfaceInfo,
@@ -123,17 +127,18 @@ func (d *FlannelDriver) DeleteEndpoint(req *network.DeleteEndpointRequest) error
 	defer d.Unlock()
 
 	/* Skip if not in map (both network and endpoint) */
-	if _, netOk := d.networks[req.NetworkID]; !netOk {
-		return nil
+	flannelNetwork, err := d.getFlannelNetworkFromDockerNetworkID(req.NetworkID)
+	if err != nil {
+		return nil // We don't need an error when we get a request to delete an endpoint that doesn't exist
 	}
 
-	if _, epOk := d.networks[req.NetworkID].endpoints[req.EndpointID]; !epOk {
+	if _, epOk := flannelNetwork.endpoints[req.EndpointID]; !epOk {
 		return nil
 	}
 
 	// Should we notify someone - e.g. service load balancer - about this?
 
-	delete(d.networks[req.NetworkID].endpoints, req.EndpointID)
+	delete(flannelNetwork.endpoints, req.EndpointID)
 
 	return nil
 }
@@ -142,16 +147,16 @@ func (d *FlannelDriver) EndpointInfo(req *network.InfoRequest) (*network.InfoRes
 	d.Lock()
 	defer d.Unlock()
 
-	/* Throw error (both network and endpoint) */
-	if _, netOk := d.networks[req.NetworkID]; !netOk {
-		return nil, types.ForbiddenErrorf("%s network does not exist", req.NetworkID)
+	flannelNetwork, err := d.getFlannelNetworkFromDockerNetworkID(req.NetworkID)
+	if err != nil {
+		return nil, err
 	}
 
-	if _, epOk := d.networks[req.NetworkID].endpoints[req.EndpointID]; !epOk {
+	if _, epOk := flannelNetwork.endpoints[req.EndpointID]; !epOk {
 		return nil, types.ForbiddenErrorf("%s endpoint does not exist", req.NetworkID)
 	}
 
-	endpointInfo := d.networks[req.NetworkID].endpoints[req.EndpointID]
+	endpointInfo := flannelNetwork.endpoints[req.EndpointID]
 	value := make(map[string]string)
 
 	value["ip_address"] = ""
@@ -168,16 +173,9 @@ func (d *FlannelDriver) Join(req *network.JoinRequest) (*network.JoinResponse, e
 	d.Lock()
 	defer d.Unlock()
 
-	flannelNetworkId, exists := d.networkIdToFlannelNetworkId[req.NetworkID]
-
-	if !exists {
-		return nil, types.ForbiddenErrorf("%s network does not exist", req.NetworkID)
-	}
-
-	flannelNetwork, netOk := d.networks[flannelNetworkId]
-	/* Throw error (both network and endpoint) */
-	if !netOk {
-		return nil, types.ForbiddenErrorf("%s network does not exist", req.NetworkID)
+	flannelNetwork, err := d.getFlannelNetworkFromDockerNetworkID(req.NetworkID)
+	if err != nil {
+		return nil, err
 	}
 
 	if _, epOk := flannelNetwork.endpoints[req.EndpointID]; !epOk {
@@ -212,16 +210,17 @@ func (d *FlannelDriver) Leave(req *network.LeaveRequest) error {
 	d.Lock()
 	defer d.Unlock()
 
-	/* Throw error (both network and endpoint) */
-	if _, netOk := d.networks[req.NetworkID]; !netOk {
-		return types.ForbiddenErrorf("%s network does not exist", req.NetworkID)
+	/* Skip if not in map (both network and endpoint) */
+	flannelNetwork, err := d.getFlannelNetworkFromDockerNetworkID(req.NetworkID)
+	if err != nil {
+		return nil // We don't need an error when we get a request to delete an endpoint that doesn't exist
 	}
 
-	if _, epOk := d.networks[req.NetworkID].endpoints[req.EndpointID]; !epOk {
-		return types.ForbiddenErrorf("%s endpoint does not exist", req.NetworkID)
+	if _, epOk := flannelNetwork.endpoints[req.EndpointID]; !epOk {
+		return nil
 	}
 
-	endpointInfo := d.networks[req.NetworkID].endpoints[req.EndpointID]
+	endpointInfo := flannelNetwork.endpoints[req.EndpointID]
 
 	if err := deleteVethPair(endpointInfo.vethOutside); err != nil {
 		return err
