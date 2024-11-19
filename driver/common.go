@@ -128,6 +128,10 @@ func NewFlannelDriver(etcdClient *EtcdClient, defaultFlannelOptions []string) (*
 
 func ServeFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelOptions []string, availableSubnets []string, defaultHostSubnetSize int) {
 
+	err := detectIpTables()
+	if err != nil {
+		log.Fatalf("ERROR: %s init failed, can't detect IP tables: %v", "flannel-np", err)
+	}
 	flannelDriver, err := NewFlannelDriver(NewEtcdClient(etcdEndPoints, 5*time.Second, etcdPrefix, availableSubnets, defaultHostSubnetSize), defaultFlannelOptions)
 	if err != nil {
 		log.Fatalf("ERROR: %s init failed, can't create driver: %v", "flannel-np", err)
@@ -206,7 +210,7 @@ func (d *FlannelDriver) startFlannel(flannelNetworkId string, network *FlannelNe
 		return err
 	}
 
-	log.Printf("flanneld started with PID %s for flannel network id %s\n", cmd.Process.Pid, flannelNetworkId)
+	log.Printf("flanneld started with PID %d for flannel network id %s\n", cmd.Process.Pid, flannelNetworkId)
 
 	exitChan := make(chan error, 1)
 
