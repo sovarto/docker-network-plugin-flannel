@@ -346,8 +346,8 @@ func (e *EtcdClient) tryRereserveIP(etcd *etcdConnection, key string, mac string
 
 	txn := etcd.client.Txn(etcd.ctx).
 		If(
-			clientv3.Compare(clientv3.Value(key), "==", "reserved"),
-			clientv3.Compare(clientv3.Value(macKey), "==", mac),
+			clientv3.Compare(clientv3.Value(key), "=", "reserved"),
+			clientv3.Compare(clientv3.Value(macKey), "=", mac),
 		).
 		Then(clientv3.OpPut(key, "reserved"), clientv3.OpPut(macKey, mac)).
 		Else()
@@ -359,7 +359,7 @@ func (e *EtcdClient) tryRereserveIP(etcd *etcdConnection, key string, mac string
 
 	if !txnResp.Succeeded {
 		txn := etcd.client.Txn(etcd.ctx).
-			If(clientv3.Compare(clientv3.Value(key), "==", "freed")).
+			If(clientv3.Compare(clientv3.Value(key), "=", "freed")).
 			Then(clientv3.OpPut(key, "reserved"), clientv3.OpPut(macKey, mac)).
 			Else()
 
