@@ -33,7 +33,7 @@ type BackendConfig struct {
 }
 
 func setIp6TablesToIpTables() error {
-	output, err := exec.Command("update-alternatives", "--set", "ip6tables", "iptables").CombinedOutput()
+	output, err := exec.Command("update-alternatives", "--set", "ip6tables", "/sbin/iptables").CombinedOutput()
 	if err != nil {
 		log.Printf("Error setting ip6tables to iptables: %s, err: %s\n", output, err)
 	}
