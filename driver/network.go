@@ -113,9 +113,8 @@ func (d *FlannelDriver) CreateEndpoint(req *network.CreateEndpointRequest) (*net
 
 	flannelNetwork.endpoints[req.EndpointID] = endpoint
 
-	resp := &network.CreateEndpointResponse{
-		Interface: req.Interface,
-	}
+	// Don't return the interface we got passed in. Even without changing any values, it will lead to an error, saying values can't be changed
+	resp := &network.CreateEndpointResponse{}
 
 	return resp, nil
 }
