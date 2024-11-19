@@ -246,7 +246,7 @@ func (e *EtcdClient) cleanupFreedIPs(etcd *etcdConnection, network *FlannelNetwo
 	return nil
 }
 
-func (e *EtcdClient) ReserveAddress(network *FlannelNetwork) (string, error) {
+func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPossible string) (string, error) {
 	_, subnet, err := net.ParseCIDR(network.config.Subnet)
 	if err != nil {
 		return "", fmt.Errorf("invalid subnet: %v", err)

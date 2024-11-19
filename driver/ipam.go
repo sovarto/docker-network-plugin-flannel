@@ -48,7 +48,7 @@ func (d *FlannelDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ip
 		return &ipam.RequestAddressResponse{Address: fmt.Sprintf("%s/32", network.config.Gateway)}, nil
 	}
 
-	address, err := d.etcdClient.ReserveAddress(network)
+	address, err := d.etcdClient.ReserveAddress(network, request.Address)
 
 	if err != nil {
 		log.Printf("Failed to reserve address for network %s: %+v", flannelNetworkId, err)

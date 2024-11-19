@@ -19,7 +19,7 @@ const (
 func initIpamMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 	h.HandleFunc(ipamCapabilitiesPath, func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[IPAM] Received GetCapabilities")
-		res := &ipam.CapabilitiesResponse{}
+		res := &ipam.CapabilitiesResponse{RequiresMACAddress: true}
 		log.Printf("[IPAM] GetCapabilities response: %+v\n", res)
 		sdk.EncodeResponse(w, res, false)
 	})
