@@ -417,11 +417,15 @@ func (d *FlannelDriver) restoreNetworks() error {
 
 		reservedAddresses, err := d.etcdClient.LoadReservedAddresses(&config)
 
-		smallestIP, biggestIP, count := getInfoAboutIPList(reservedAddresses)
-		log.Printf("Loaded %v IP addresses for network %s that are currently or have previously been reserved, with %s being the smallest and %s being the biggest", count, flannelNetworkId, smallestIP, biggestIP)
-
 		if err != nil {
 			log.Printf("Error loading reserved addresses for flanneld env %s. err: %+v\n", file, err)
+		} else {
+			if len(reservedAddresses) == 0 {
+				log.Println("No reserved addresses loaded")
+			} else {
+				smallestIP, biggestIP, count := getInfoAboutIPList(reservedAddresses)
+				log.Printf("Loaded %v IP addresses for network %s that are currently or have previously been reserved, with %s being the smallest and %s being the biggest", count, flannelNetworkId, smallestIP, biggestIP)
+			}
 		}
 
 		network := NewFlannelNetwork()
