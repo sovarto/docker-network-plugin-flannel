@@ -441,7 +441,7 @@ func (d *FlannelDriver) BuildNetworkIdMappings() error {
 		id, exists := n.IPAM.Options["id"]
 		if !exists {
 			log.Printf("Network %s has no 'id' option, it's misconfigured or not for us\n", n.ID)
-			break
+			continue
 		}
 
 		d.networkIdToFlannelNetworkId[n.ID] = id
