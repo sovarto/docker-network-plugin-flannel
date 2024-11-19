@@ -106,7 +106,7 @@ func NewFlannelDriver(etcdClient *EtcdClient, defaultFlannelOptions []string) (*
 				time.Sleep(5 * time.Second)
 				eventsCh, errCh = dockerCli.Events(context.Background(), dockerAPItypes.EventsOptions{})
 			case event := <-eventsCh:
-				log.Printf("Received docker event: %+v\n", event)
+				fmt.Printf("Received docker event: %+v\n", event)
 				if event.Type == events.NetworkEventType && event.Action == "create" {
 					network, err := dockerCli.NetworkInspect(context.Background(), event.Actor.ID, dockerAPItypes.NetworkInspectOptions{})
 					if err != nil {
@@ -230,7 +230,7 @@ func (d *FlannelDriver) startFlannel(flannelNetworkId string, network *FlannelNe
 		return err
 	}
 
-	log.Printf("flanneld started with PID %d for flannel network id %s\n", cmd.Process.Pid, flannelNetworkId)
+	fmt.Printf("flanneld started with PID %d for flannel network id %s\n", cmd.Process.Pid, flannelNetworkId)
 
 	exitChan := make(chan error, 1)
 

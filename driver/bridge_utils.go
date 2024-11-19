@@ -38,15 +38,18 @@ func ensureBridge(network *FlannelNetwork) error {
 		linkAttrs := netlink.NewLinkAttrs()
 		linkAttrs.Name = bridgeName
 
-		if err := netlink.LinkAdd(&netlink.Bridge{
+		err := netlink.LinkAdd(&netlink.Bridge{
 			LinkAttrs: linkAttrs,
-		}); err != nil {
+		})
+		if err != nil {
+			log.Printf("Error adding bridge %s: %v", bridgeName, err)
 			return err
 		}
 	}
 
 	bridge, err := netlink.LinkByName(bridgeName)
 	if err != nil {
+		log.Printf("Error getting bridge %s by name: %v", bridgeName, err)
 		return err
 	}
 
@@ -68,18 +71,18 @@ func ensureBridge(network *FlannelNetwork) error {
 	}
 
 	if err := netlink.RouteAdd(route); err != nil {
-		fmt.Printf("Failed to add route: %v\n", err)
+		log.Printf("Failed to add route: %v\n", err)
 		return err
 	}
 
 	addr, err := netlink.ParseAddr(network.config.Subnet.String())
 	if err != nil {
-		fmt.Printf("Failed to parse IP address %s: %v\n", network.config.Subnet, err)
+		log.Printf("Failed to parse IP address %s: %v\n", network.config.Subnet, err)
 		return err
 	}
 
 	if err := netlink.AddrAdd(bridge, addr); err != nil {
-		fmt.Printf("Failed to add IP address to interface: %v\n", err)
+		log.Printf("Failed to add IP address to interface: %v\n", err)
 		return err
 	}
 
