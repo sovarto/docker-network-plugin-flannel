@@ -29,11 +29,18 @@ func (d *FlannelDriver) CreateNetwork(req *network.CreateNetworkRequest) error {
 		log.Printf("Network %s not managed by us", req.NetworkID)
 		return types.ForbiddenErrorf("Network %s not managed by us", req.NetworkID)
 	}
-
-	if _, ok := d.networks[flannelNetworkId]; !ok {
+	flannelNetwork, ok := d.networks[flannelNetworkId]
+	if !ok {
 		log.Printf("We've no internal state for network %s - flannel network ID: %s - although we should. We've state for these flannel network IDs: %+v", req.NetworkID, flannelNetworkId, maps.Keys(d.networks))
 		return types.InternalErrorf("We've no internal state for network %s although we should", req.NetworkID)
 	}
+
+	bridgeName, err := createBridge(req.NetworkID)
+	if err != nil {
+		return err
+	}
+
+	flannelNetwork.bridgeName = bridgeName
 
 	return nil
 }
@@ -172,27 +179,29 @@ func (d *FlannelDriver) Join(req *network.JoinRequest) (*network.JoinResponse, e
 	if !exists {
 		return nil, types.ForbiddenErrorf("%s network does not exist", req.NetworkID)
 	}
+
+	flannelNetwork, netOk := d.networks[flannelNetworkId]
 	/* Throw error (both network and endpoint) */
-	if _, netOk := d.networks[flannelNetworkId]; !netOk {
+	if !netOk {
 		return nil, types.ForbiddenErrorf("%s network does not exist", req.NetworkID)
 	}
 
-	if _, epOk := d.networks[flannelNetworkId].endpoints[req.EndpointID]; !epOk {
+	if _, epOk := flannelNetwork.endpoints[req.EndpointID]; !epOk {
 		return nil, types.ForbiddenErrorf("%s endpoint does not exist", req.NetworkID)
 	}
 
-	endpointInfo := d.networks[flannelNetworkId].endpoints[req.EndpointID]
+	endpointInfo := flannelNetwork.endpoints[req.EndpointID]
 	vethInside, vethOutside, err := createVethPair(endpointInfo.macAddress)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := attachInterfaceToBridge("flannel.1", vethOutside); err != nil {
+	if err := attachInterfaceToBridge(flannelNetwork.bridgeName, vethOutside); err != nil {
 		return nil, err
 	}
 
-	d.networks[flannelNetworkId].endpoints[req.EndpointID].vethInside = vethInside
-	d.networks[flannelNetworkId].endpoints[req.EndpointID].vethOutside = vethOutside
+	flannelNetwork.endpoints[req.EndpointID].vethInside = vethInside
+	flannelNetwork.endpoints[req.EndpointID].vethOutside = vethOutside
 
 	resp := &network.JoinResponse{
 		InterfaceName: network.InterfaceName{
