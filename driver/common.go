@@ -41,8 +41,12 @@ type FlannelNetwork struct {
 	sync.Mutex
 }
 
-func NewFlannelNetwork() *FlannelNetwork {
-	return &FlannelNetwork{endpoints: make(map[string]*FlannelEndpoint), reservedAddresses: make(map[string]struct{})}
+func NewFlannelNetwork(flannelNetworkId string) *FlannelNetwork {
+	return &FlannelNetwork{
+		endpoints:         make(map[string]*FlannelEndpoint),
+		reservedAddresses: make(map[string]struct{}),
+		bridgeName:        getBridgeName(flannelNetworkId),
+	}
 }
 
 type FlannelConfig struct {
@@ -156,7 +160,7 @@ func (d *FlannelDriver) ensureFlannelIsConfiguredAndRunning(flannelNetworkId str
 			return nil, err
 		}
 
-		flannelNetwork = NewFlannelNetwork()
+		flannelNetwork = NewFlannelNetwork(flannelNetworkId)
 
 		err = d.startFlannel(flannelNetworkId, flannelNetwork)
 		if err != nil {
@@ -472,10 +476,9 @@ func (d *FlannelDriver) restoreNetworks() error {
 			}
 		}
 
-		network := NewFlannelNetwork()
+		network := NewFlannelNetwork(flannelNetworkId)
 		network.config = config
 		network.reservedAddresses = reservedAddresses
-		network.bridgeName = getBridgeName(flannelNetworkId)
 
 		err = ensureBridge(network)
 		if err != nil {
