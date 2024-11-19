@@ -69,7 +69,7 @@ func ensureBridge(network *FlannelNetwork) error {
 		return err
 	}
 
-	if err := netlink.AddrAdd(bridge, addr); err != nil {
+	if err := netlink.AddrReplace(bridge, addr); err != nil {
 		log.Printf("Failed to add IP address to interface: %v\n", err)
 		return err
 	}
