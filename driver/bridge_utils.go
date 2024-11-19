@@ -71,7 +71,7 @@ func ensureBridge(network *FlannelNetwork) error {
 	}
 
 	if err := netlink.RouteAdd(route); err != nil {
-		log.Printf("Failed to add route: %v\n", err)
+		log.Printf("Failed to add route: %+v, err:%+v\n", route, err)
 		return err
 	}
 
