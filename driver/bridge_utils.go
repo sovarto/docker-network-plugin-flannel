@@ -4,6 +4,7 @@ package driver
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/docker/docker/libnetwork/iptables"
@@ -49,8 +50,9 @@ func createBridge(netID string) (string, error) {
 	var bridgeRule = []string{"-i", bridgeName, "-o", bridgeName, "-j", "ACCEPT"}
 
 	// Install rule in IPv4
-	var iptablev4 = iptables.GetIptable(iptables.IPv4)
+	iptablev4 := iptables.GetIptable(iptables.IPv4)
 	if err := iptablev4.ProgramRule(iptables.Filter, "FORWARD", iptables.Append, bridgeRule); err != nil {
+		log.Printf("Error creating iptables rule for bridge %v: %v", bridgeName, err)
 		return "", err
 	}
 
