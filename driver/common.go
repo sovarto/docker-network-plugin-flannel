@@ -45,9 +45,9 @@ func NewFlannelNetwork() *FlannelNetwork {
 }
 
 type FlannelConfig struct {
-	Network string // The subnet of the network across all hosts
-	Subnet  string // The subnet for this network on the current host. Inside the network subnet
-	Gateway string
+	Network *net.IPNet // The subnet of the network across all hosts
+	Subnet  *net.IPNet // The subnet for this network on the current host. Inside the network subnet
+	Gateway net.IP
 	MTU     int
 	IPMasq  bool
 }
@@ -243,7 +243,7 @@ func (d *FlannelDriver) startFlannel(flannelNetworkId string, network *FlannelNe
 
 	network.pid = cmd.Process.Pid
 	network.config = config
-	network.reservedAddresses[config.Gateway] = struct{}{}
+	network.reservedAddresses[config.Gateway.String()] = struct{}{}
 
 	return nil
 }
@@ -351,16 +351,18 @@ func loadFlannelConfig(filename string) (FlannelConfig, error) {
 
 		switch key {
 		case "NETWORK":
-			config.Network = value
+			_, ipNet, err := net.ParseCIDR(value)
+			if err != nil {
+				return FlannelConfig{}, fmt.Errorf("invalid CIDR format for network: %v", err)
+			}
+			config.Network = ipNet
 		case "SUBNET":
 			ip, ipNet, err := net.ParseCIDR(value)
 			if err != nil {
-				return FlannelConfig{}, fmt.Errorf("invalid CIDR format: %v", err)
+				return FlannelConfig{}, fmt.Errorf("invalid CIDR format for subnet: %v", err)
 			}
-			network := ip.Mask(ipNet.Mask)
-			subnet := fmt.Sprintf("%s/%d", network.String(), maskToPrefix(ipNet.Mask))
-			config.Subnet = subnet
-			config.Gateway = ip.String()
+			config.Subnet = ipNet
+			config.Gateway = ip
 		case "MTU":
 			mtu, err := strconv.Atoi(value)
 			if err != nil {
@@ -434,7 +436,7 @@ func (d *FlannelDriver) restoreNetworks() error {
 			log.Printf("Error starting flanneld for network %s. err: %+v\n", flannelNetworkId, err)
 		}
 
-		err = ensureBridge(network.bridgeName)
+		err = ensureBridge(network)
 		if err != nil {
 			log.Printf("Error ensuring flanneld bridge is created. err: %+v\n", err)
 		}

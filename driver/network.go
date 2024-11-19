@@ -197,17 +197,17 @@ func (d *FlannelDriver) Join(req *network.JoinRequest) (*network.JoinResponse, e
 			SrcName:   vethInside,
 			DstPrefix: "eth",
 		},
-		//StaticRoutes: []*network.StaticRoute{
-		//	{
-		//		Destination: flannelNetwork.config.Subnet,
-		//		RouteType:   types.CONNECTED,
-		//	},
-		//	{
-		//		Destination: flannelNetwork.config.Network,
-		//		RouteType:   types.NEXTHOP,
-		//		NextHop:     flannelNetwork.config.Gateway,
-		//	},
-		//},
+		StaticRoutes: []*network.StaticRoute{
+			{
+				Destination: flannelNetwork.config.Subnet,
+				RouteType:   types.CONNECTED,
+			},
+			{
+				Destination: flannelNetwork.config.Network,
+				RouteType:   types.NEXTHOP,
+				NextHop:     flannelNetwork.config.Gateway,
+			},
+		},
 		DisableGatewayService: true,
 	}
 

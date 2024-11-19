@@ -27,7 +27,8 @@ func getBridgeName(netID string) string {
 	return bridgePrefix + "-" + bridgeSuffix
 }
 
-func ensureBridge(bridgeName string) error {
+func ensureBridge(network *FlannelNetwork) error {
+	bridgeName := network.bridgeName
 	exists, err := bridgeInterfaceExists(bridgeName)
 	if err != nil {
 		return err
@@ -55,6 +56,30 @@ func ensureBridge(bridgeName string) error {
 	iptablev4 := iptables.GetIptable(iptables.IPv4)
 	if err := iptablev4.ProgramRule(iptables.Filter, "FORWARD", iptables.Append, bridgeRule); err != nil {
 		log.Printf("Error creating iptables rule for bridge %v: %v", bridgeName, err)
+		return err
+	}
+
+	route := &netlink.Route{
+		Dst:       network.config.Subnet,
+		Src:       network.config.Gateway,
+		LinkIndex: bridge.Attrs().Index,
+		Scope:     netlink.SCOPE_LINK,
+		Protocol:  unix.RTPROT_KERNEL,
+	}
+
+	if err := netlink.RouteAdd(route); err != nil {
+		fmt.Printf("Failed to add route: %v\n", err)
+		return err
+	}
+
+	addr, err := netlink.ParseAddr(network.config.Subnet.String())
+	if err != nil {
+		fmt.Printf("Failed to parse IP address %s: %v\n", network.config.Subnet, err)
+		return err
+	}
+
+	if err := netlink.AddrAdd(bridge, addr); err != nil {
+		fmt.Printf("Failed to add IP address to interface: %v\n", err)
 		return err
 	}
 
