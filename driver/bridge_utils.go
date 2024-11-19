@@ -7,7 +7,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/docker/docker/libnetwork/iptables"
+	"github.com/coreos/go-iptables/iptables"
 	"github.com/docker/docker/libnetwork/ns"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
@@ -50,15 +50,6 @@ func ensureBridge(network *FlannelNetwork) error {
 	bridge, err := netlink.LinkByName(bridgeName)
 	if err != nil {
 		log.Printf("Error getting bridge %s by name: %v", bridgeName, err)
-		return err
-	}
-
-	var bridgeRule = []string{"-i", bridgeName, "-o", bridgeName, "-j", "ACCEPT"}
-
-	// Install rule in IPv4
-	iptablev4 := iptables.GetIptable(iptables.IPv4)
-	if err := iptablev4.ProgramRule(iptables.Filter, "FORWARD", iptables.Append, bridgeRule); err != nil {
-		log.Printf("Error creating iptables rule for bridge %v: %v", bridgeName, err)
 		return err
 	}
 
@@ -105,6 +96,119 @@ func ensureBridge(network *FlannelNetwork) error {
 	if err := patchBridge(bridge); err != nil {
 		log.Printf("Error patching bridge %v: %v", bridgeName, err)
 		return err
+	}
+
+	err = setupIptables(network)
+	if err != nil {
+		log.Printf("Error setting up iptables: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func setupIptables(network *FlannelNetwork) error {
+	bridgeName := network.bridgeName
+
+	iptablev4, err := iptables.New()
+	if err != nil {
+		log.Printf("Error initializing iptables: %v", err)
+		return err
+	}
+
+	// Define iptables rules in an array
+	rules := []struct {
+		table    string
+		chain    string
+		action   func(string, string, ...string) error
+		ruleSpec []string
+	}{
+		{
+			table:  "nat",
+			chain:  "POSTROUTING",
+			action: iptablev4.AppendUnique,
+			ruleSpec: []string{
+				"-s", network.config.Subnet.String(),
+				"!", "-o", bridgeName,
+				"-j", "MASQUERADE",
+			},
+		},
+		{
+			table:  "nat",
+			chain:  "DOCKER",
+			action: iptablev4.AppendUnique,
+			ruleSpec: []string{
+				"-i", bridgeName,
+				"-j", "RETURN",
+			},
+		},
+		{
+			table:  "filter",
+			chain:  "FORWARD",
+			action: iptablev4.AppendUnique,
+			ruleSpec: []string{
+				"-i", bridgeName,
+				"-o", bridgeName,
+				"-j", "ACCEPT",
+			},
+		},
+		{
+			table:  "filter",
+			chain:  "FORWARD",
+			action: iptablev4.AppendUnique,
+			ruleSpec: []string{
+				"-i", bridgeName,
+				"!", "-o", bridgeName,
+				"-j", "ACCEPT",
+			},
+		},
+		{
+			table:  "filter",
+			chain:  "FORWARD",
+			action: iptablev4.AppendUnique,
+			ruleSpec: []string{
+				"-o", bridgeName,
+				"-j", "DOCKER",
+			},
+		},
+		{
+			table:  "filter",
+			chain:  "FORWARD",
+			action: iptablev4.AppendUnique,
+			ruleSpec: []string{
+				"-o", bridgeName,
+				"-m", "conntrack",
+				"--ctstate", "RELATED,ESTABLISHED",
+				"-j", "ACCEPT",
+			},
+		},
+		{
+			table:  "filter",
+			chain:  "DOCKER-ISOLATION-STAGE-1",
+			action: iptablev4.AppendUnique,
+			ruleSpec: []string{
+				"-i", bridgeName,
+				"!", "-o", bridgeName,
+				"-j", "DOCKER-ISOLATION-STAGE-2",
+			},
+		},
+		{
+			table:  "filter",
+			chain:  "DOCKER-ISOLATION-STAGE-2",
+			action: iptablev4.AppendUnique,
+			ruleSpec: []string{
+				"-o", bridgeName,
+				"-j", "DROP",
+			},
+		},
+	}
+
+	// Loop over the rules and apply them
+	for _, rule := range rules {
+		if err := rule.action(rule.table, rule.chain, rule.ruleSpec...); err != nil {
+			log.Printf("Error applying iptables rule in table %s, chain %s: %v", rule.table, rule.chain, err)
+			return err
+		}
 	}
 
 	return nil
