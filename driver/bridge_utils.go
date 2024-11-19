@@ -62,7 +62,8 @@ func ensureBridge(network *FlannelNetwork) error {
 		return err
 	}
 
-	addr, err := netlink.ParseAddr(network.config.Subnet.String())
+	ones, _ := network.config.Subnet.Mask.Size()
+	addr, err := netlink.ParseAddr(fmt.Sprintf("%s/%s", network.config.Gateway, ones))
 	if err != nil {
 		log.Printf("Failed to parse IP address %s: %v\n", network.config.Subnet, err)
 		return err
