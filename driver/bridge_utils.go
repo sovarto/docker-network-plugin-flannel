@@ -261,13 +261,7 @@ func deleteBridge(netID string) error {
 		return err
 	}
 
-	var bridgeRule = []string{"-i", bridgeName, "-o", bridgeName, "-j", "ACCEPT"}
-
-	// Delete rule in IPv4
-	var iptablev4 = iptables.GetIptable(iptables.IPv4)
-	if err := iptablev4.ProgramRule(iptables.Filter, "FORWARD", iptables.Delete, bridgeRule); err != nil {
-		return err
-	}
+	// TODO: Delete IP tables
 
 	return nil
 }
