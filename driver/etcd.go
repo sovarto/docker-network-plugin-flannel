@@ -329,6 +329,10 @@ func (e *EtcdClient) tryReserveIP(etcd *etcdConnection, key string, mac string) 
 
 func (e *EtcdClient) tryRereserveIP(etcd *etcdConnection, key string, mac string) (bool, error) {
 
+	if mac == "" {
+		return false, errors.New("mac is empty")
+	}
+
 	reserved, err := e.tryReserveIP(etcd, key, mac)
 	if err != nil {
 		return false, err
