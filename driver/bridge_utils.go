@@ -59,6 +59,7 @@ func ensureBridge(bridgeName string) error {
 	}
 
 	if err := patchBridge(bridge); err != nil {
+		log.Printf("Error patching bridge %v: %v", bridgeName, err)
 		return err
 	}
 

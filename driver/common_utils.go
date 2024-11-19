@@ -7,19 +7,8 @@ import (
 	"crypto/md5"
 	"fmt"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"log"
-	"os"
-	"os/exec"
 	"strconv"
 	"strings"
-)
-
-var (
-	XTABLES_LOCK_PATH = "/run/xtables.lock"
-	IPTABLES_PATH     = "/sbin/iptables"
-	IP6TABLES_PATH    = "/sbin/ip6tables"
-	NFT_SUFFIX        = "-nft"
-	LEGACY_SUFFIX     = "-legacy"
 )
 
 type Config struct {
@@ -30,52 +19,6 @@ type Config struct {
 
 type BackendConfig struct {
 	Type string `json:"Type"`
-}
-
-func setIp6TablesToIpTables() error {
-	output, err := exec.Command("update-alternatives", "--set", "ip6tables", "/sbin/iptables").CombinedOutput()
-	if err != nil {
-		log.Printf("Error setting ip6tables to iptables: %s, err: %s\n", output, err)
-	}
-	return err
-}
-
-func detectIpTables() error {
-	useNft := false
-
-	stat, err := os.Stat(XTABLES_LOCK_PATH)
-	if err != nil {
-		if os.IsNotExist(err) {
-			useNft = true
-		} else {
-			return err
-		}
-	} else {
-		if stat.IsDir() {
-			useNft = true
-		}
-	}
-
-	ipTablesVersion := ""
-	ip6TablesVersion := ""
-	if useNft {
-		ipTablesVersion = IPTABLES_PATH + NFT_SUFFIX
-		ip6TablesVersion = IP6TABLES_PATH + NFT_SUFFIX
-	} else {
-		ipTablesVersion = IPTABLES_PATH + LEGACY_SUFFIX
-		ip6TablesVersion = IP6TABLES_PATH + LEGACY_SUFFIX
-	}
-
-	output, err := exec.Command("update-alternatives", "--set", "iptables", ipTablesVersion).CombinedOutput()
-	if err != nil {
-		log.Printf("Error setting iptables to %s: %s, err: %s\n", output, err)
-		return err
-	}
-	_, err = exec.Command("update-alternatives", "--set", "ip6tables", ip6TablesVersion).CombinedOutput()
-	if err != nil {
-		log.Printf("Error setting ip6tables to %s: %s, err: %s\n", ip6TablesVersion, output, err)
-	}
-	return err
 }
 
 func generateMacAddressFromID(macAddressID string) string {
