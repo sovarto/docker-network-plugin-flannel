@@ -9,6 +9,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/vishvananda/netlink v1.3.0
 	go.etcd.io/etcd/client/v3 v3.5.17
+	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f
 	golang.org/x/sys v0.27.0
 )
 

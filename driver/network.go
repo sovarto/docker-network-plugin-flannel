@@ -3,6 +3,7 @@ package driver
 import (
 	"github.com/docker/docker/libnetwork/types"
 	"github.com/docker/go-plugins-helpers/network"
+	"golang.org/x/exp/maps"
 	"log"
 	"net"
 )
@@ -20,9 +21,9 @@ func (d *FlannelDriver) CreateNetwork(req *network.CreateNetworkRequest) error {
 		if err != nil {
 			return types.UnavailableErrorf("Failed to build network mappings: %s", err)
 		}
-	}
 
-	flannelNetworkId, exists = d.networkIdToFlannelNetworkId[req.NetworkID]
+		flannelNetworkId, exists = d.networkIdToFlannelNetworkId[req.NetworkID]
+	}
 
 	if !exists {
 		log.Printf("Network %s not managed by us", req.NetworkID)
@@ -30,7 +31,7 @@ func (d *FlannelDriver) CreateNetwork(req *network.CreateNetworkRequest) error {
 	}
 
 	if _, ok := d.networks[flannelNetworkId]; ok {
-		log.Printf("We've no internal state for network %s although we should", req.NetworkID)
+		log.Printf("We've no internal state for network %s although we should. We've state for these flannel network IDs: %+v", req.NetworkID, maps.Keys(d.networks))
 		return types.InternalErrorf("We've no internal state for network %s although we should", req.NetworkID)
 	}
 

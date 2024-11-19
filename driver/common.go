@@ -10,6 +10,7 @@ import (
 	"github.com/docker/docker/api/types/events"
 	dockerCliAPI "github.com/docker/docker/client"
 	"github.com/docker/go-plugins-helpers/sdk"
+	"golang.org/x/exp/maps"
 	"log"
 	"net"
 	"os"
@@ -205,7 +206,7 @@ func (d *FlannelDriver) startFlannel(flannelNetworkId string, network *FlannelNe
 		return err
 	}
 
-	log.Println("flanneld started with PID", cmd.Process.Pid)
+	log.Printf("flanneld started with PID %s for flannel network id %s\n", cmd.Process.Pid, flannelNetworkId)
 
 	exitChan := make(chan error, 1)
 
@@ -427,7 +428,6 @@ func (d *FlannelDriver) loadNetworks() error {
 
 		d.networks[flannelNetworkId] = network
 
-		log.Printf("Loaded flanneld env file %s")
 		err = d.startFlannel(flannelNetworkId, network)
 		if err != nil {
 			log.Printf("Error starting flanneld for network %s. err: %+v\n", flannelNetworkId, err)
@@ -438,10 +438,7 @@ func (d *FlannelDriver) loadNetworks() error {
 }
 
 func getInfoAboutIPList(ips map[string]struct{}) (string, string, int) {
-	keys := make([]string, 0, len(ips))
-	for k := range ips {
-		keys = append(keys, k)
-	}
+	keys := maps.Keys(ips)
 
 	// Sort the keys numerically
 	sort.Slice(keys, func(i, j int) bool {
