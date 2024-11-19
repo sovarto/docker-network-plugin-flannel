@@ -265,9 +265,12 @@ func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPos
 	}
 
 	if addressToReuseIfPossible != "" && mac != "" {
-		reserved, _ := e.tryRereserveIP(etcd, e.reservedIpKey(&network.config, addressToReuseIfPossible), mac)
-		if reserved {
-			return addressToReuseIfPossible, nil
+		inSubnet, _ := isIpInSubnet(network.config.Subnet, addressToReuseIfPossible)
+		if inSubnet {
+			reserved, _ := e.tryRereserveIP(etcd, e.reservedIpKey(&network.config, addressToReuseIfPossible), mac)
+			if reserved {
+				return addressToReuseIfPossible, nil
+			}
 		}
 	}
 
@@ -485,6 +488,11 @@ func (e *EtcdClient) LoadReservedAddresses(config *FlannelConfig) (map[string]st
 
 	for _, kv := range resp.Kvs {
 		key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
+
+		if len(strings.Split(key, "/")) > 1 {
+			// A key with sub info, skip
+			continue
+		}
 
 		result[key] = struct{}{}
 	}

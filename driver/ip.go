@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"fmt"
 	"net"
 )
 
@@ -40,4 +41,17 @@ func isLastIP(allIPs []net.IP, reserved map[string]struct{}) bool {
 		}
 	}
 	return true
+}
+
+func isIpInSubnet(subnet string, ip string) (bool, error) {
+	_, parsedSubnet, err := net.ParseCIDR(subnet)
+	if err != nil {
+		return false, fmt.Errorf("invalid subnet: %v", err)
+	}
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return false, fmt.Errorf("invalid IP: %v", err)
+	}
+
+	return parsedSubnet.Contains(parsedIP), nil
 }
