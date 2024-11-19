@@ -26,7 +26,10 @@ func (d *FlannelDriver) RequestPool(request *ipam.RequestPoolRequest) (*ipam.Req
 		return nil, err
 	}
 
-	return &ipam.RequestPoolResponse{PoolID: poolID, Pool: network.config.Network}, nil
+	return &ipam.RequestPoolResponse{
+		PoolID: poolID,
+		Pool:   network.config.Network.String(),
+	}, nil
 }
 
 func (d *FlannelDriver) ReleasePool(request *ipam.ReleasePoolRequest) error {

@@ -43,15 +43,11 @@ func isLastIP(allIPs []net.IP, reserved map[string]struct{}) bool {
 	return true
 }
 
-func isIpInSubnet(subnet string, ip string) (bool, error) {
-	_, parsedSubnet, err := net.ParseCIDR(subnet)
-	if err != nil {
-		return false, fmt.Errorf("invalid subnet: %v", err)
-	}
+func isIpInSubnet(subnet *net.IPNet, ip string) (bool, error) {
 	parsedIP := net.ParseIP(ip)
 	if parsedIP == nil {
-		return false, fmt.Errorf("invalid IP: %v", err)
+		return false, fmt.Errorf("invalid IP")
 	}
 
-	return parsedSubnet.Contains(parsedIP), nil
+	return subnet.Contains(parsedIP), nil
 }

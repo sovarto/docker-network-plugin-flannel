@@ -7,7 +7,6 @@ import (
 	"fmt"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"log"
-	"net"
 	"strings"
 	"time"
 )
@@ -46,7 +45,7 @@ func (e *EtcdClient) networkKey(subnet string) string {
 }
 
 func (e *EtcdClient) networkHostSubnetKey(config *FlannelConfig) string {
-	return fmt.Sprintf("%s/host-subnets/%s", e.networkKey(config.Network), subnetToKey(config.Subnet))
+	return fmt.Sprintf("%s/host-subnets/%s", e.networkKey(config.Network.String()), subnetToKey(config.Subnet.String()))
 }
 
 func (e *EtcdClient) reservedIpsKey(config *FlannelConfig) string {
@@ -251,10 +250,7 @@ func (e *EtcdClient) cleanupFreedIPs(etcd *etcdConnection, network *FlannelNetwo
 }
 
 func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPossible string, mac string) (string, error) {
-	_, subnet, err := net.ParseCIDR(network.config.Subnet)
-	if err != nil {
-		return "", fmt.Errorf("invalid subnet: %v", err)
-	}
+	subnet := network.config.Subnet
 
 	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
 	defer etcd.Close()
@@ -395,7 +391,7 @@ func (e *EtcdClient) EnsureGatewayIsMarkedAsReserved(config *FlannelConfig) erro
 		return err
 	}
 
-	key := e.reservedIpKey(config, config.Gateway)
+	key := e.reservedIpKey(config, config.Gateway.String())
 
 	txn := etcd.client.Txn(etcd.ctx).
 		If(clientv3.Compare(clientv3.CreateRevision(key), "=", 0)).

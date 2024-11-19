@@ -199,13 +199,13 @@ func (d *FlannelDriver) Join(req *network.JoinRequest) (*network.JoinResponse, e
 		},
 		StaticRoutes: []*network.StaticRoute{
 			{
-				Destination: flannelNetwork.config.Subnet,
+				Destination: flannelNetwork.config.Subnet.String(),
 				RouteType:   types.CONNECTED,
 			},
 			{
-				Destination: flannelNetwork.config.Network,
+				Destination: flannelNetwork.config.Network.String(),
 				RouteType:   types.NEXTHOP,
-				NextHop:     flannelNetwork.config.Gateway,
+				NextHop:     flannelNetwork.config.Gateway.String(),
 			},
 		},
 		DisableGatewayService: true,
