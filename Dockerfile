@@ -10,21 +10,13 @@ RUN --mount=type=cache,target=/go/pkg/mod cd /src/ && go mod download
 COPY . /src/
 RUN --mount=type=cache,target=/root/.cache/go-build cd /src/ && CGO_ENABLED=0 GOOS=linux go build -o /network-plugin-flannel
 
-FROM alpine:3.18
+FROM alpine:3.19
 
-RUN apk add -U --no-cache \
-    iptables \
-    dpkg \
-    curl \
-    rsyslog
-
-RUN mkdir -p /var/lib/rsyslog
-
-WORKDIR /app
+RUN apk add -U --no-cache iptables
 
 RUN wget https://github.com/flannel-io/flannel/releases/latest/download/flanneld-amd64 && \
     mv flanneld-amd64 /flanneld && \
     chmod +x /flanneld
 
 COPY --from=builder /network-plugin-flannel /
-RUN ls /run
+
