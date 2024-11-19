@@ -19,7 +19,7 @@ func (d *FlannelDriver) CreateNetwork(req *network.CreateNetworkRequest) error {
 		return err
 	}
 
-	err = ensureBridge(flannelNetwork.bridgeName)
+	err = ensureBridge(flannelNetwork)
 	if err != nil {
 		return err
 	}
