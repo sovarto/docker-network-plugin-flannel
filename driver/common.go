@@ -437,11 +437,6 @@ func loadFlannelConfig(filename string) (FlannelConfig, error) {
 	return config, nil
 }
 
-func maskToPrefix(mask net.IPMask) int {
-	ones, _ := mask.Size()
-	return ones
-}
-
 func (d *FlannelDriver) restoreNetworks() error {
 
 	files, err := filepath.Glob("/flannel-env/*.env")
@@ -455,6 +450,14 @@ func (d *FlannelDriver) restoreNetworks() error {
 		return nil
 	}
 
+	etcd, err := newEtcdConnection(d.etcdClient.endpoints, d.etcdClient.dialTimeout)
+	defer etcd.Close()
+
+	if err != nil {
+		log.Println("Failed to connect to etcd:", err)
+		return err
+	}
+
 	for _, file := range files {
 		fmt.Println("Loading network configuration:", file)
 		config, err := loadFlannelConfig(file)
@@ -464,6 +467,14 @@ func (d *FlannelDriver) restoreNetworks() error {
 		}
 
 		flannelNetworkId := strings.TrimSuffix(strings.TrimPrefix(file, "/flannel-env/"), ".env")
+
+		_, found, err := d.etcdClient.readExistingNetworkConfig(etcd, d.etcdClient.flannelConfigKey(flannelNetworkId))
+		if err != nil {
+			log.Printf("Error while reading flanneld network configuration for flannel network with ID %s. Skipping", flannelNetworkId)
+		} else if !found {
+			log.Printf("no flanneld network configuration found for flannel network with ID %s. Skipping", flannelNetworkId)
+			continue
+		}
 
 		reservedAddresses, err := d.etcdClient.LoadReservedAddresses(&config)
 
@@ -483,20 +494,34 @@ func (d *FlannelDriver) restoreNetworks() error {
 		network.reservedAddresses = reservedAddresses
 		network.bridgeName = getBridgeName(flannelNetworkId)
 
-		d.networks[flannelNetworkId] = network
+		err = ensureBridge(network)
+		if err != nil {
+			log.Printf("Error ensuring flanneld bridge is created, skipping... err: %+v\n", err)
+			continue
+		}
 
 		err = d.startFlannel(flannelNetworkId, network)
 		if err != nil {
-			log.Printf("Error starting flanneld for network %s. err: %+v\n", flannelNetworkId, err)
+			log.Printf("Error starting flanneld for network %s, skipping. err: %+v\n", flannelNetworkId, err)
+			continue
 		}
 
-		err = ensureBridge(network)
-		if err != nil {
-			log.Printf("Error ensuring flanneld bridge is created. err: %+v\n", err)
-		}
+		d.networks[flannelNetworkId] = network
 	}
 
 	return nil
+}
+
+func (d *FlannelDriver) ensureProperSetupForAllExpectedNetworks() {
+	for networkId, flannelNetworkId := range d.networkIdToFlannelNetworkId {
+		if d.networks[flannelNetworkId] == nil {
+			fmt.Printf("Expected internal configuration for flannel network with ID %s / Docker network with ID %s. Trying to recreate it and restore functionality\n", flannelNetworkId, networkId)
+			_, err := d.ensureFlannelIsConfiguredAndRunning(flannelNetworkId)
+			if err != nil {
+				log.Fatalf("Failed to restore functionality for flannel network with ID %s / Docker network with ID %s. Stopping startup of plugin.", flannelNetworkId, networkId)
+			}
+		}
+	}
 }
 
 func getInfoAboutIPList(ips map[string]struct{}) (string, string, int) {
