@@ -11,6 +11,7 @@ import (
 	dockerCliAPI "github.com/docker/docker/client"
 	"github.com/docker/go-plugins-helpers/sdk"
 	"golang.org/x/exp/maps"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -188,6 +189,21 @@ func (d *FlannelDriver) ensureFlannelIsConfiguredAndRunning(flannelNetworkId str
 	}
 }
 
+func readPipe(pipe io.Reader, doneChan chan struct{}) {
+	scanner := bufio.NewScanner(pipe)
+	for scanner.Scan() {
+		line := scanner.Text()
+		fmt.Fprintln(os.Stdout, line) // Write to os.Stdout
+		if strings.Contains(line, "bootstrap done") {
+			close(doneChan)
+			return
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		log.Println("Error reading pipe:", err)
+	}
+}
+
 func (d *FlannelDriver) startFlannel(flannelNetworkId string, network *FlannelNetwork) error {
 	subnetFile := fmt.Sprintf("/flannel-env/%s.env", flannelNetworkId)
 	etcdPrefix := fmt.Sprintf("%s/%s", d.etcdClient.prefix, flannelNetworkId)
@@ -216,33 +232,8 @@ func (d *FlannelDriver) startFlannel(flannelNetworkId string, network *FlannelNe
 
 	bootstrapDoneChan := make(chan struct{})
 
-	// Goroutine to read stdout and look for "bootstrap done"
-	go func() {
-		scanner := bufio.NewScanner(stdoutPipe)
-		for scanner.Scan() {
-			line := scanner.Text()
-			fmt.Fprintln(os.Stdout, line) // Write to os.Stdout
-			if strings.Contains(line, "bootstrap done") {
-				close(bootstrapDoneChan)
-				return
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			log.Println("Error reading stdout:", err)
-		}
-	}()
-
-	// Goroutine to read stderr
-	go func() {
-		scanner := bufio.NewScanner(stderrPipe)
-		for scanner.Scan() {
-			line := scanner.Text()
-			fmt.Fprintln(os.Stderr, line) // Write to os.Stderr
-		}
-		if err := scanner.Err(); err != nil {
-			log.Println("Error reading stderr:", err)
-		}
-	}()
+	go readPipe(stdoutPipe, bootstrapDoneChan)
+	go readPipe(stderrPipe, bootstrapDoneChan)
 
 	// Start the process
 	if err := cmd.Start(); err != nil {
@@ -473,6 +464,7 @@ func (d *FlannelDriver) restoreNetworks() error {
 		_, found, err := d.etcdClient.readExistingNetworkConfig(etcd, d.etcdClient.flannelConfigKey(flannelNetworkId))
 		if err != nil {
 			log.Printf("Error while reading flanneld network configuration for flannel network with ID %s. Skipping", flannelNetworkId)
+			continue
 		} else if !found {
 			log.Printf("no flanneld network configuration found for flannel network with ID %s. Skipping", flannelNetworkId)
 			continue
@@ -548,12 +540,12 @@ func (d *FlannelDriver) BuildNetworkIdMappings() error {
 	for _, n := range networks {
 		id, exists := n.IPAM.Options["id"]
 		if !exists {
-			log.Printf("Network %s has no 'id' option, it's misconfigured or not for us\n", n.ID)
+			fmt.Printf("Network %s has no 'id' option, it's misconfigured or not for us\n", n.ID)
 			continue
 		}
 
 		d.networkIdToFlannelNetworkId[n.ID] = id
-		log.Printf("Network %s has flannel network id: %s\n", n.ID, id)
+		fmt.Printf("Network %s has flannel network id: %s\n", n.ID, id)
 	}
 
 	return nil
