@@ -488,11 +488,11 @@ func (d *FlannelDriver) restoreNetworks() error {
 		network.reservedAddresses = reservedAddresses
 		network.bridgeName = getBridgeName(flannelNetworkId)
 
-		//err = ensureBridge(network)
-		//if err != nil {
-		//	log.Printf("Error ensuring flanneld bridge is created, skipping... err: %+v\n", err)
-		//	continue
-		//}
+		err = ensureBridge(network)
+		if err != nil {
+			log.Printf("Error ensuring flanneld bridge is created, skipping... err: %+v\n", err)
+			continue
+		}
 
 		err = d.startFlannel(flannelNetworkId, network)
 		if err != nil {
