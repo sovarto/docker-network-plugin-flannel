@@ -21,18 +21,26 @@ func randomVethName() string {
 	return vethPrefix + strings.Replace(randomUuid.String(), "-", "", -1)[:vethLen]
 }
 
-func createVethPair(macAddress net.HardwareAddr) (string, string, error) {
+func createVethPair(macAddress string) (string, string, error) {
 	vethName1 := randomVethName()
 	vethName2 := randomVethName()
 
+	parsedMacAddress, err := net.ParseMAC(macAddress)
+
+	if err != nil {
+		return "", "", err
+	}
+
 	linkAttrs := netlink.NewLinkAttrs()
 	linkAttrs.Name = vethName1
-	linkAttrs.HardwareAddr = macAddress
+	linkAttrs.HardwareAddr = parsedMacAddress
 
-	if err := netlink.LinkAdd(&netlink.Veth{
+	err = netlink.LinkAdd(&netlink.Veth{
 		LinkAttrs: linkAttrs,
 		PeerName:  vethName2,
-	}); err != nil {
+	})
+
+	if err != nil {
 		return "", "", err
 	}
 
