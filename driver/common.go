@@ -3,6 +3,7 @@ package driver
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	dockerAPItypes "github.com/docker/docker/api/types"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -412,6 +414,9 @@ func (d *FlannelDriver) loadNetworks() error {
 
 		reservedAddresses, err := d.etcdClient.LoadReservedAddresses(&config)
 
+		smallestIP, biggestIP, count := getInfoAboutIPList(reservedAddresses)
+		log.Printf("Loaded %v IP addresses for network %s that are currently or have previously been reserved, with %s being the smallest and %s being the biggest", count, flannelNetworkId, smallestIP, biggestIP)
+
 		if err != nil {
 			log.Printf("Error loading reserved addresses for flanneld env %s. err: %+v\n", file, err)
 		}
@@ -422,6 +427,7 @@ func (d *FlannelDriver) loadNetworks() error {
 
 		d.networks[flannelNetworkId] = network
 
+		log.Printf("Loaded flanneld env file %s")
 		err = d.startFlannel(flannelNetworkId, network)
 		if err != nil {
 			log.Printf("Error starting flanneld for network %s. err: %+v\n", flannelNetworkId, err)
@@ -429,6 +435,22 @@ func (d *FlannelDriver) loadNetworks() error {
 	}
 
 	return nil
+}
+
+func getInfoAboutIPList(ips map[string]struct{}) (string, string, int) {
+	keys := make([]string, 0, len(ips))
+	for k := range ips {
+		keys = append(keys, k)
+	}
+
+	// Sort the keys numerically
+	sort.Slice(keys, func(i, j int) bool {
+		ip1 := net.ParseIP(keys[i]).To4()
+		ip2 := net.ParseIP(keys[j]).To4()
+		return binary.BigEndian.Uint32(ip1) < binary.BigEndian.Uint32(ip2)
+	})
+
+	return keys[0], keys[len(keys)-1], len(ips)
 }
 
 func (d *FlannelDriver) BuildNetworkIdMappings() error {
@@ -445,6 +467,7 @@ func (d *FlannelDriver) BuildNetworkIdMappings() error {
 		}
 
 		d.networkIdToFlannelNetworkId[n.ID] = id
+		log.Printf("Network %s has flannel network id: %s\n", n.ID, id)
 	}
 
 	return nil
