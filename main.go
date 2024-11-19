@@ -14,6 +14,16 @@ import (
 func main() {
 	fmt.Println("Starting Flannel plugin...")
 
+	fmt.Println("Command-line arguments:")
+	for idx, arg := range os.Args {
+		fmt.Printf("Arg %d: %s\n", idx, arg)
+	}
+
+	fmt.Println("Environment variables:")
+	for _, env := range os.Environ() {
+		fmt.Println(env)
+	}
+
 	etcdEndPoints := strings.Split(os.Getenv("ETCD_ENDPOINTS"), ",")
 	etcdPrefix := strings.TrimRight(os.Getenv("ETCD_PREFIX"), "/")
 	defaultFlannelOptions := strings.Split(os.Getenv("DEFAULT_FLANNEL_OPTIONS"), ",")

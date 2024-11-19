@@ -499,9 +499,14 @@ func (d *FlannelDriver) ensureProperSetupForAllExpectedNetworks() {
 	for networkId, flannelNetworkId := range d.networkIdToFlannelNetworkId {
 		if d.networks[flannelNetworkId] == nil {
 			fmt.Printf("Expected internal configuration for flannel network with ID %s / Docker network with ID %s. Trying to recreate it and restore functionality\n", flannelNetworkId, networkId)
-			_, err := d.ensureFlannelIsConfiguredAndRunning(flannelNetworkId)
+			network, err := d.ensureFlannelIsConfiguredAndRunning(flannelNetworkId)
 			if err != nil {
-				log.Fatalf("Failed to restore functionality for flannel network with ID %s / Docker network with ID %s. Stopping startup of plugin.", flannelNetworkId, networkId)
+				log.Fatalf("Failed to restore functionality for flannel network with ID %s / Docker network with ID %s during startup of flannel. Stopping startup of plugin. err: %+v", flannelNetworkId, networkId, err)
+			}
+
+			err = ensureBridge(network)
+			if err != nil {
+				log.Fatalf("Failed to restore functionality for flannel network with ID %s / Docker network with ID %s during setup of networking. Stopping startup of plugin. err: %+v", flannelNetworkId, networkId, err)
 			}
 		}
 	}
