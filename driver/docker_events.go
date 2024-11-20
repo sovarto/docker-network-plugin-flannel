@@ -13,6 +13,9 @@ import (
 func (d *FlannelDriver) handleEvent(event events.Message) error {
 	fmt.Printf("Received docker event: %+v\n", event)
 	if event.Type == events.NetworkEventType && event.Action == events.ActionCreate {
+		time.Sleep(5 * time.Second)
+		return d.handleNetworkCreated(event)
+	} else if event.Type == events.NetworkEventType && event.Action == events.ActionUpdate {
 		return d.handleNetworkCreated(event)
 	} else if event.Type == events.NetworkEventType && event.Action == events.ActionConnect {
 		return d.handleContainerConnected(event)
@@ -22,7 +25,6 @@ func (d *FlannelDriver) handleEvent(event events.Message) error {
 }
 
 func (d *FlannelDriver) handleNetworkCreated(event events.Message) error {
-	time.Sleep(5 * time.Second)
 	fmt.Printf("Received docker event: %+v\n", event)
 	networkID := event.Actor.ID
 	network, err := d.dockerClient.NetworkInspect(context.Background(), networkID, dockerAPItypes.NetworkInspectOptions{})
@@ -38,6 +40,7 @@ func (d *FlannelDriver) handleNetworkCreated(event events.Message) error {
 	}
 
 	d.networkIdToFlannelNetworkId[networkID] = id
+	fmt.Printf("Network %s has flannel network id: %s\n", n.ID, id)
 	return nil
 }
 
