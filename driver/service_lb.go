@@ -18,15 +18,11 @@ func getLoadBalancerInterfaceName(flannelNetworkId string) string {
 func ensureLoadBalancerInterface(flannelNetworkId string, network *FlannelNetwork) (netlink.Link, error) {
 	interfaceName := getLoadBalancerInterfaceName(flannelNetworkId)
 
-	link, created, err := ensureInterface(interfaceName, "dummy", network.config.MTU, true)
+	link, err := ensureInterface(interfaceName, "dummy", network.config.MTU, true)
 
 	if err != nil {
 		log.Printf("Error ensuring load balancer interface %s for flannel network ID %s exists", interfaceName, flannelNetworkId)
 		return nil, err
-	}
-
-	if created {
-		fmt.Printf("Created load balancer interface %s for network %s\n", interfaceName, flannelNetworkId)
 	}
 
 	return link, nil
