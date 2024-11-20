@@ -90,3 +90,4 @@ ip addr add $VIP/32 dev $IFACE
 ip link set $IFACE up
 ip link set $IFACE mtu 1450
 
+git add . && git commit -m "x" && git tag v0.0.$i && git push && git push origin refs/tags/v0.0.$i && i=$((i+1))
