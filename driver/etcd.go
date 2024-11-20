@@ -540,7 +540,7 @@ func (e *EtcdClient) LoadReservedAddresses(config *FlannelConfig) (map[string]st
 	return result, nil
 }
 
-func (e *EtcdClient) EnsureServiceRegistered(network *FlannelNetwork, serviceId, serviceName string) (bool, error) {
+func (e *EtcdClient) RegisterContainer(network *FlannelNetwork, serviceId, serviceName, containerId, containerName, ip string) (bool, error) {
 	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
 	defer etcd.Close()
 	if err != nil {
@@ -548,31 +548,21 @@ func (e *EtcdClient) EnsureServiceRegistered(network *FlannelNetwork, serviceId,
 		return false, err
 	}
 
-	key := e.serviceKey(network.config.Network.String(), serviceId)
-	txn := etcd.client.Txn(etcd.ctx).Then(clientv3.OpPut(key, serviceName))
-
-	txnResp, err := txn.Commit()
-	if err != nil {
-		return false, fmt.Errorf("etcd transaction failed: %v", err)
-	}
-
-	return txnResp.Succeeded, nil
-}
-
-func (e *EtcdClient) EnsureContainerRegistered(network *FlannelNetwork, containerId, containerName, ip string) (bool, error) {
-	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
-	defer etcd.Close()
-	if err != nil {
-		log.Println("Failed to connect to etcd:", err)
-		return false, err
-	}
-
-	txn := etcd.client.Txn(etcd.ctx).Then(
+	ops := []clientv3.Op{
 		clientv3.OpPut(e.containerByIdKey(network.config.Network.String(), containerId), containerId),
 		clientv3.OpPut(e.containerByNameKey(network.config.Network.String(), containerName), containerName),
 		clientv3.OpPut(e.containerIpByIdKey(network.config.Network.String(), containerId), ip),
 		clientv3.OpPut(e.containerIpByNameKey(network.config.Network.String(), containerName), ip),
-	)
+	}
+
+	if serviceName != "" && serviceId != "" {
+		ops = append(ops,
+			clientv3.OpPut(e.serviceKey(network.config.Network.String(), serviceId), serviceName),
+			clientv3.OpPut(e.serviceInstanceKey(network.config.Network.String(), serviceId, ip), serviceName),
+		)
+	}
+
+	txn := etcd.client.Txn(etcd.ctx).Then(ops...)
 
 	txnResp, err := txn.Commit()
 	if err != nil {
