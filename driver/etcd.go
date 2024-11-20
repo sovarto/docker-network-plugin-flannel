@@ -346,9 +346,20 @@ func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPos
 
 func (e *EtcdClient) reserveAnyIP(network *FlannelNetwork, etcd *etcdConnection, mac string, random bool) (string, error) {
 	for {
+		network.Mutex.Lock()
 		freeAddresses := maps.Keys(network.freeAddresses)
 		if len(freeAddresses) == 0 {
-			return "", errors.New("no available IP addresses to reserve")
+			// Just to be sure, we will try to cleanup any freed IPs
+			if err := e.cleanupFreedIPs(etcd, network); err != nil {
+				network.Mutex.Unlock()
+				return "", fmt.Errorf("failed to cleanup freed IPs: %v", err)
+			}
+
+			freeAddresses = maps.Keys(network.freeAddresses)
+
+			if len(freeAddresses) == 0 {
+				return "", errors.New("no available IP addresses to reserve")
+			}
 		}
 
 		var ipStr string
@@ -358,8 +369,6 @@ func (e *EtcdClient) reserveAnyIP(network *FlannelNetwork, etcd *etcdConnection,
 		} else {
 			ipStr = freeAddresses[0]
 		}
-
-		network.Mutex.Lock()
 
 		if _, reserved := network.reservedAddresses[ipStr]; !reserved {
 			reserved, err := e.tryReserveIP(etcd, e.reservedIpKey(&network.config, ipStr), mac, "reserved")

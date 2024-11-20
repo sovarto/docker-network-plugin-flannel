@@ -7,6 +7,7 @@ import (
 	"github.com/docker/docker/api/types/events"
 	"log"
 	"strings"
+	"time"
 )
 
 func (d *FlannelDriver) handleEvent(event events.Message) error {
@@ -21,6 +22,7 @@ func (d *FlannelDriver) handleEvent(event events.Message) error {
 }
 
 func (d *FlannelDriver) handleNetworkCreated(event events.Message) error {
+	time.Sleep(5 * time.Second)
 	fmt.Printf("Received docker event: %+v\n", event)
 	networkID := event.Actor.ID
 	network, err := d.dockerClient.NetworkInspect(context.Background(), networkID, dockerAPItypes.NetworkInspectOptions{})
