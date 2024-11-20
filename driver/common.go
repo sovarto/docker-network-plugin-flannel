@@ -453,7 +453,7 @@ func (d *FlannelDriver) restoreNetworks() error {
 
 	files, err := filepath.Glob("/flannel-env/*.env")
 	if err != nil {
-		fmt.Printf("Error loading networks: %v", err)
+		fmt.Printf("Error loading networks: %v\n", err)
 		return err
 	}
 
@@ -498,7 +498,7 @@ func (d *FlannelDriver) restoreNetworks() error {
 				fmt.Println("No reserved addresses loaded")
 			} else {
 				smallestIP, biggestIP, count := getInfoAboutIPList(maps.Keys(reservedAddresses))
-				fmt.Printf("Loaded %v IP addresses for network %s that are currently or have previously been reserved, with %s being the smallest and %s being the biggest", count, flannelNetworkId, smallestIP, biggestIP)
+				fmt.Printf("Loaded %v IP addresses for network %s that are currently or have previously been reserved, with %s being the smallest and %s being the biggest\n", count, flannelNetworkId, smallestIP, biggestIP)
 			}
 		}
 

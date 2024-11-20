@@ -695,12 +695,12 @@ func (e *EtcdClient) EnsureFwmark(network *FlannelNetwork, serviceID string) (ui
 					clientv3.OpPut(allFwmarksKey, serviceID),
 				)
 			if !txnResp.Succeeded {
-				fmt.Printf("Race condition, another thread registered this fwmark in the meantime")
+				fmt.Printf("Race condition, another thread registered this fwmark in the meantime\n")
 			}
 			return 0, fmt.Errorf("can't store fwmark for service %s", serviceID)
 		}
 
-		fmt.Printf("Created new fwmark %d for service %s", fwmark, serviceID)
+		fmt.Printf("Created new fwmark %d for service %s\n", fwmark, serviceID)
 		return fwmark, nil
 	}
 }
@@ -779,7 +779,7 @@ func (e *EtcdClient) EnsureServiceVip(network *FlannelNetwork, serviceID string)
 	}
 
 	// TODO: Switch to network.ID once it exists
-	fmt.Printf("Reserved new VIP %s for service %s in network %s", vip, serviceID, network.bridgeName)
+	fmt.Printf("Reserved new VIP %s for service %s in network %s\n", vip, serviceID, network.bridgeName)
 
 	return vip, nil
 }

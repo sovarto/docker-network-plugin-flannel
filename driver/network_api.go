@@ -27,7 +27,7 @@ const (
 
 func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 	h.HandleFunc(capabilitiesPath, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("[Network] Received GetCapabilities req")
+		fmt.Printf("[Network] Received GetCapabilities req\n")
 
 		res := &network.CapabilitiesResponse{
 			Scope:             "global",

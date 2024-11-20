@@ -43,7 +43,7 @@ func getInterfaceName(prefix string, separator string, flannelNetworkId string) 
 func replaceIPsOfInterface(link netlink.Link, ips []string) error {
 	parsedIPs := []*netlink.Addr{}
 	for _, ip := range ips {
-		addr, err := netlink.ParseAddr(ip)
+		addr, err := netlink.ParseAddr(fmt.Sprintf("%s/32", ip))
 		if err != nil {
 			log.Printf("Failed to parse IP address %s: %v\n", ip, err)
 			return err
@@ -84,7 +84,7 @@ func replaceIPsOfInterface(link netlink.Link, ips []string) error {
 }
 
 func ensureInterfaceListensOnAddress(link netlink.Link, ip string) error {
-	addr, err := netlink.ParseAddr(ip)
+	addr, err := netlink.ParseAddr(fmt.Sprintf("%s/32", ip))
 	if err != nil {
 		log.Printf("Failed to parse IP address %s: %v\n", ip, err)
 		return err

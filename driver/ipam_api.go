@@ -18,13 +18,13 @@ const (
 
 func initIpamMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 	h.HandleFunc(ipamCapabilitiesPath, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("[IPAM] Received GetCapabilities")
+		fmt.Printf("[IPAM] Received GetCapabilities\n")
 		res := &ipam.CapabilitiesResponse{RequiresMACAddress: true}
 		fmt.Printf("[IPAM] GetCapabilities response: %+v\n", res)
 		sdk.EncodeResponse(w, res, false)
 	})
 	h.HandleFunc(addressSpacesPath, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("[IPAM] Received GetDefaultAddressSpaces")
+		fmt.Printf("[IPAM] Received GetDefaultAddressSpaces\n")
 		res := &ipam.AddressSpacesResponse{
 			LocalDefaultAddressSpace:  "FlannelLocal",
 			GlobalDefaultAddressSpace: "FlannelGlobal",

@@ -48,7 +48,7 @@ func (d *FlannelDriver) handleContainerConnected(event events.Message) error {
 	flannelNetworkId := d.networkIdToFlannelNetworkId[networkID]
 	flannelNetwork := d.networks[flannelNetworkId]
 	if flannelNetwork == nil {
-		fmt.Printf("Skipping registration of docker container %s for network %s, because we don't know about the network, so it's not one of ours.", containerID, networkID)
+		fmt.Printf("Skipping registration of docker container %s for network %s, because we don't know about the network, so it's not one of ours.\n", containerID, networkID)
 		return nil
 	}
 
@@ -64,7 +64,7 @@ func (d *FlannelDriver) handleContainerConnected(event events.Message) error {
 	}
 
 	if endpoint == nil {
-		fmt.Printf("Skipping registration of docker container %s for network %s, because the container has no endpoint for the network. This shouldn't happen. Race Condition?", containerID, networkID)
+		fmt.Printf("Skipping registration of docker container %s for network %s, because the container has no endpoint for the network. This shouldn't happen. Race Condition?\n", containerID, networkID)
 		return nil
 	}
 

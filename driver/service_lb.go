@@ -72,7 +72,7 @@ func ensureServiceLoadBalancerFrontend(fwmark uint32, vip string) error {
 
 	exists := handle.IsServicePresent(svc)
 	if !exists {
-		fmt.Printf("IPVS service for fwmark %d and IP %s didn't exist. Creating...", fwmark, vip)
+		fmt.Printf("IPVS service for fwmark %d and IP %s didn't exist. Creating...\n", fwmark, vip)
 		err = handle.NewService(svc)
 		if err != nil {
 			return fmt.Errorf("failed to create IPVS service: %v", err)
