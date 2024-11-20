@@ -62,7 +62,7 @@ func ensureServiceLoadBalancerFrontend(fwmark uint32, vip string) error {
 
 	vipIP := net.ParseIP(vip)
 	if vipIP == nil {
-		return fmt.Errorf("invalid VIP IP address: %s", vip)
+		return fmt.Errorf("invalid VIP address: %s", vip)
 	}
 
 	svc := &ipvs.Service{
@@ -149,7 +149,7 @@ func ensureServiceLoadBalancerFrontend(fwmark uint32, vip string) error {
 }
 
 func (d *FlannelDriver) EnsureServiceLoadBalancerBackend(network *FlannelNetwork, serviceID, ip string) error {
-	fwmark, _, err := d.etcdClient.EnsureFwmark(network, serviceID)
+	fwmark, err := d.etcdClient.EnsureFwmark(network, serviceID)
 	if err != nil {
 		return err
 	}
