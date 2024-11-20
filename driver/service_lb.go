@@ -34,18 +34,12 @@ func (d *FlannelDriver) EnsureLoadBalancerConfigurationForService(flannelNetwork
 		return err
 	}
 
-	fwmark, isNew, err := d.etcdClient.EnsureFwmark(network, serviceId)
+	fwmark, err := d.etcdClient.EnsureFwmark(network, serviceId)
 	if err != nil {
 		return err
 	}
-	if isNew {
-		fmt.Printf("Created new fwmark %d for service %s in network %s", fwmark, serviceId, flannelNetworkId)
-	}
 
-	vip, isNew, err := d.etcdClient.EnsureServiceVip(network, serviceId)
-	if isNew {
-		fmt.Printf("Reserved new VIP %d for service %s in network %s", vip, serviceId, flannelNetworkId)
-	}
+	vip, err := d.etcdClient.EnsureServiceVip(network, serviceId)
 
 	err = ensureInterfaceListensOnAddress(link, vip)
 	if err != nil {
