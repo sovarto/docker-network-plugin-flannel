@@ -33,7 +33,7 @@ docker plugin inspect $ALIAS --format "{{.ID}}"
 docker plugin disable --force flannel:dev || true && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev
 
 docker network rm fweb
-docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=flannel-id=$(uuidgen) f2
+docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=flannel-id=$(uuidgen) f3
 
 docker service update --network-rm fweb whoami
 docker service update --network-add fweb whoami
@@ -90,4 +90,4 @@ ip addr add $VIP/32 dev $IFACE
 ip link set $IFACE up
 ip link set $IFACE mtu 1450
 
-git add . && git commit -m "x" && git tag v0.0.$i && git push && git push origin refs/tags/v0.0.$i && i=$((i+1))
+git add . || true  && git commit -m "x" || true && git tag v0.0.$i && git push && git push origin refs/tags/v0.0.$i && i=$((i+1))

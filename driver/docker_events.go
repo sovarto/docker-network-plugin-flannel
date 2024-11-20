@@ -21,6 +21,7 @@ func (d *FlannelDriver) handleEvent(event events.Message) error {
 }
 
 func (d *FlannelDriver) handleNetworkCreated(event events.Message) error {
+	fmt.Printf("Received docker event: %+v\n", event)
 	networkID := event.Actor.ID
 	network, err := d.dockerClient.NetworkInspect(context.Background(), networkID, dockerAPItypes.NetworkInspectOptions{})
 	if err != nil {
@@ -29,7 +30,8 @@ func (d *FlannelDriver) handleNetworkCreated(event events.Message) error {
 	}
 	id, exists := network.IPAM.Options["flannel-id"]
 	if !exists {
-		log.Printf("Network %s has no 'id' option, it's misconfigured or not for us\n", networkID)
+		log.Printf("Network %s has no 'flannel-id' option, it's misconfigured or not for us.\n", networkID)
+		log.Printf("Available options: %+v\n", network.IPAM.Options)
 		return nil
 	}
 

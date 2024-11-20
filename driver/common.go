@@ -560,7 +560,7 @@ func (d *FlannelDriver) BuildNetworkIdMappings() error {
 	for _, n := range networks {
 		id, exists := n.IPAM.Options["flannel-id"]
 		if !exists {
-			fmt.Printf("Network %s has no 'id' option, it's misconfigured or not for us\n", n.ID)
+			fmt.Printf("Network %s has no 'flannel-id' option, it's misconfigured or not for us\n", n.ID)
 			continue
 		}
 
