@@ -107,7 +107,7 @@ func (e *EtcdClient) serviceVipsKey(networkSubnet string, serviceId string) stri
 }
 
 func (e *EtcdClient) serviceVipKey(config *FlannelConfig, serviceId string) string {
-	return fmt.Sprintf("%s/%s", e.serviceFwmarksKey(config.Network.String(), serviceId), subnetToKey(config.Subnet.String()))
+	return fmt.Sprintf("%s/%s", e.serviceVipsKey(config.Network.String(), serviceId), subnetToKey(config.Subnet.String()))
 }
 
 func (e *EtcdClient) networkHostSubnetKey(config *FlannelConfig) string {
