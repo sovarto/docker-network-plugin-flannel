@@ -85,6 +85,7 @@ func NewFlannelNetwork(flannelNetworkId string) *FlannelNetwork {
 		endpoints:         make(map[string]*FlannelEndpoint),
 		reservedAddresses: make(map[string]struct{}),
 		freeAddresses:     make(map[string]struct{}),
+		allAddresses:      make(map[string]struct{}),
 		bridgeName:        getBridgeName(flannelNetworkId),
 	}
 }
