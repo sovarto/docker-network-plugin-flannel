@@ -40,7 +40,7 @@ func (d *FlannelDriver) handleNetworkCreated(event events.Message) error {
 	}
 
 	d.networkIdToFlannelNetworkId[networkID] = id
-	fmt.Printf("Network %s has flannel network id: %s\n", n.ID, id)
+	fmt.Printf("Network %s has flannel network id: %s\n", networkID, id)
 	return nil
 }
 
