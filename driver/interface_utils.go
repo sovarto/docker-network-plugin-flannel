@@ -100,10 +100,10 @@ func addressesEqual(a1, a2 *netlink.Addr) bool {
 	return a1.IPNet.String() == a2.IPNet.String()
 }
 
-func ensureInterface(name string, interfaceType string, mtu int, up bool) (netlink.Link, error) {
+func ensureInterface(name string, interfaceType string, mtu int, up bool) (netlink.Link, bool, error) {
 	exists, err := interfaceExists(name, interfaceType)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	if !exists {
@@ -123,20 +123,20 @@ func ensureInterface(name string, interfaceType string, mtu int, up bool) (netli
 			link = &netlink.Bridge{LinkAttrs: linkAttrs}
 			break
 		default:
-			return nil, fmt.Errorf("unknown interface type: %s", interfaceType)
+			return nil, false, fmt.Errorf("unknown interface type: %s", interfaceType)
 		}
 		err := netlink.LinkAdd(link)
 		if err != nil {
 			log.Printf("Error adding %s interface %s: %v", interfaceType, name, err)
-			return nil, err
+			return nil, false, err
 		}
 	}
 
 	link, err := netlink.LinkByName(name)
 	if err != nil {
 		log.Printf("Error getting %s interface %s by name: %v", interfaceType, name, err)
-		return nil, err
+		return nil, false, err
 	}
 
-	return link, nil
+	return link, !exists, nil
 }

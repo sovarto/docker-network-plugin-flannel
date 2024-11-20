@@ -18,11 +18,15 @@ func getLoadBalancerInterfaceName(flannelNetworkId string) string {
 func ensureLoadBalancerInterface(flannelNetworkId string, network *FlannelNetwork) (netlink.Link, error) {
 	interfaceName := getLoadBalancerInterfaceName(flannelNetworkId)
 
-	link, err := ensureInterface(interfaceName, "dummy", network.config.MTU, true)
+	link, created, err := ensureInterface(interfaceName, "dummy", network.config.MTU, true)
 
 	if err != nil {
 		log.Printf("Error ensuring load balancer interface %s for flannel network ID %s exists", interfaceName, flannelNetworkId)
 		return nil, err
+	}
+
+	if created {
+		fmt.Printf("Created load balancer interface %s for network %s\n", interfaceName, flannelNetworkId)
 	}
 
 	return link, nil
@@ -34,12 +38,18 @@ func (d *FlannelDriver) EnsureLoadBalancerConfigurationForService(flannelNetwork
 		return err
 	}
 
-	fwmark, err := d.etcdClient.EnsureFwmark(network, serviceId)
+	fwmark, isNew, err := d.etcdClient.EnsureFwmark(network, serviceId)
 	if err != nil {
 		return err
 	}
+	if isNew {
+		fmt.Printf("Created new fwmark %d for service %s in network %s", fwmark, serviceId, flannelNetworkId)
+	}
 
-	vip, err := d.etcdClient.EnsureServiceVip(network, serviceId)
+	vip, isNew, err := d.etcdClient.EnsureServiceVip(network, serviceId)
+	if isNew {
+		fmt.Printf("Reserved new VIP %d for service %s in network %s", vip, serviceId, flannelNetworkId)
+	}
 
 	err = ensureInterfaceListensOnAddress(link, vip)
 	if err != nil {
@@ -72,6 +82,7 @@ func ensureServiceLoadBalancerFrontend(fwmark uint32, vip string) error {
 
 	exists := handle.IsServicePresent(svc)
 	if !exists {
+		fmt.Printf("IPVS service for fwmark %d and IP %s didn't exist. Creating...", fwmark, vip)
 		err = handle.NewService(svc)
 		if err != nil {
 			return fmt.Errorf("failed to create IPVS service: %v", err)
@@ -148,7 +159,7 @@ func ensureServiceLoadBalancerFrontend(fwmark uint32, vip string) error {
 }
 
 func (d *FlannelDriver) EnsureServiceLoadBalancerBackend(network *FlannelNetwork, serviceID, ip string) error {
-	fwmark, err := d.etcdClient.EnsureFwmark(network, serviceID)
+	fwmark, _, err := d.etcdClient.EnsureFwmark(network, serviceID)
 	if err != nil {
 		return err
 	}

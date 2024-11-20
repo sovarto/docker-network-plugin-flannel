@@ -622,18 +622,18 @@ func (e *EtcdClient) RegisterContainer(network *FlannelNetwork, serviceId, servi
 	return txnResp.Succeeded, nil
 }
 
-func (e *EtcdClient) EnsureFwmark(network *FlannelNetwork, serviceID string) (uint32, error) {
+func (e *EtcdClient) EnsureFwmark(network *FlannelNetwork, serviceID string) (uint32, bool, error) {
 	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
 	defer etcd.Close()
 	if err != nil {
 		log.Println("Failed to connect to etcd:", err)
-		return 0, err
+		return 0, false, err
 	}
 
 	key := e.serviceFwmarkKey(&network.config, serviceID)
 	resp, err := etcd.client.Get(etcd.ctx, key)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 
 	if len(resp.Kvs) > 0 {
@@ -642,7 +642,7 @@ func (e *EtcdClient) EnsureFwmark(network *FlannelNetwork, serviceID string) (ui
 		if err != nil {
 			log.Printf("Failed to parse existing fwmark %s, discarding: %v", existingFwmark, err)
 		} else {
-			return uint32(parsedFwmark), nil
+			return uint32(parsedFwmark), false, nil
 		}
 	}
 
@@ -652,7 +652,7 @@ func (e *EtcdClient) EnsureFwmark(network *FlannelNetwork, serviceID string) (ui
 
 		resp, err = etcd.client.Get(etcd.ctx, prefix, clientv3.WithPrefix())
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
 
 		existingFwmarks := []uint32{}
@@ -669,7 +669,7 @@ func (e *EtcdClient) EnsureFwmark(network *FlannelNetwork, serviceID string) (ui
 		// TODO: move everything into namespace so that only our fwmarks exist
 		fwmark, err := GenerateFWMARK(serviceID, existingFwmarks)
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
 
 		fwmarkStr := strconv.FormatUint(uint64(fwmark), 10)
@@ -684,7 +684,7 @@ func (e *EtcdClient) EnsureFwmark(network *FlannelNetwork, serviceID string) (ui
 
 		txnResp, err := txn.Commit()
 		if err != nil {
-			return 0, fmt.Errorf("etcd transaction failed: %v", err)
+			return 0, false, fmt.Errorf("etcd transaction failed: %v", err)
 		}
 
 		if !txnResp.Succeeded {
@@ -697,9 +697,9 @@ func (e *EtcdClient) EnsureFwmark(network *FlannelNetwork, serviceID string) (ui
 			if !txnResp.Succeeded {
 				fmt.Printf("Race condition, another thread registered this fwmark in the meantime")
 			}
-			return 0, fmt.Errorf("can't store fwmark for service %s", serviceID)
+			return 0, false, fmt.Errorf("can't store fwmark for service %s", serviceID)
 		}
-		return fwmark, nil
+		return fwmark, true, nil
 	}
 }
 
@@ -752,29 +752,29 @@ func generateRandomSuffix(length int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func (e *EtcdClient) EnsureServiceVip(network *FlannelNetwork, serviceID string) (string, error) {
+func (e *EtcdClient) EnsureServiceVip(network *FlannelNetwork, serviceID string) (string, bool, error) {
 	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
 	defer etcd.Close()
 	if err != nil {
 		log.Println("Failed to connect to etcd:", err)
-		return "", err
+		return "", false, err
 	}
 
 	key := e.serviceVipKey(&network.config, serviceID)
 	resp, err := etcd.client.Get(etcd.ctx, key)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if len(resp.Kvs) > 0 {
 		existingVip := string(resp.Kvs[0].Value)
-		return existingVip, nil
+		return existingVip, false, nil
 	}
 
 	vip, err := e.reserveAnyIP(network, etcd, "", true)
 	if err != nil {
 		log.Printf("Failed to reserve VIP for service %s: %+v\n", serviceID, err)
-		return "", err
+		return "", false, err
 	}
 
-	return vip, nil
+	return vip, true, nil
 }
