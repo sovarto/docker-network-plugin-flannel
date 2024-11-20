@@ -754,32 +754,32 @@ func generateRandomSuffix(length int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func (e *EtcdClient) EnsureServiceVip(network *FlannelNetwork, serviceID string) (string, bool, error) {
+func (e *EtcdClient) EnsureServiceVip(network *FlannelNetwork, serviceID string) (string, error) {
 	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
 	defer etcd.Close()
 	if err != nil {
 		log.Println("Failed to connect to etcd:", err)
-		return "", false, err
+		return "", err
 	}
 
 	key := e.serviceVipKey(&network.config, serviceID)
 	resp, err := etcd.client.Get(etcd.ctx, key)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if len(resp.Kvs) > 0 {
 		existingVip := string(resp.Kvs[0].Value)
-		return existingVip, false, nil
+		return existingVip, nil
 	}
 
 	vip, err := e.reserveAnyIP(network, etcd, "", true)
 	if err != nil {
 		log.Printf("Failed to reserve VIP for service %s: %+v\n", serviceID, err)
-		return "", false, err
+		return "", err
 	}
 
 	// TODO: Switch to network.ID once it exists
 	fmt.Printf("Reserved new VIP %s for service %s in network %s", vip, serviceID, network.bridgeName)
 
-	return vip, true, nil
+	return vip, nil
 }
