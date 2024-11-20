@@ -32,7 +32,7 @@ func interfaceExists(name string, interfaceType string) (bool, error) {
 	return true, fmt.Errorf("existing interface %s is not a %s", interfaceType, name)
 }
 
-func getInterfaceName(prefix string, flannelNetworkId string, separator string) string {
+func getInterfaceName(prefix string, separator string, flannelNetworkId string) string {
 	name := prefix + separator + flannelNetworkId
 	if len(name) > maxInterfaceNameLength {
 		name = name[:maxInterfaceNameLength]

@@ -46,7 +46,7 @@ func ensureBridge(network *FlannelNetwork) error {
 		Protocol:  unix.RTPROT_KERNEL,
 	}
 
-	if err := netlink.RouteReplace(route); err != nil {
+	if err := netlink.RouteChange(route); err != nil {
 		log.Printf("Failed to add route: %+v, err:%+v\n", route, err)
 		return err
 	}
@@ -69,7 +69,6 @@ func setupIptables(network *FlannelNetwork) error {
 		return err
 	}
 
-	// Define iptables rules in an array
 	rules := []struct {
 		table    string
 		chain    string
@@ -234,8 +233,4 @@ func attachInterfaceToBridge(bridgeName string, interfaceName string) error {
 	}
 
 	return nil
-}
-
-func bridgeInterfaceExists(name string) (bool, error) {
-	return interfaceExists(name, "bridge")
 }
