@@ -56,8 +56,28 @@ func (e *EtcdClient) containersKey(networkSubnet string) string {
 	return fmt.Sprintf("%s/containers", e.networkKey(networkSubnet))
 }
 
-func (e *EtcdClient) containerKey(networkSubnet string, containerName string) string {
-	return fmt.Sprintf("%s/%s", e.containersKey(networkSubnet), containerName)
+func (e *EtcdClient) containersByIdKey(networkSubnet string) string {
+	return fmt.Sprintf("%s/containers/by-id", e.containersKey(networkSubnet))
+}
+
+func (e *EtcdClient) containersByNameKey(networkSubnet string) string {
+	return fmt.Sprintf("%s/containers/by-name", e.containersKey(networkSubnet))
+}
+
+func (e *EtcdClient) containerByNameKey(networkSubnet string, containerName string) string {
+	return fmt.Sprintf("%s/%s", e.containersByNameKey(networkSubnet), containerName)
+}
+
+func (e *EtcdClient) containerByIdKey(networkSubnet string, containerId string) string {
+	return fmt.Sprintf("%s/%s", e.containersByIdKey(networkSubnet), containerId)
+}
+
+func (e *EtcdClient) containerIpByNameKey(networkSubnet string, containerName string) string {
+	return fmt.Sprintf("%s/ip", e.containerByNameKey(networkSubnet, containerName))
+}
+
+func (e *EtcdClient) containerIpByIdKey(networkSubnet string, containerId string) string {
+	return fmt.Sprintf("%s/ip", e.containerByIdKey(networkSubnet, containerId))
 }
 
 func (e *EtcdClient) serviceInstancesKey(networkSubnet string, serviceId string) string {
@@ -529,9 +549,30 @@ func (e *EtcdClient) EnsureServiceRegistered(network *FlannelNetwork, serviceId,
 	}
 
 	key := e.serviceKey(network.config.Network.String(), serviceId)
-	txn := etcd.client.Txn(etcd.ctx).
-		If(clientv3.Compare(clientv3.CreateRevision(key), "=", 0)).
-		Then(clientv3.OpPut(key, serviceName))
+	txn := etcd.client.Txn(etcd.ctx).Then(clientv3.OpPut(key, serviceName))
+
+	txnResp, err := txn.Commit()
+	if err != nil {
+		return false, fmt.Errorf("etcd transaction failed: %v", err)
+	}
+
+	return txnResp.Succeeded, nil
+}
+
+func (e *EtcdClient) EnsureContainerRegistered(network *FlannelNetwork, containerId, containerName, ip string) (bool, error) {
+	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
+	defer etcd.Close()
+	if err != nil {
+		log.Println("Failed to connect to etcd:", err)
+		return false, err
+	}
+
+	txn := etcd.client.Txn(etcd.ctx).Then(
+		clientv3.OpPut(e.containerByIdKey(network.config.Network.String(), containerId), containerId),
+		clientv3.OpPut(e.containerByNameKey(network.config.Network.String(), containerName), containerName),
+		clientv3.OpPut(e.containerIpByIdKey(network.config.Network.String(), containerId), ip),
+		clientv3.OpPut(e.containerIpByNameKey(network.config.Network.String(), containerName), ip),
+	)
 
 	txnResp, err := txn.Commit()
 	if err != nil {

@@ -33,7 +33,7 @@ docker plugin inspect $ALIAS --format "{{.ID}}"
 docker plugin disable --force flannel:dev || true && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev
 
 docker network rm fweb
-docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=id=$(uuidgen) fweb
+docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=id=$(uuidgen) f2
 
 docker service update --network-rm fweb whoami
 docker service update --network-add fweb whoami

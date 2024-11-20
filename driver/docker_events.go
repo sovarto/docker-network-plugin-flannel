@@ -10,10 +10,12 @@ import (
 
 func (d *FlannelDriver) handleEvent(event events.Message) error {
 	fmt.Printf("Received docker event: %+v\n", event)
-	if event.Type == events.NetworkEventType && event.Action == "create" {
+	if event.Type == events.NetworkEventType && event.Action == events.ActionCreate {
 		return d.handleNetworkCreated(event)
-	} else if event.Type == events.ServiceEventType && event.Action == "create" {
+	} else if event.Type == events.ServiceEventType && event.Action == events.ActionCreate {
 		return d.handleServiceCreated(event)
+	} else if event.Type == events.NetworkEventType && event.Action = events.ActionConnect {
+		return d.handleContainerConnected(event)
 	}
 
 	return nil
@@ -54,6 +56,41 @@ func (d *FlannelDriver) handleServiceCreated(event events.Message) error {
 		if err != nil {
 			log.Printf("Error ensuring docker service %s is registered in our data for docker network %s. This is bad, but skipping, so we can try to register for the other networks the service belongs to...: %+v\n", serviceID, network.Target, err)
 		}
+	}
+
+	return nil
+}
+
+func (d *FlannelDriver) handleContainerConnected(event events.Message) error {
+	networkID := event.Actor.ID
+	networkName := event.Actor.Attributes["name"]
+	containerID := event.Actor.Attributes["container"]
+
+	flannelNetwork := d.networks[d.networkIdToFlannelNetworkId[networkID]]
+	if flannelNetwork == nil {
+		fmt.Printf("Skipping registration of docker container %s for network %s, because we don't know about the network, so it's not one of ours.", containerID, networkID)
+		return nil
+	}
+
+	container, err := d.dockerClient.ContainerInspect(context.Background(), containerID)
+	if err != nil {
+		log.Printf("Error inspecting docker container %s: %+v\n", containerID, err)
+		return err
+	}
+
+	endpoint := container.NetworkSettings.Networks[networkName]
+	if endpoint == nil {
+		endpoint = container.NetworkSettings.Networks[networkID]
+	}
+
+	if endpoint == nil {
+		fmt.Printf("Skipping registration of docker container %s for network %s, because the container has no endpoint for the network. This shouldn't happen. Race Condition?", containerID, networkID)
+		return nil
+	}
+
+	_, err = d.etcdClient.EnsureContainerRegistered(flannelNetwork, containerID, container.Name, endpoint.IPAddress)
+	if err != nil {
+		log.Printf("Error ensuring docker service %s is registered in our data for docker network %s. This is bad, but skipping, so we can try to register for the other networks the service belongs to...: %+v\n", serviceID, network.Target, err)
 	}
 
 	return nil
