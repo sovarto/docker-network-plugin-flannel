@@ -69,7 +69,7 @@ func (d *FlannelDriver) handleContainerConnected(event events.Message) error {
 
 	_, err = d.etcdClient.RegisterContainer(flannelNetwork, serviceId, serviceName, containerID, container.Name, endpoint.IPAddress)
 	if err != nil {
-		log.Printf("Error ensuring docker service %s is registered in our data for docker network %s. This is bad, but skipping, so we can try to register for the other networks the service belongs to...: %+v\n", serviceID, network.Target, err)
+		log.Printf("Error ensuring docker container %s is registered in our data for docker network %s: %+v\n", containerID, networkID, err)
 	}
 
 	return nil
