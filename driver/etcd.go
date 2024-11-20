@@ -215,7 +215,7 @@ func (e *EtcdClient) EnsureFlannelConfig(flannelNetworkId string) (string, error
 		}
 
 		if resp.Succeeded {
-			log.Printf("Allocated subnet for network %s: %s\n", flannelNetworkId, subnetCIDR)
+			fmt.Printf("Allocated subnet for network %s: %s\n", flannelNetworkId, subnetCIDR)
 			if i == len(e.availableSubnets)-1 {
 				log.Println("All subnets have been allocated. Cleaning up the ones that have since been released.")
 				err = e.cleanupEmptyNetworkKeys(etcd)
@@ -225,10 +225,9 @@ func (e *EtcdClient) EnsureFlannelConfig(flannelNetworkId string) (string, error
 			}
 			return subnetCIDR, nil
 		} else {
-			log.Println("Config was created by another process.")
-
 			subnet, found, err := e.readExistingNetworkConfig(etcd, networkConfigKey)
 			if found {
+				fmt.Println("Config was created by another process. Reusing it.")
 				if err != nil {
 					return "", err
 				}
