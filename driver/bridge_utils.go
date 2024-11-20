@@ -4,80 +4,33 @@ package driver
 
 import (
 	"fmt"
-	"log"
-	"strings"
-
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/docker/docker/libnetwork/ns"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 	"golang.org/x/sys/unix"
+	"log"
 )
 
-const (
-	bridgePrefix = "fl"
-	bridgeLen    = 12
-)
-
-func getBridgeName(netID string) string {
-	bridgeSuffix := netID
-	if len(bridgeSuffix) > bridgeLen {
-		bridgeSuffix = bridgeSuffix[:bridgeLen]
-	}
-	return bridgePrefix + "-" + bridgeSuffix
+func getBridgeName(flannelNetworkId string) string {
+	return getInterfaceName("fl", "-", flannelNetworkId)
 }
 
 func ensureBridge(network *FlannelNetwork) error {
 	bridgeName := network.bridgeName
-	exists, err := bridgeInterfaceExists(bridgeName)
+
+	bridge, err := ensureInterface(bridgeName, "bridge", network.config.MTU, true)
 	if err != nil {
-		return err
-	}
-
-	if !exists {
-		linkAttrs := netlink.NewLinkAttrs()
-		linkAttrs.Name = bridgeName
-
-		err := netlink.LinkAdd(&netlink.Bridge{
-			LinkAttrs: linkAttrs,
-		})
-		if err != nil {
-			log.Printf("Error adding bridge %s: %v", bridgeName, err)
-			return err
-		}
-	}
-
-	bridge, err := netlink.LinkByName(bridgeName)
-	if err != nil {
-		log.Printf("Error getting bridge %s by name: %v", bridgeName, err)
+		log.Printf("Error ensuring bridge interface exists %s: %v", bridgeName, err)
 		return err
 	}
 
 	ones, _ := network.config.Subnet.Mask.Size()
-	addr, err := netlink.ParseAddr(fmt.Sprintf("%s/%d", network.config.Gateway, ones))
+	ip := fmt.Sprintf("%s/%d", network.config.Gateway, ones)
+
+	err = replaceIPsOfInterface(bridge, []string{ip})
 	if err != nil {
-		log.Printf("Failed to parse IP address %s: %v\n", network.config.Subnet, err)
+		log.Printf("Error updating IP of bridge %s: %v", bridgeName, err)
 		return err
-	}
-
-	if err := netlink.AddrReplace(bridge, addr); err != nil {
-		log.Printf("Failed to add IP address to interface: %v\n", err)
-		return err
-	}
-
-	addrs, err := netlink.AddrList(bridge, netlink.FAMILY_ALL)
-	if err != nil {
-		log.Printf("Failed to get IP addresses from interface: %v\n", err)
-		return err
-	}
-
-	for _, a := range addrs {
-		if !addressesEqual(a, *addr) {
-			if err := netlink.AddrDel(bridge, &a); err != nil {
-				log.Printf("Failed to remove IP address %v from interface: %v\n", a.IPNet, err)
-				return err
-			}
-		}
 	}
 
 	if err := patchBridge(bridge); err != nil {
@@ -214,10 +167,6 @@ func setupIptables(network *FlannelNetwork) error {
 	return nil
 }
 
-func addressesEqual(a1, a2 netlink.Addr) bool {
-	return a1.IPNet.String() == a2.IPNet.String()
-}
-
 func patchBridge(bridge netlink.Link) error {
 	// Creates a new RTM_NEWLINK request
 	// NLM_F_ACK is used to receive acks when operations are executed
@@ -288,20 +237,5 @@ func attachInterfaceToBridge(bridgeName string, interfaceName string) error {
 }
 
 func bridgeInterfaceExists(name string) (bool, error) {
-	nlh := ns.NlHandle()
-	link, err := nlh.LinkByName(name)
-
-	if err != nil {
-		if strings.Contains(err.Error(), "Link not found") {
-			return false, nil
-		}
-
-		return false, fmt.Errorf("failed to check bridge interface existence: %v", err)
-	}
-
-	if link.Type() == "bridge" {
-		return true, nil
-	}
-
-	return false, fmt.Errorf("existing interface %s is not a bridge", name)
+	return interfaceExists(name, "bridge")
 }

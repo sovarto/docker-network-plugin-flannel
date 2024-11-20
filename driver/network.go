@@ -12,8 +12,6 @@ func (d *FlannelDriver) CreateNetwork(req *network.CreateNetworkRequest) error {
 	d.Lock()
 	defer d.Unlock()
 
-	log.Printf("IPv4Data: Count: %d, First: %+v", len(req.IPv4Data), req.IPv4Data[0])
-
 	flannelNetwork, err := d.getFlannelNetworkFromDockerNetworkID(req.NetworkID)
 	if err != nil {
 		return err
@@ -101,8 +99,6 @@ func (d *FlannelDriver) CreateEndpoint(req *network.CreateEndpointRequest) (*net
 		log.Println("Received no interface info or interface info without address or mac address. This is not supported")
 		return nil, types.InvalidParameterErrorf("Need interface info with IPv4 address and MAC address as input.")
 	}
-
-	log.Printf("Received interface info %+v\n", req.Interface)
 
 	endpoint := &FlannelEndpoint{
 		macAddress: req.Interface.MacAddress,

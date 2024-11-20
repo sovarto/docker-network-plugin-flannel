@@ -34,7 +34,7 @@ func createVethPair(network *FlannelNetwork, macAddress string) (string, string,
 	linkAttrs := netlink.NewLinkAttrs()
 	linkAttrs.Name = vethName1
 	linkAttrs.HardwareAddr = parsedMacAddress
-	linkAttrs.MTU = network.config.MTU - 50
+	linkAttrs.MTU = network.config.MTU
 
 	err = netlink.LinkAdd(&netlink.Veth{
 		LinkAttrs: linkAttrs,

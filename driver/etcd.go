@@ -44,6 +44,30 @@ func (e *EtcdClient) networkKey(subnet string) string {
 	return fmt.Sprintf("%s/%s", e.networksKey(), subnetToKey(subnet))
 }
 
+func (e *EtcdClient) servicesKey(networkSubnet string) string {
+	return fmt.Sprintf("%s/services", e.networkKey(networkSubnet))
+}
+
+func (e *EtcdClient) serviceKey(networkSubnet string, serviceId string) string {
+	return fmt.Sprintf("%s/%s", e.servicesKey(networkSubnet), serviceId)
+}
+
+func (e *EtcdClient) containersKey(networkSubnet string) string {
+	return fmt.Sprintf("%s/containers", e.networkKey(networkSubnet))
+}
+
+func (e *EtcdClient) containerKey(networkSubnet string, containerName string) string {
+	return fmt.Sprintf("%s/%s", e.containersKey(networkSubnet), containerName)
+}
+
+func (e *EtcdClient) serviceInstancesKey(networkSubnet string, serviceId string) string {
+	return fmt.Sprintf("%s/instances", e.serviceKey(networkSubnet, serviceId))
+}
+
+func (e *EtcdClient) serviceInstanceKey(networkSubnet string, serviceId string, ip string) string {
+	return fmt.Sprintf("%s/%s", e.serviceInstancesKey(networkSubnet, serviceId), ip)
+}
+
 func (e *EtcdClient) networkHostSubnetKey(config *FlannelConfig) string {
 	return fmt.Sprintf("%s/host-subnets/%s", e.networkKey(config.Network.String()), subnetToKey(config.Subnet.String()))
 }
@@ -249,7 +273,7 @@ func (e *EtcdClient) cleanupFreedIPs(etcd *etcdConnection, network *FlannelNetwo
 	return nil
 }
 
-func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPossible string, mac string) (string, error) {
+func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPossible, mac string) (string, error) {
 	subnet := network.config.Subnet
 
 	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
@@ -304,7 +328,7 @@ func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPos
 	return "", errors.New("no available IP addresses to reserve")
 }
 
-func (e *EtcdClient) tryReserveIP(etcd *etcdConnection, key string, mac string) (bool, error) {
+func (e *EtcdClient) tryReserveIP(etcd *etcdConnection, key, mac string) (bool, error) {
 	ops := []clientv3.Op{
 		clientv3.OpPut(key, "reserved"),
 	}
@@ -326,7 +350,7 @@ func (e *EtcdClient) tryReserveIP(etcd *etcdConnection, key string, mac string) 
 	return txnResp.Succeeded, nil
 }
 
-func (e *EtcdClient) tryRereserveIP(etcd *etcdConnection, key string, mac string) (bool, error) {
+func (e *EtcdClient) tryRereserveIP(etcd *etcdConnection, key, mac string) (bool, error) {
 
 	if mac == "" {
 		return false, errors.New("mac is empty")
@@ -494,4 +518,25 @@ func (e *EtcdClient) LoadReservedAddresses(config *FlannelConfig) (map[string]st
 	}
 
 	return result, nil
+}
+
+func (e *EtcdClient) EnsureServiceRegistered(network *FlannelNetwork, serviceId, serviceName string) (bool, error) {
+	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
+	defer etcd.Close()
+	if err != nil {
+		log.Println("Failed to connect to etcd:", err)
+		return false, err
+	}
+
+	key := e.serviceKey(network.config.Network.String(), serviceId)
+	txn := etcd.client.Txn(etcd.ctx).
+		If(clientv3.Compare(clientv3.CreateRevision(key), "=", 0)).
+		Then(clientv3.OpPut(key, serviceName))
+
+	txnResp, err := txn.Commit()
+	if err != nil {
+		return false, fmt.Errorf("etcd transaction failed: %v", err)
+	}
+
+	return txnResp.Succeeded, nil
 }

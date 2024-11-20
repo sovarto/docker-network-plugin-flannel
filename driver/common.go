@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	dockerAPItypes "github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/events"
 	dockerCliAPI "github.com/docker/docker/client"
 	"github.com/docker/go-plugins-helpers/sdk"
 	"golang.org/x/exp/maps"
@@ -110,22 +109,7 @@ func NewFlannelDriver(etcdClient *EtcdClient, defaultFlannelOptions []string) (*
 				time.Sleep(5 * time.Second)
 				eventsCh, errCh = dockerCli.Events(context.Background(), dockerAPItypes.EventsOptions{})
 			case event := <-eventsCh:
-				fmt.Printf("Received docker event: %+v\n", event)
-				if event.Type == events.NetworkEventType && event.Action == "create" {
-					network, err := dockerCli.NetworkInspect(context.Background(), event.Actor.ID, dockerAPItypes.NetworkInspectOptions{})
-					if err != nil {
-						log.Printf("Error inspecting docker network: %+v\n", err)
-						break
-					}
-					id, exists := network.IPAM.Options["id"]
-					if !exists {
-						log.Printf("Network %s has no 'id' option, it's misconfigured or not for us\n", event.Actor.ID)
-						break
-					}
-
-					driver.networkIdToFlannelNetworkId[event.Actor.ID] = id
-					break
-				}
+				driver.handleEvent(event)
 			}
 		}
 	}()

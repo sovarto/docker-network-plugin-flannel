@@ -63,14 +63,29 @@ echo \
 apt-get update
 
 docker run --rm --name=etcd-1 -e ETCD_INITIAL_CLUSTER_TOKEN=XgPi6fld0vQ6oikbcvyB -e ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380 -e ETCD_INITIAL_CLUSTER=etcd-1=http://172.16.0.2:2380,etcd-2=http://172.16.0.3:2380,etcd-3=http://172.16.0.4:2380 -e ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379 -e ALLOW_NONE_AUTHENTICATION=yes -e ETCD_NAME=etcd-1 -e ETCD_ADVERTISE_CLIENT_URLS=http://172.16.0.2:2379 -e ETCD_DATA_DIR=/etcd-data -e ETCD_INITIAL_CLUSTER_STATE=new -e ETCD_INITIAL_ADVERTISE_PEER_URLS=http://172.16.0.2:2380 -v /etc/etcd/data:/etcd-data quay.io/coreos/etcd etcdctl
-                    "Image": "bitnami/etcd:3.5.16@sha256:c1419aec942eae324576cc4ff6c7af20527c8b2e1d25d32144636d8b61dfd986",
-                    "Hostname": "etcd-1",
-                    "Env": [
--v /etc/etcd/data:/etcd-data
-                    "Mounts": [
-                        {
-                            "Type": "bind",
-                            "Source": "/etc/etcd/data",
-                            "Target": "/etcd-data"
-                        }
-                    ],
+
+docker service create --name whoami --network f1 --mode global traefik/whoami
+
+set -e
+
+SERVICE_NAME=whoami
+NETWORK_NAME=f1
+IPS="10.1.22.2 10.1.56.2 10.1.20.4 10.1.14.19"
+NETWORK_ID=$(docker network inspect --format '{{.ID}}' $NETWORK_NAME)
+VIP=$(docker service inspect --format '{{range .Endpoint.VirtualIPs}}{{if eq .NetworkID "'$NETWORK_ID'"}}{{index (split .Addr "/") 0}}{{end}}{{end}}' $SERVICE_NAME)
+FWMARK=477
+IFACE=lb_${NETWORK_ID:0:10}
+ipvsadm -D -f $FWMARK || true
+ipvsadm -A -f $FWMARK -s rr
+for IP in $IPS; do
+  ipvsadm -a -f $FWMARK -r $IP:0 -m
+done
+iptables -t nat -A POSTROUTING -d $VIP -m mark --mark $FWMARK -j MASQUERADE
+iptables -t mangle -A PREROUTING -d $VIP -p udp -j MARK --set-mark $FWMARK
+iptables -t mangle -A PREROUTING -d $VIP -p tcp -j MARK --set-mark $FWMARK
+modprobe dummy
+ip link del $IFACE || true
+ip link add $IFACE type dummy
+ip addr add $VIP/32 dev $IFACE
+ip link set $IFACE up
+ip link set $IFACE mtu 1450
