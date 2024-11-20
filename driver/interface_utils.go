@@ -83,6 +83,19 @@ func replaceIPsOfInterface(link netlink.Link, ips []string) error {
 	return nil
 }
 
+func ensureInterfaceListensOnAddress(link netlink.Link, ip string) error {
+	addr, err := netlink.ParseAddr(ip)
+	if err != nil {
+		log.Printf("Failed to parse IP address %s: %v\n", ip, err)
+		return err
+	}
+	if err := netlink.AddrReplace(link, addr); err != nil {
+		log.Printf("Failed to add IP address %s to interface: %v\n", addr.String(), err)
+		return err
+	}
+	return nil
+}
+
 func addressesEqual(a1, a2 *netlink.Addr) bool {
 	return a1.IPNet.String() == a2.IPNet.String()
 }

@@ -36,14 +36,55 @@ type FlannelNetwork struct {
 	config            FlannelConfig
 	endpoints         map[string]*FlannelEndpoint
 	reservedAddresses map[string]struct{} // This will contain all addresses that have been reserved in the past, even those that have since been freed. This allows us to only re-use IP addresses when no more un-reserved addresses exist
+	freeAddresses     map[string]struct{} // This is the complement of reservedAddresses
+	allAddresses      map[string]struct{}
 	pid               int
 	sync.Mutex
+}
+
+// ReserveAddresses This reserves the specified addresses while keeping the already reserved addresses
+func (n *FlannelNetwork) ReserveAddresses(ips ...string) {
+	for _, ip := range ips {
+		n.reservedAddresses[ip] = struct{}{}
+		delete(n.freeAddresses, ip)
+	}
+}
+
+// SetReservedAddresses This resets the reserved addresses to only the supplied ones
+func (n *FlannelNetwork) SetReservedAddresses(ips []string) {
+	n.InitAddresses()
+	for _, ip := range ips {
+		n.reservedAddresses[ip] = struct{}{}
+		delete(n.freeAddresses, ip)
+	}
+}
+
+func (n *FlannelNetwork) FreeAddresses(ips ...string) {
+	for _, ip := range ips {
+		n.freeAddresses[ip] = struct{}{}
+		delete(n.reservedAddresses, ip)
+	}
+}
+
+func (n *FlannelNetwork) SetConfig(config FlannelConfig) {
+	n.config = config
+	n.InitAddresses()
+}
+
+func (n *FlannelNetwork) InitAddresses() {
+	n.reservedAddresses = make(map[string]struct{})
+	n.freeAddresses = make(map[string]struct{})
+	for _, ip := range ipsInSubnet(n.config.Subnet) {
+		n.freeAddresses[ip.String()] = struct{}{}
+		n.allAddresses[ip.String()] = struct{}{}
+	}
 }
 
 func NewFlannelNetwork(flannelNetworkId string) *FlannelNetwork {
 	return &FlannelNetwork{
 		endpoints:         make(map[string]*FlannelEndpoint),
 		reservedAddresses: make(map[string]struct{}),
+		freeAddresses:     make(map[string]struct{}),
 		bridgeName:        getBridgeName(flannelNetworkId),
 	}
 }
@@ -262,8 +303,8 @@ func (d *FlannelDriver) startFlannel(flannelNetworkId string, network *FlannelNe
 	}
 
 	network.pid = cmd.Process.Pid
-	network.config = config
-	network.reservedAddresses[config.Gateway.String()] = struct{}{}
+	network.SetConfig(config)
+	network.ReserveAddresses(config.Gateway.String())
 
 	return nil
 }
@@ -455,14 +496,14 @@ func (d *FlannelDriver) restoreNetworks() error {
 			if len(reservedAddresses) == 0 {
 				fmt.Println("No reserved addresses loaded")
 			} else {
-				smallestIP, biggestIP, count := getInfoAboutIPList(reservedAddresses)
+				smallestIP, biggestIP, count := getInfoAboutIPList(maps.Keys(reservedAddresses))
 				fmt.Printf("Loaded %v IP addresses for network %s that are currently or have previously been reserved, with %s being the smallest and %s being the biggest", count, flannelNetworkId, smallestIP, biggestIP)
 			}
 		}
 
 		network := NewFlannelNetwork(flannelNetworkId)
-		network.config = config
-		network.reservedAddresses = reservedAddresses
+		network.SetConfig(config)
+		network.SetReservedAddresses(maps.Keys(reservedAddresses))
 
 		err = ensureBridge(network)
 		if err != nil {
@@ -499,17 +540,14 @@ func (d *FlannelDriver) ensureProperSetupForAllExpectedNetworks() {
 	}
 }
 
-func getInfoAboutIPList(ips map[string]struct{}) (string, string, int) {
-	keys := maps.Keys(ips)
-
-	// Sort the keys numerically
-	sort.Slice(keys, func(i, j int) bool {
-		ip1 := net.ParseIP(keys[i]).To4()
-		ip2 := net.ParseIP(keys[j]).To4()
+func getInfoAboutIPList(ips []string) (string, string, int) {
+	sort.Slice(ips, func(i, j int) bool {
+		ip1 := net.ParseIP(ips[i]).To4()
+		ip2 := net.ParseIP(ips[j]).To4()
 		return binary.BigEndian.Uint32(ip1) < binary.BigEndian.Uint32(ip2)
 	})
 
-	return keys[0], keys[len(keys)-1], len(ips)
+	return ips[0], ips[len(ips)-1], len(ips)
 }
 
 func (d *FlannelDriver) BuildNetworkIdMappings() error {
@@ -519,7 +557,7 @@ func (d *FlannelDriver) BuildNetworkIdMappings() error {
 		return fmt.Errorf("failed to list docker networks: %s", err)
 	}
 	for _, n := range networks {
-		id, exists := n.IPAM.Options["id"]
+		id, exists := n.IPAM.Options["flannel-id"]
 		if !exists {
 			fmt.Printf("Network %s has no 'id' option, it's misconfigured or not for us\n", n.ID)
 			continue

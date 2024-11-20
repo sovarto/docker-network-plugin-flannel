@@ -14,7 +14,7 @@ func (d *FlannelDriver) RequestPool(request *ipam.RequestPoolRequest) (*ipam.Req
 	}
 
 	poolID := "FlannelPool"
-	flannelNetworkId, exists := request.Options["id"]
+	flannelNetworkId, exists := request.Options["flannel-id"]
 	if exists && flannelNetworkId != "" {
 		poolID = fmt.Sprintf("%s-%s", poolID, flannelNetworkId)
 	} else {

@@ -6,6 +6,7 @@ import (
 	dockerAPItypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/events"
 	"log"
+	"strings"
 )
 
 func (d *FlannelDriver) handleEvent(event events.Message) error {
@@ -26,7 +27,7 @@ func (d *FlannelDriver) handleNetworkCreated(event events.Message) error {
 		log.Printf("Error inspecting docker network %s: %+v\n", networkID, err)
 		return err
 	}
-	id, exists := network.IPAM.Options["id"]
+	id, exists := network.IPAM.Options["flannel-id"]
 	if !exists {
 		log.Printf("Network %s has no 'id' option, it's misconfigured or not for us\n", networkID)
 		return nil
@@ -41,7 +42,8 @@ func (d *FlannelDriver) handleContainerConnected(event events.Message) error {
 	networkName := event.Actor.Attributes["name"]
 	containerID := event.Actor.Attributes["container"]
 
-	flannelNetwork := d.networks[d.networkIdToFlannelNetworkId[networkID]]
+	flannelNetworkId := d.networkIdToFlannelNetworkId[networkID]
+	flannelNetwork := d.networks[flannelNetworkId]
 	if flannelNetwork == nil {
 		fmt.Printf("Skipping registration of docker container %s for network %s, because we don't know about the network, so it's not one of ours.", containerID, networkID)
 		return nil
@@ -66,10 +68,25 @@ func (d *FlannelDriver) handleContainerConnected(event events.Message) error {
 	// These may be unset, that's fine. EtcdClient.RegisterContainer handles this case
 	serviceId := container.Config.Labels["com.docker.swarm.service.id"]
 	serviceName := container.Config.Labels["com.docker.swarm.service.name"]
+	containerName := strings.TrimLeft(container.Name, "/")
 
-	_, err = d.etcdClient.RegisterContainer(flannelNetwork, serviceId, serviceName, containerID, container.Name, endpoint.IPAddress)
+	_, err = d.etcdClient.RegisterContainer(flannelNetwork, serviceId, serviceName, containerID, containerName, endpoint.IPAddress)
 	if err != nil {
 		log.Printf("Error ensuring docker container %s is registered in our data for docker network %s: %+v\n", containerID, networkID, err)
+		return err
+	}
+
+	if serviceId != "" {
+		err = d.EnsureLoadBalancerConfigurationForService(flannelNetworkId, flannelNetwork, serviceId)
+		if err != nil {
+			log.Printf("Error ensuring load balancer for service %s exists for network %s: %+v\n", serviceId, flannelNetworkId, err)
+			return err
+		}
+		err = d.EnsureServiceLoadBalancerBackend(flannelNetwork, serviceId, endpoint.IPAddress)
+		if err != nil {
+			log.Printf("Error ensuring load balancer backend with IP %s exists for service %s and network %s: %+v\n", endpoint.IPAddress, serviceId, networkID, err)
+			return err
+		}
 	}
 
 	return nil

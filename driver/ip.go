@@ -33,10 +33,9 @@ func nextIP(ip net.IP) net.IP {
 	return ip
 }
 
-func isLastIP(allIPs []net.IP, reserved map[string]struct{}) bool {
+func isLastIP(allIPs []string, reserved map[string]struct{}) bool {
 	for _, ip := range allIPs {
-		ipStr := ip.String()
-		if _, r := reserved[ipStr]; !r {
+		if _, r := reserved[ip]; !r {
 			return false
 		}
 	}

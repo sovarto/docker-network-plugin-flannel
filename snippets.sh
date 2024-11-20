@@ -33,7 +33,7 @@ docker plugin inspect $ALIAS --format "{{.ID}}"
 docker plugin disable --force flannel:dev || true && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev
 
 docker network rm fweb
-docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=id=$(uuidgen) f2
+docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=flannel-id=$(uuidgen) f2
 
 docker service update --network-rm fweb whoami
 docker service update --network-add fweb whoami
@@ -47,7 +47,7 @@ docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl del /fla
 
 curl --unix-socket /var/run/docker/plugins/$(docker plugin inspect flannel:dev --format "{{.ID}}")/flannel-np.sock http://x/Plugin.Activate
 
-docker network rm f1 && docker plugin disable --force flannel:dev || true && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev && docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=id=f1_123 f1 && journalctl -u docker.service --since "1m ago" --follow | grep plugin=
+docker network rm f1 && docker plugin disable --force flannel:dev || true && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev && docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=flannel-id=f1_123 f1 && journalctl -u docker.service --since "1m ago" --follow | grep plugin=
 # Add Docker's official GPG key:
 apt-get update
 apt-get install ca-certificates curl

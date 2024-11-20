@@ -2,11 +2,17 @@ package driver
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"golang.org/x/exp/maps"
+	"hash/crc32"
 	"log"
+	simpleRand "math/rand"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -44,14 +50,6 @@ func (e *EtcdClient) networkKey(subnet string) string {
 	return fmt.Sprintf("%s/%s", e.networksKey(), subnetToKey(subnet))
 }
 
-func (e *EtcdClient) servicesKey(networkSubnet string) string {
-	return fmt.Sprintf("%s/services", e.networkKey(networkSubnet))
-}
-
-func (e *EtcdClient) serviceKey(networkSubnet string, serviceId string) string {
-	return fmt.Sprintf("%s/%s", e.servicesKey(networkSubnet), serviceId)
-}
-
 func (e *EtcdClient) containersKey(networkSubnet string) string {
 	return fmt.Sprintf("%s/containers", e.networkKey(networkSubnet))
 }
@@ -80,12 +78,36 @@ func (e *EtcdClient) containerIpByIdKey(networkSubnet string, containerId string
 	return fmt.Sprintf("%s/ip", e.containerByIdKey(networkSubnet, containerId))
 }
 
+func (e *EtcdClient) servicesKey(networkSubnet string) string {
+	return fmt.Sprintf("%s/services", e.networkKey(networkSubnet))
+}
+
+func (e *EtcdClient) serviceKey(networkSubnet string, serviceId string) string {
+	return fmt.Sprintf("%s/%s", e.servicesKey(networkSubnet), serviceId)
+}
+
 func (e *EtcdClient) serviceInstancesKey(networkSubnet string, serviceId string) string {
 	return fmt.Sprintf("%s/instances", e.serviceKey(networkSubnet, serviceId))
 }
 
 func (e *EtcdClient) serviceInstanceKey(networkSubnet string, serviceId string, ip string) string {
 	return fmt.Sprintf("%s/%s", e.serviceInstancesKey(networkSubnet, serviceId), ip)
+}
+
+func (e *EtcdClient) serviceFwmarksKey(networkSubnet string, serviceId string) string {
+	return fmt.Sprintf("%s/fwmarks", e.serviceKey(networkSubnet, serviceId))
+}
+
+func (e *EtcdClient) serviceFwmarkKey(config *FlannelConfig, serviceId string) string {
+	return fmt.Sprintf("%s/%s", e.serviceFwmarksKey(config.Network.String(), serviceId), subnetToKey(config.Subnet.String()))
+}
+
+func (e *EtcdClient) serviceVipsKey(networkSubnet string, serviceId string) string {
+	return fmt.Sprintf("%s/vips", e.serviceKey(networkSubnet, serviceId))
+}
+
+func (e *EtcdClient) serviceVipKey(config *FlannelConfig, serviceId string) string {
+	return fmt.Sprintf("%s/%s", e.serviceFwmarksKey(config.Network.String(), serviceId), subnetToKey(config.Subnet.String()))
 }
 
 func (e *EtcdClient) networkHostSubnetKey(config *FlannelConfig) string {
@@ -98,6 +120,14 @@ func (e *EtcdClient) reservedIpsKey(config *FlannelConfig) string {
 
 func (e *EtcdClient) reservedIpKey(config *FlannelConfig, ip string) string {
 	return fmt.Sprintf("%s/%s", e.reservedIpsKey(config), ip)
+}
+
+func (e *EtcdClient) fwmarksKey(config *FlannelConfig) string {
+	return fmt.Sprintf("%s/fwmarks", e.networkHostSubnetKey(config))
+}
+
+func (e *EtcdClient) fwmarkKey(config *FlannelConfig, fwmark string) string {
+	return fmt.Sprintf("%s/%s", e.fwmarksKey(config), fwmark)
 }
 
 func (e *EtcdClient) flannelConfigKey(flannelNetworkId string) string {
@@ -287,15 +317,13 @@ func (e *EtcdClient) cleanupFreedIPs(etcd *etcdConnection, network *FlannelNetwo
 				continue
 			}
 			ipKeyParts := strings.Split(ipKey, "/")
-			delete(network.reservedAddresses, ipKeyParts[len(ipKeyParts)-1])
+			network.FreeAddresses(ipKeyParts[len(ipKeyParts)-1])
 		}
 	}
 	return nil
 }
 
 func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPossible, mac string) (string, error) {
-	subnet := network.config.Subnet
-
 	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
 	defer etcd.Close()
 
@@ -314,23 +342,39 @@ func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPos
 		}
 	}
 
-	allIPs := ipsInSubnet(subnet)
+	return e.reserveAnyIP(network, etcd, mac, true)
+}
 
-	for _, ip := range allIPs {
-		ipStr := ip.String()
+func (e *EtcdClient) reserveAnyIP(network *FlannelNetwork, etcd *etcdConnection, mac string, random bool) (string, error) {
+	for {
+		freeAddresses := maps.Keys(network.freeAddresses)
+		if len(freeAddresses) == 0 {
+			return "", errors.New("no available IP addresses to reserve")
+		}
+
+		var ipStr string
+
+		if random {
+			ipStr = freeAddresses[simpleRand.Intn(len(freeAddresses))]
+		} else {
+			ipStr = freeAddresses[0]
+		}
 
 		network.Mutex.Lock()
 
 		if _, reserved := network.reservedAddresses[ipStr]; !reserved {
-			reserved, err := e.tryReserveIP(etcd, e.reservedIpKey(&network.config, ipStr), mac)
+			reserved, err := e.tryReserveIP(etcd, e.reservedIpKey(&network.config, ipStr), mac, "reserved")
 			if err != nil {
 				network.Mutex.Unlock()
 				return "", err
 			}
-			if reserved {
-				network.reservedAddresses[ipStr] = struct{}{}
 
-				if isLastIP(allIPs, network.reservedAddresses) {
+			// reserve address in any case, even if it already was reserved, because in that case, our
+			// internal state doesn't match the one in etcd
+			network.ReserveAddresses(ipStr)
+
+			if reserved {
+				if len(network.reservedAddresses) == 0 {
 					if err := e.cleanupFreedIPs(etcd, network); err != nil {
 						network.Mutex.Unlock()
 						return "", fmt.Errorf("failed to cleanup freed IPs: %v", err)
@@ -344,13 +388,11 @@ func (e *EtcdClient) ReserveAddress(network *FlannelNetwork, addressToReuseIfPos
 
 		network.Mutex.Unlock()
 	}
-
-	return "", errors.New("no available IP addresses to reserve")
 }
 
-func (e *EtcdClient) tryReserveIP(etcd *etcdConnection, key, mac string) (bool, error) {
+func (e *EtcdClient) tryReserveIP(etcd *etcdConnection, key, mac, reservationType string) (bool, error) {
 	ops := []clientv3.Op{
-		clientv3.OpPut(key, "reserved"),
+		clientv3.OpPut(key, reservationType),
 	}
 
 	if mac != "" {
@@ -376,7 +418,7 @@ func (e *EtcdClient) tryRereserveIP(etcd *etcdConnection, key, mac string) (bool
 		return false, errors.New("mac is empty")
 	}
 
-	reserved, err := e.tryReserveIP(etcd, key, mac)
+	reserved, err := e.tryReserveIP(etcd, key, mac, "reserved")
 	if err != nil {
 		return false, err
 	}
@@ -549,8 +591,8 @@ func (e *EtcdClient) RegisterContainer(network *FlannelNetwork, serviceId, servi
 	}
 
 	ops := []clientv3.Op{
-		clientv3.OpPut(e.containerByIdKey(network.config.Network.String(), containerId), containerId),
-		clientv3.OpPut(e.containerByNameKey(network.config.Network.String(), containerName), containerName),
+		clientv3.OpPut(e.containerByIdKey(network.config.Network.String(), containerId), containerName),
+		clientv3.OpPut(e.containerByNameKey(network.config.Network.String(), containerName), containerId),
 		clientv3.OpPut(e.containerIpByIdKey(network.config.Network.String(), containerId), ip),
 		clientv3.OpPut(e.containerIpByNameKey(network.config.Network.String(), containerName), ip),
 	}
@@ -570,4 +612,161 @@ func (e *EtcdClient) RegisterContainer(network *FlannelNetwork, serviceId, servi
 	}
 
 	return txnResp.Succeeded, nil
+}
+
+func (e *EtcdClient) EnsureFwmark(network *FlannelNetwork, serviceID string) (uint32, error) {
+	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
+	defer etcd.Close()
+	if err != nil {
+		log.Println("Failed to connect to etcd:", err)
+		return 0, err
+	}
+
+	key := e.serviceFwmarkKey(&network.config, serviceID)
+	resp, err := etcd.client.Get(etcd.ctx, key)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(resp.Kvs) > 0 {
+		existingFwmark := string(resp.Kvs[0].Value)
+		parsedFwmark, err := strconv.ParseUint(existingFwmark, 10, 32)
+		if err != nil {
+			log.Printf("Failed to parse existing fwmark %s, discarding: %v", existingFwmark, err)
+		} else {
+			return uint32(parsedFwmark), nil
+		}
+	}
+
+	prefix := e.fwmarksKey(&network.config)
+
+	for {
+
+		resp, err = etcd.client.Get(etcd.ctx, prefix, clientv3.WithPrefix())
+		if err != nil {
+			return 0, err
+		}
+
+		existingFwmarks := []uint32{}
+
+		for _, kv := range resp.Kvs {
+			existingFwmark := string(kv.Value)
+			parsedFwmark, err := strconv.ParseUint(existingFwmark, 10, 32)
+			if err != nil {
+				log.Printf("Failed to parse existing fwmark %s, skipping: %v", existingFwmark, err)
+			} else {
+				existingFwmarks = append(existingFwmarks, uint32(parsedFwmark))
+			}
+		}
+		// TODO: move everything into namespace so that only our fwmarks exist
+		fwmark, err := GenerateFWMARK(serviceID, existingFwmarks)
+		if err != nil {
+			return 0, err
+		}
+
+		fwmarkStr := strconv.FormatUint(uint64(fwmark), 10)
+		allFwmarksKey := e.fwmarkKey(&network.config, fwmarkStr)
+
+		txn := etcd.client.Txn(etcd.ctx).
+			If(clientv3.Compare(clientv3.CreateRevision(allFwmarksKey), "=", 0)).
+			Then(
+				clientv3.OpPut(key, fwmarkStr),
+				clientv3.OpPut(allFwmarksKey, serviceID),
+			)
+
+		txnResp, err := txn.Commit()
+		if err != nil {
+			return 0, fmt.Errorf("etcd transaction failed: %v", err)
+		}
+
+		if !txnResp.Succeeded {
+			txn = etcd.client.Txn(etcd.ctx).
+				If(clientv3.Compare(clientv3.Value(allFwmarksKey), "=", serviceID)).
+				Then(
+					clientv3.OpPut(key, fwmarkStr),
+					clientv3.OpPut(allFwmarksKey, serviceID),
+				)
+			if !txnResp.Succeeded {
+				fmt.Printf("Race condition, another thread registered this fwmark in the meantime")
+			}
+			return 0, fmt.Errorf("can't store fwmark for service %s", serviceID)
+		}
+		return fwmark, nil
+	}
+}
+
+// GenerateFWMARK generates a unique FWMARK based on the serviceID.
+// It checks against existingFWMARKs and appends a random suffix to the serviceID
+// if a collision is detected. It returns the unique FWMARK, the possibly modified
+// serviceID, and an error if a unique FWMARK cannot be found within the maximum attempts.
+func GenerateFWMARK(serviceID string, existingFWMARKs []uint32) (uint32, error) {
+	const maxAttempts = 1000
+	const suffixLength = 4 // Number of random bytes to append
+
+	// Convert existingFWMARKs slice to a map for efficient lookup
+	fwmarkMap := make(map[uint32]struct{}, len(existingFWMARKs))
+	for _, mark := range existingFWMARKs {
+		fwmarkMap[mark] = struct{}{}
+	}
+
+	currentServiceID := serviceID
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		// Generate FWMARK using CRC32 checksum
+		fwmark := crc32.ChecksumIEEE([]byte(currentServiceID))
+
+		// Check for collision
+		if _, exists := fwmarkMap[fwmark]; !exists {
+			// Unique FWMARK found
+			return fwmark, nil
+		}
+
+		// Collision detected, prepare to modify the serviceID with a random suffix
+		suffix, err := generateRandomSuffix(suffixLength)
+		if err != nil {
+			return 0, fmt.Errorf("failed to generate random suffix: %v", err)
+		}
+
+		// Append the random suffix to the original serviceID
+		currentServiceID = fmt.Sprintf("%s_%s", serviceID, suffix)
+	}
+
+	return 0, errors.New("unable to generate a unique FWMARK after maximum attempts")
+}
+
+// generateRandomSuffix creates a random hexadecimal string of length `length` bytes.
+func generateRandomSuffix(length int) (string, error) {
+	bytes := make([]byte, length)
+	_, err := rand.Read(bytes)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+func (e *EtcdClient) EnsureServiceVip(network *FlannelNetwork, serviceID string) (string, error) {
+	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
+	defer etcd.Close()
+	if err != nil {
+		log.Println("Failed to connect to etcd:", err)
+		return "", err
+	}
+
+	key := e.serviceVipKey(&network.config, serviceID)
+	resp, err := etcd.client.Get(etcd.ctx, key)
+	if err != nil {
+		return "", err
+	}
+	if len(resp.Kvs) > 0 {
+		existingVip := string(resp.Kvs[0].Value)
+		return existingVip, nil
+	}
+
+	vip, err := e.reserveAnyIP(network, etcd, "", true)
+	if err != nil {
+		log.Printf("Failed to reserve VIP for service %s: %+v\n", serviceID, err)
+		return "", err
+	}
+
+	return vip, nil
 }
