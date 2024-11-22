@@ -9,6 +9,7 @@ require (
 	github.com/docker/go-plugins-helpers v0.0.0-20240701071450-45e2431495c8
 	github.com/google/uuid v1.6.0
 	github.com/moby/ipvs v1.1.0
+	github.com/thoas/go-funk v0.9.3
 	github.com/vishvananda/netlink v1.3.0
 	go.etcd.io/etcd/client/v3 v3.5.17
 	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f
@@ -36,6 +37,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/samber/lo v1.47.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.17 // indirect

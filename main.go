@@ -53,23 +53,3 @@ func getEnvAsInt(name string, defaultVal int) int {
 	}
 	return defaultVal
 }
-
-func generateAllSubnets(availableSubnets []string, networkSubnetSize int) ([]string, error) {
-	var allSubnets []string
-	for _, asubnet := range availableSubnets {
-		_, ipnet, err := net.ParseCIDR(asubnet)
-		if err != nil {
-			return nil, err
-		}
-		ones, _ := ipnet.Mask.Size()
-		numSubnets := 1 << uint(networkSubnetSize-ones)
-		for i := 0; i < numSubnets; i++ {
-			subnet, err := cidr.Subnet(ipnet, networkSubnetSize-ones, i)
-			if err != nil {
-				return nil, err
-			}
-			allSubnets = append(allSubnets, subnet.String())
-		}
-	}
-	return allSubnets, nil
-}

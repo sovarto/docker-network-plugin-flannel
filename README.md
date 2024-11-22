@@ -1,3 +1,6 @@
+# Design Decisions
+The data in Docker trumps the data in etcd which trumps the data in memory.
+
 Note:
 
 - In Flannel, every host has its own subnet
