@@ -2,17 +2,11 @@ package driver
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"golang.org/x/exp/maps"
-	"hash/crc32"
 	"log"
-	simpleRand "math/rand"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -350,36 +344,6 @@ func (e *EtcdClient) EnsureGatewayIsMarkedAsReserved(config *FlannelConfig) erro
 //	return result, nil
 //}
 
-func (e *EtcdClient) LoadReservedAddresses(config *FlannelConfig) (map[string]struct{}, error) {
-	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
-	defer etcd.Close()
-	if err != nil {
-		log.Println("Failed to connect to etcd:", err)
-		return nil, err
-	}
-
-	prefix := e.reservedIpsKey(config)
-	resp, err := etcd.client.Get(etcd.ctx, prefix, clientv3.WithPrefix())
-	if err != nil {
-		return nil, err
-	}
-
-	result := make(map[string]struct{})
-
-	for _, kv := range resp.Kvs {
-		key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
-
-		if len(strings.Split(key, "/")) > 1 {
-			// A key with sub info, skip
-			continue
-		}
-
-		result[key] = struct{}{}
-	}
-
-	return result, nil
-}
-
 func (e *EtcdClient) RegisterContainer(network *FlannelNetwork, serviceId, serviceName, containerId, containerName, ip string) (bool, error) {
 	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
 	defer etcd.Close()
@@ -410,138 +374,6 @@ func (e *EtcdClient) RegisterContainer(network *FlannelNetwork, serviceId, servi
 	}
 
 	return txnResp.Succeeded, nil
-}
-
-func (e *EtcdClient) EnsureFwmark(network *FlannelNetwork, serviceID string) (uint32, error) {
-	etcd, err := newEtcdConnection(e.endpoints, e.dialTimeout)
-	defer etcd.Close()
-	if err != nil {
-		log.Println("Failed to connect to etcd:", err)
-		return 0, err
-	}
-
-	key := e.serviceFwmarkKey(&network.config, serviceID)
-	resp, err := etcd.client.Get(etcd.ctx, key)
-	if err != nil {
-		return 0, err
-	}
-
-	if len(resp.Kvs) > 0 {
-		existingFwmark := string(resp.Kvs[0].Value)
-		parsedFwmark, err := strconv.ParseUint(existingFwmark, 10, 32)
-		if err != nil {
-			log.Printf("Failed to parse existing fwmark %s, discarding: %v", existingFwmark, err)
-		} else {
-			return uint32(parsedFwmark), nil
-		}
-	}
-
-	prefix := e.fwmarksKey(&network.config)
-
-	for {
-
-		resp, err = etcd.client.Get(etcd.ctx, prefix, clientv3.WithPrefix())
-		if err != nil {
-			return 0, err
-		}
-
-		existingFwmarks := []uint32{}
-
-		for _, kv := range resp.Kvs {
-			existingFwmark := string(kv.Value)
-			parsedFwmark, err := strconv.ParseUint(existingFwmark, 10, 32)
-			if err != nil {
-				log.Printf("Failed to parse existing fwmark %s, skipping: %v", existingFwmark, err)
-			} else {
-				existingFwmarks = append(existingFwmarks, uint32(parsedFwmark))
-			}
-		}
-		// TODO: move everything into namespace so that only our fwmarks exist
-		fwmark, err := GenerateFWMARK(serviceID, existingFwmarks)
-		if err != nil {
-			return 0, err
-		}
-
-		fwmarkStr := strconv.FormatUint(uint64(fwmark), 10)
-		allFwmarksKey := e.fwmarkKey(&network.config, fwmarkStr)
-
-		txn := etcd.client.Txn(etcd.ctx).
-			If(clientv3.Compare(clientv3.CreateRevision(allFwmarksKey), "=", 0)).
-			Then(
-				clientv3.OpPut(key, fwmarkStr),
-				clientv3.OpPut(allFwmarksKey, serviceID),
-			)
-
-		txnResp, err := txn.Commit()
-		if err != nil {
-			return 0, fmt.Errorf("etcd transaction failed: %v", err)
-		}
-
-		if !txnResp.Succeeded {
-			txn = etcd.client.Txn(etcd.ctx).
-				If(clientv3.Compare(clientv3.Value(allFwmarksKey), "=", serviceID)).
-				Then(
-					clientv3.OpPut(key, fwmarkStr),
-					clientv3.OpPut(allFwmarksKey, serviceID),
-				)
-			if !txnResp.Succeeded {
-				fmt.Printf("Race condition, another thread registered this fwmark in the meantime\n")
-			}
-			return 0, fmt.Errorf("can't store fwmark for service %s", serviceID)
-		}
-
-		fmt.Printf("Created new fwmark %d for service %s\n", fwmark, serviceID)
-		return fwmark, nil
-	}
-}
-
-// GenerateFWMARK generates a unique FWMARK based on the serviceID.
-// It checks against existingFWMARKs and appends a random suffix to the serviceID
-// if a collision is detected. It returns the unique FWMARK, the possibly modified
-// serviceID, and an error if a unique FWMARK cannot be found within the maximum attempts.
-func GenerateFWMARK(serviceID string, existingFWMARKs []uint32) (uint32, error) {
-	const maxAttempts = 1000
-	const suffixLength = 4 // Number of random bytes to append
-
-	// Convert existingFWMARKs slice to a map for efficient lookup
-	fwmarkMap := make(map[uint32]struct{}, len(existingFWMARKs))
-	for _, mark := range existingFWMARKs {
-		fwmarkMap[mark] = struct{}{}
-	}
-
-	currentServiceID := serviceID
-
-	for attempt := 0; attempt < maxAttempts; attempt++ {
-		// Generate FWMARK using CRC32 checksum
-		fwmark := crc32.ChecksumIEEE([]byte(currentServiceID))
-
-		// Check for collision
-		if _, exists := fwmarkMap[fwmark]; !exists {
-			// Unique FWMARK found
-			return fwmark, nil
-		}
-
-		// Collision detected, prepare to modify the serviceID with a random suffix
-		suffix, err := generateRandomSuffix(suffixLength)
-		if err != nil {
-			return 0, fmt.Errorf("failed to generate random suffix: %v", err)
-		}
-
-		// Append the random suffix to the original serviceID
-		currentServiceID = fmt.Sprintf("%s_%s", serviceID, suffix)
-	}
-
-	return 0, errors.New("unable to generate a unique FWMARK after maximum attempts")
-}
-
-// generateRandomSuffix creates a random hexadecimal string of length `length` bytes.
-func generateRandomSuffix(length int) (string, error) {
-	bytes := make([]byte, length)
-	_, err := rand.Read(bytes)
-	if err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
 }
 
 func (e *EtcdClient) EnsureServiceVip(network *FlannelNetwork, serviceID string) (string, error) {

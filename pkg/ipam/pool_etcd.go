@@ -32,65 +32,7 @@ func reservedAtKey(client etcd.Client, ip string) string {
 }
 
 func getReservations(client etcd.Client) (map[string]reservation, error) {
-	return etcd.WithConnection(client, func(connection *etcd.Connection) (map[string]reservation, error) {
-		prefix := reservedIPsKey(client)
-		resp, err := connection.Client.Get(connection.Ctx, prefix, clientv3.WithPrefix(), clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend))
-		if err != nil {
-			return nil, err
-		}
-
-		result := make(map[string]reservation)
-		for _, kv := range resp.Kvs {
-			key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
-			value := string(kv.Value)
-
-			if !strings.Contains(key, "/") {
-				ip := net.ParseIP(key)
-
-				if ip == nil {
-					fmt.Printf("couldn't parse %s as IP. Skipping...", key)
-					continue
-				}
-
-				if existing, exists := result[key]; exists {
-					existing.ip = ip
-					existing.reservationType = value
-					result[key] = existing
-				} else {
-					result[key] = reservation{
-						ip:              ip,
-						reservationType: value,
-					}
-				}
-			} else {
-				parts := strings.Split(key, "/")
-				if len(parts) == 2 {
-					if parts[1] == macKeyName {
-						if existing, exists := result[key]; exists {
-							existing.mac = value
-							result[key] = existing
-						} else {
-							fmt.Printf("Expected reservation for %s", key)
-						}
-					} else if parts[1] == reservedAtKeyName {
-						reservedAt, err := time.Parse(time.RFC3339, value)
-						if err != nil {
-							fmt.Printf("Couldn't parse reserved at value '%s' for '%s'. Skipping...", value, key)
-							continue
-						}
-						if existing, exists := result[key]; exists {
-							existing.reservedAt = reservedAt
-							result[key] = existing
-						} else {
-							fmt.Printf("Expected reservation for %s", key)
-						}
-					}
-				}
-			}
-		}
-
-		return result, nil
-	})
+	return getReservationsByPrefix(client, reservedIPsKey(client))
 }
 
 type IPLeaseResult struct {
@@ -102,14 +44,15 @@ func releaseReservation(client etcd.Client, r reservation) (IPLeaseResult, error
 	return etcd.WithConnection(client, func(conn *etcd.Connection) (IPLeaseResult, error) {
 		ipStr := r.ip.String()
 		key := reservedIPKey(client, ipStr)
+		macKey := macKey(client, ipStr)
 		cmps := []clientv3.Cmp{
 			clientv3.Compare(clientv3.Value(key), "=", r.reservationType),
 		}
 
 		if r.mac == "" {
-			cmps = append(cmps, clientv3.Compare(clientv3.CreateRevision(key), "=", 0))
+			cmps = append(cmps, clientv3.Compare(clientv3.CreateRevision(macKey), "=", 0))
 		} else {
-			cmps = append(cmps, clientv3.Compare(clientv3.Value(key), "=", r.mac))
+			cmps = append(cmps, clientv3.Compare(clientv3.Value(macKey), "=", r.mac))
 		}
 
 		resp, err := conn.Client.Txn(conn.Ctx).
@@ -117,11 +60,11 @@ func releaseReservation(client etcd.Client, r reservation) (IPLeaseResult, error
 			Then(
 				clientv3.OpDelete(key),
 				clientv3.OpDelete(reservedAtKey(client, ipStr)),
-				clientv3.OpDelete(macKey(client, ipStr))).
+				clientv3.OpDelete(macKey)).
 			Else(
 				clientv3.OpGet(key),
 				clientv3.OpGet(reservedAtKey(client, ipStr)),
-				clientv3.OpGet(macKey(client, ipStr)),
+				clientv3.OpGet(macKey),
 			).
 			Commit()
 
@@ -189,6 +132,26 @@ func allocateReservedIPForContainer(client etcd.Client, reservedIP net.IP, mac s
 	return reserveIPByCondition(client, reservedIP, ReservationTypeContainerIP, mac, conditions)
 }
 
+func allocateReservedIPForService(client etcd.Client, reservedIP net.IP) (IPLeaseResult, error) {
+	key := reservedIPKey(client, reservedIP.String())
+	macKey := macKey(client, reservedIP.String())
+
+	conditions := [][]clientv3.Cmp{
+		// It was already reserved, but without a MAC
+		// This is the default case
+		{
+			clientv3.Compare(clientv3.Value(key), "=", ReservationTypeReserved),
+			clientv3.Compare(clientv3.CreateRevision(macKey), "=", 0),
+		},
+		// It was never before reserved or has since been freed -> shouldn't ever happen
+		{
+			clientv3.Compare(clientv3.CreateRevision(key), "=", 0),
+		},
+	}
+
+	return reserveIPByCondition(client, reservedIP, ReservationTypeContainerIP, "", conditions)
+}
+
 func reserveIP(client etcd.Client, ip net.IP, reservationType, mac string) (IPLeaseResult, error) {
 	key := reservedIPKey(client, ip.String())
 	macKey := macKey(client, ip.String())
@@ -246,5 +209,81 @@ func reserveIPByCondition(client etcd.Client, ip net.IP, reservationType, mac st
 		}
 
 		return IPLeaseResult{Success: false}, nil
+	})
+}
+
+func readReservation(client etcd.Client, ip string) (*reservation, error) {
+	tmp, err := getReservationsByPrefix(client, reservedIPKey(client, ip))
+
+	if err != nil {
+		return nil, err
+	}
+
+	r, has := tmp[ip]
+	if !has {
+		return nil, nil
+	}
+
+	return &r, nil
+}
+
+func getReservationsByPrefix(client etcd.Client, prefix string) (map[string]reservation, error) {
+	return etcd.WithConnection(client, func(connection *etcd.Connection) (map[string]reservation, error) {
+		resp, err := connection.Client.Get(connection.Ctx, prefix, clientv3.WithPrefix(), clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend))
+		if err != nil {
+			return nil, err
+		}
+
+		result := make(map[string]reservation)
+		for _, kv := range resp.Kvs {
+			key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
+			value := string(kv.Value)
+
+			if !strings.Contains(key, "/") {
+				ip := net.ParseIP(key)
+
+				if ip == nil {
+					fmt.Printf("couldn't parse %s as IP. Skipping...", key)
+					continue
+				}
+
+				if existing, exists := result[key]; exists {
+					existing.ip = ip
+					existing.reservationType = value
+					result[key] = existing
+				} else {
+					result[key] = reservation{
+						ip:              ip,
+						reservationType: value,
+					}
+				}
+			} else {
+				parts := strings.Split(key, "/")
+				if len(parts) == 2 {
+					if parts[1] == macKeyName {
+						if existing, exists := result[key]; exists {
+							existing.mac = value
+							result[key] = existing
+						} else {
+							fmt.Printf("Expected reservation for %s", key)
+						}
+					} else if parts[1] == reservedAtKeyName {
+						reservedAt, err := time.Parse(time.RFC3339, value)
+						if err != nil {
+							fmt.Printf("Couldn't parse reserved at value '%s' for '%s'. Skipping...", value, key)
+							continue
+						}
+						if existing, exists := result[key]; exists {
+							existing.reservedAt = reservedAt
+							result[key] = existing
+						} else {
+							fmt.Printf("Expected reservation for %s", key)
+						}
+					}
+				}
+			}
+		}
+
+		return result, nil
 	})
 }

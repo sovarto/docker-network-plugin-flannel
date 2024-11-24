@@ -4,9 +4,13 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
+	"go.etcd.io/etcd/api/v3/mvccpb"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"golang.org/x/exp/maps"
+	"log"
 	"math/rand"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -47,8 +51,6 @@ func NewEtcdBasedAddressPool(poolID string, poolSubnet net.IPNet, etcdClient etc
 
 	allIPs := ipsInSubnet(poolSubnet, true)
 
-	// TODO: Watcher
-
 	pool := &etcdPool{
 		poolID:     poolID,
 		poolSubnet: poolSubnet,
@@ -61,6 +63,8 @@ func NewEtcdBasedAddressPool(poolID string, poolSubnet net.IPNet, etcdClient etc
 		return nil, err
 	}
 
+	_, err = pool.watchForIPUsageChanges(etcdClient)
+
 	return pool, nil
 }
 
@@ -71,7 +75,7 @@ func (p *etcdPool) AllocateIP(reservedIP, mac, allocationType string, random boo
 	p.Lock()
 	defer p.Unlock()
 
-	if reservedIP != "" && mac != "" && allocationType == ReservationTypeContainerIP {
+	if reservedIP != "" && ((mac != "" && allocationType == ReservationTypeContainerIP) || allocationType == ReservationTypeServiceVIP) {
 		parsedIP := net.ParseIP(reservedIP)
 		if parsedIP == nil {
 			return nil, fmt.Errorf("reserved IP %s is invalid", reservedIP)
@@ -79,10 +83,18 @@ func (p *etcdPool) AllocateIP(reservedIP, mac, allocationType string, random boo
 
 		inSubnet := p.poolSubnet.Contains(parsedIP)
 		if inSubnet {
-			result, err := allocateReservedIPForContainer(p.etcdClient, parsedIP, mac)
-
-			if err != nil {
-				return nil, errors.Wrapf(err, "Error allocating reserved IP %s for container with MAC %s", reservedIP, mac)
+			var result IPLeaseResult
+			var err error
+			if allocationType == ReservationTypeContainerIP {
+				result, err = allocateReservedIPForContainer(p.etcdClient, parsedIP, mac)
+				if err != nil {
+					return nil, errors.Wrapf(err, "Error allocating reserved IP %s for container with MAC %s", reservedIP, mac)
+				}
+			} else {
+				result, err = allocateReservedIPForService(p.etcdClient, parsedIP)
+				if err != nil {
+					return nil, errors.Wrapf(err, "Error allocating reserved IP %s for service", reservedIP)
+				}
 			}
 
 			if result.Success {
@@ -118,6 +130,17 @@ func (p *etcdPool) AllocateIP(reservedIP, mac, allocationType string, random boo
 		}
 
 		result, err := reserveIP(p.etcdClient, ip, allocationType, mac)
+
+		if err != nil {
+			return nil, errors.Wrapf(err, "Error reserving IP for pool %s", p.poolID)
+		}
+
+		if result.Success {
+			ipStr := result.Reservation.ip.String()
+			delete(p.unusedIPs, ipStr)
+			p.reservedIPs[ipStr] = result.Reservation
+			return &result.Reservation.ip, nil
+		}
 	}
 }
 
@@ -201,4 +224,79 @@ func (p *etcdPool) getAvailableUnusedIPs() ([]net.IP, error) {
 	}
 
 	return result, nil
+}
+
+func (p *etcdPool) watchForIPUsageChanges(etcdClient etcd.Client) (clientv3.WatchChan, error) {
+	prefix := reservedIPsKey(etcdClient)
+	watcher, err := etcd.WithConnection(etcdClient, func(conn *etcd.Connection) (clientv3.WatchChan, error) {
+		return conn.Client.Watch(conn.Ctx, prefix, clientv3.WithPrefix(), clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend)), nil
+	})
+
+	go func() {
+		for wresp := range watcher {
+			for _, ev := range wresp.Events {
+				key := strings.TrimLeft(strings.TrimPrefix(string(ev.Kv.Key), prefix), "/")
+				keyParts := strings.Split(key, "/")
+				switch ev.Type {
+				case mvccpb.PUT:
+					ip := net.ParseIP(keyParts[0])
+					if ip == nil {
+						log.Printf("found new reserved IP '%s' for pool '%s', but it can't be parsed as an IP. This looks like a data issue. Ignoring..., err: %v", key, p.poolID, err)
+						continue
+					}
+					ipStr := ip.String()
+					p.Lock()
+					existingReservation, has := p.reservedIPs[ipStr]
+					r, err := readReservation(p.etcdClient, ipStr)
+
+					if err != nil {
+						log.Printf("found new reservation for IP '%s' for pool '%s', but retrieving the whole object resulted in an error: %v", ipStr, p.poolID, err)
+						continue
+					}
+
+					if r == nil {
+						log.Printf("found new reservation for IP '%s' for pool '%s', but when retrieving the whole object, it could no longer be found", ipStr, p.poolID)
+						continue
+					}
+
+					if has && (existingReservation.reservationType != r.reservationType || existingReservation.reservedAt != r.reservedAt || existingReservation.mac != r.mac) {
+						fmt.Printf("found change in reservation data of ip %s from %+v to %+v. This shouldn't happen", ipStr, existingReservation, r)
+						p.reservedIPs[ipStr] = *r
+					} else if !has {
+						fmt.Printf("found new reserved IP %s for pool %s. This shouldn't happen", ipStr, p.poolID)
+						delete(p.unusedIPs, ipStr)
+						p.reservedIPs[ipStr] = *r
+					} else {
+						// found reservation and in memory reservation have the same reservation type
+					}
+					p.Unlock()
+					break
+				case mvccpb.DELETE:
+					ip := net.ParseIP(keyParts[0])
+					if ip == nil {
+						log.Printf("found deleted reservation '%s' for pool '%s', but it can't be parsed as a IP. This looks like a data issue. Ignoring..., err: %v", key, p.poolID, err)
+						continue
+					}
+					ipStr := ip.String()
+
+					p.Lock()
+					if _, has := p.reservedIPs[ipStr]; !has {
+						// the reservation has already been deleted in our in-memory data
+					} else {
+						// this is a valid case: When a container starts on a node, it requests an IP
+						// address, in addition to the address requested by the IPAM pass before.
+						// the address from the IPAM pass will usually be invalid unless the container
+						// is being started on the same node that was also used for IPAM.
+						// So, the node on which the container starts can detect this and relesae that IPAM IP
+						fmt.Printf("found deleted reservation for IP '%s' in pool '%s'.", ipStr, p.poolID)
+						delete(p.reservedIPs, ipStr)
+						p.unusedIPs[ipStr] = time.Now()
+					}
+					p.Unlock()
+				}
+			}
+		}
+	}()
+
+	return watcher, err
 }
