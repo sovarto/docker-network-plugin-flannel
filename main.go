@@ -40,10 +40,15 @@ func main() {
 		availableSubnets = append(availableSubnets, *parsed)
 	}
 
-	_, err := driver.NewFlannelDriver(etcdEndPoints, etcdPrefix, defaultFlannelOptions, availableSubnets, networkSubnetSize, defaultHostSubnetSize)
+	flannelDriver, err := driver.NewFlannelDriver(etcdEndPoints, etcdPrefix, defaultFlannelOptions, availableSubnets, networkSubnetSize, defaultHostSubnetSize)
 
 	if err != nil {
 		log.Fatalf("ERROR: %s init failed: %v", "flannel-np", err)
+	}
+
+	err = flannelDriver.Serve()
+	if err != nil {
+		log.Fatalf("ERROR: %s start flannel failed: %v", "flannel-np", err)
 	}
 
 	fmt.Println("Flannel plugin is ready")
