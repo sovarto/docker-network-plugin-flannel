@@ -1,4 +1,4 @@
-package driver
+package api
 
 import (
 	"fmt"
@@ -25,16 +25,16 @@ const (
 	revokeExtConnPath   = "/NetworkDriver.RevokeExternalConnectivity"
 )
 
-func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
+func InitNetworkMux(h *sdk.Handler, n network.Driver) {
 	h.HandleFunc(capabilitiesPath, func(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[Network] Received GetCapabilities req\n")
+		res, err := n.GetCapabilities()
+		fmt.Printf("[Network] GetCapabilities response: %+v; error:%+v\n", res, err)
 
-		res := &network.CapabilitiesResponse{
-			Scope:             "global",
-			ConnectivityScope: "global",
+		if err != nil {
+			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
+			return
 		}
-		fmt.Printf("[Network] GetCapabilities response: %+v\n", res)
-
 		sdk.EncodeResponse(w, res, false)
 	})
 	h.HandleFunc(createNetworkPath, func(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +46,7 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 			return
 		}
 		fmt.Printf("[Network] Received CreateNetwork req: %+v\n", req)
-		err = flannelDriver.CreateNetwork(req)
+		err = n.CreateNetwork(req)
 		fmt.Printf("[Network] CreateNetwork response: %+v\n", err)
 
 		if err != nil {
@@ -64,7 +64,7 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 			return
 		}
 		fmt.Printf("[Network] Received AllocateNetwork req: %+v\n", req)
-		res, err := flannelDriver.AllocateNetwork(req)
+		res, err := n.AllocateNetwork(req)
 		fmt.Printf("[Network] AllocateNetwork response: %+v; error:%+v\n", res, err)
 
 		if err != nil {
@@ -82,7 +82,7 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 			return
 		}
 		fmt.Printf("[Network] Received DeleteNetwork req: %+v\n", req)
-		err = flannelDriver.DeleteNetwork(req)
+		err = n.DeleteNetwork(req)
 		fmt.Printf("[Network] DeleteNetwork response: %+v\n", err)
 
 		if err != nil {
@@ -100,7 +100,7 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 			return
 		}
 		fmt.Printf("[Network] Received FreeNetwork req: %+v\n", req)
-		err = flannelDriver.FreeNetwork(req)
+		err = n.FreeNetwork(req)
 		fmt.Printf("[Network] FreeNetwork response: %+v\n", err)
 		if err != nil {
 			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
@@ -117,7 +117,7 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 			return
 		}
 		fmt.Printf("[Network] Received CreateEndpoint req: %+v\n", req)
-		res, err := flannelDriver.CreateEndpoint(req)
+		res, err := n.CreateEndpoint(req)
 		fmt.Printf("[Network] CreateEndpoint response: %+v; error:%+v\n", res, err)
 
 		if err != nil {
@@ -135,7 +135,7 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 			return
 		}
 		fmt.Printf("[Network] Received DeleteEndpoint req: %+v\n", req)
-		err = flannelDriver.DeleteEndpoint(req)
+		err = n.DeleteEndpoint(req)
 		fmt.Printf("[Network] DeleteEndpoint response: %+v\n", err)
 
 		if err != nil {
@@ -153,7 +153,7 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 			return
 		}
 		fmt.Printf("[Network] Received EndpointOperInfo req: %+v\n", req)
-		res, err := flannelDriver.EndpointInfo(req)
+		res, err := n.EndpointInfo(req)
 		fmt.Printf("[Network] EndpointInfo response: %+v; error:%+v\n", res, err)
 
 		if err != nil {
@@ -171,7 +171,7 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 			return
 		}
 		fmt.Printf("[Network] Received Join req: %+v\n", req)
-		res, err := flannelDriver.Join(req)
+		res, err := n.Join(req)
 		fmt.Printf("[Network] Join response: %+v; error:%+v\n", res, err)
 
 		if err != nil {
@@ -189,7 +189,7 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 			return
 		}
 		fmt.Printf("[Network] Received Leave req: %+v\n", req)
-		err = flannelDriver.Leave(req)
+		err = n.Leave(req)
 		fmt.Printf("[Network] Leave response: %+v\n", err)
 
 		if err != nil {
@@ -207,7 +207,7 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 			return
 		}
 		fmt.Printf("[Network] Received DiscoverNew req: %+v\n", req)
-		err = flannelDriver.DiscoverNew(req)
+		err = n.DiscoverNew(req)
 		fmt.Printf("[Network] DiscoverNew response: %+v\n", err)
 		if err != nil {
 			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
@@ -224,7 +224,7 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 			return
 		}
 		fmt.Printf("[Network] Received DiscoverDelete req: %+v\n", req)
-		err = flannelDriver.DiscoverDelete(req)
+		err = n.DiscoverDelete(req)
 		fmt.Printf("[Network] DiscoverDelete response: %+v\n", err)
 		if err != nil {
 			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
@@ -241,7 +241,7 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 			return
 		}
 		fmt.Printf("[Network] Received ProgramExternalConnectivity req: %+v\n", req)
-		err = flannelDriver.ProgramExternalConnectivity(req)
+		err = n.ProgramExternalConnectivity(req)
 		fmt.Printf("[Network] ProgramExternalConnectivity response: %+v\n", err)
 		if err != nil {
 			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
@@ -258,7 +258,7 @@ func initNetworkMux(h *sdk.Handler, flannelDriver *FlannelDriver) {
 			return
 		}
 		fmt.Printf("[Network] Received RevokeExternalConnectivity req: %+v\n", req)
-		err = flannelDriver.RevokeExternalConnectivity(req)
+		err = n.RevokeExternalConnectivity(req)
 		fmt.Printf("[Network] RevokeExternalConnectivity response: %+v\n", err)
 		if err != nil {
 			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)

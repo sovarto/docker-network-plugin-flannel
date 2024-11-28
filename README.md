@@ -23,3 +23,18 @@ then this would leave us with 28 IPs per host for the actual container IPs.
 
 
 
+
+
+
+
+TODO:
+- Release IPAM IP of container when actual IP differs (done)
+  - -> etcd watcher on container data (done)
+  - -> store IPAM IPs on containers (done)
+- restore state upon startup and resync from Docker
+- Periodic sync
+- Connection draining
+  - -> Handle container kill
+  - -> Remove backend from load balancer / set weight to 0
+  - -> Test IPVS handling of removed backends and backends with weight 0 WRT existing connections
+- Check proper locking in all relevant methods

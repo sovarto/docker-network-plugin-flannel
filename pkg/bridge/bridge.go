@@ -2,10 +2,9 @@ package bridge
 
 import (
 	"fmt"
-	"github.com/coreos/go-iptables/iptables"
 	"github.com/pkg/errors"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
-	"github.com/sovarto/FlannelNetworkPlugin/pkg/interface_management"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 	"golang.org/x/sys/unix"
@@ -16,23 +15,19 @@ import (
 type BridgeInterface interface {
 	Ensure() error
 	Delete() error
-}
-
-type iptablesRule struct {
-	table    string
-	chain    string
-	ruleSpec []string
+	GetNetworkInfo() common.NetworkInfo
+	CreateAttachedVethPair(mac string) (VethPair, error)
 }
 
 type bridgeInterface struct {
 	interfaceName string
-	iptablesRules []iptablesRule
+	iptablesRules []networking.IptablesRule
 	network       common.NetworkInfo
 	route         netlink.Route
 }
 
 func NewBridgeInterface(network common.NetworkInfo) (BridgeInterface, error) {
-	interfaceName := interface_management.GetInterfaceName("fl", "-", network.ID)
+	interfaceName := networking.GetInterfaceName("fl", "-", network.ID)
 	result := &bridgeInterface{
 		interfaceName: interfaceName,
 		iptablesRules: getIptablesRules(interfaceName, network.HostSubnet),
@@ -47,9 +42,13 @@ func NewBridgeInterface(network common.NetworkInfo) (BridgeInterface, error) {
 	return result, nil
 }
 
+func (b *bridgeInterface) GetNetworkInfo() common.NetworkInfo {
+	return b.network
+}
+
 func (b *bridgeInterface) Ensure() error {
 
-	bridge, err := interface_management.EnsureInterface(b.interfaceName, "bridge", b.network.MTU, true)
+	bridge, err := networking.EnsureInterface(b.interfaceName, "bridge", b.network.MTU, true)
 	if err != nil {
 		log.Printf("Error ensuring bridge interface exists %s: %v", b.interfaceName, err)
 		return err
@@ -58,7 +57,7 @@ func (b *bridgeInterface) Ensure() error {
 	ones, _ := b.network.HostSubnet.Mask.Size()
 	ip := fmt.Sprintf("%s/%d", b.network.LocalGateway, ones)
 
-	if err := interface_management.ReplaceIPsOfInterface(bridge, []string{ip}); err != nil {
+	if err := networking.ReplaceIPsOfInterface(bridge, []string{ip}); err != nil {
 		log.Printf("Error updating IP of bridge %s: %v", b.interfaceName, err)
 		return err
 	}
@@ -69,7 +68,7 @@ func (b *bridgeInterface) Ensure() error {
 	}
 
 	route := &netlink.Route{
-		Dst:       &b.network.HostSubnet,
+		Dst:       b.network.HostSubnet,
 		Src:       b.network.LocalGateway,
 		LinkIndex: bridge.Attrs().Index,
 		Scope:     netlink.SCOPE_LINK,
@@ -83,7 +82,7 @@ func (b *bridgeInterface) Ensure() error {
 
 	b.route = *route
 
-	if err := applyIpTablesRules(b.iptablesRules, "create"); err != nil {
+	if err := networking.ApplyIpTablesRules(b.iptablesRules, "create"); err != nil {
 		return errors.Wrapf(err, "failed to setup IP Tables rules for bridge interface for network %s", b.interfaceName)
 	}
 
@@ -96,7 +95,7 @@ func (b *bridgeInterface) Delete() error {
 		return err
 	}
 
-	if err := applyIpTablesRules(b.iptablesRules, "delete"); err != nil {
+	if err := networking.ApplyIpTablesRules(b.iptablesRules, "delete"); err != nil {
 		return errors.Wrapf(err, "failed to delete IP Tables rules for bridge interface for network %s", b.interfaceName)
 	}
 
@@ -112,55 +111,55 @@ func (b *bridgeInterface) Delete() error {
 	return nil
 }
 
-func getIptablesRules(interfaceName string, hostSubnet net.IPNet) []iptablesRule {
-	return []iptablesRule{
+func getIptablesRules(interfaceName string, hostSubnet *net.IPNet) []networking.IptablesRule {
+	return []networking.IptablesRule{
 		{
-			table: "nat",
-			chain: "POSTROUTING",
-			ruleSpec: []string{
+			Table: "nat",
+			Chain: "POSTROUTING",
+			RuleSpec: []string{
 				"-s", hostSubnet.String(),
 				"!", "-o", interfaceName,
 				"-j", "MASQUERADE",
 			},
 		},
 		{
-			table: "nat",
-			chain: "DOCKER",
-			ruleSpec: []string{
+			Table: "nat",
+			Chain: "DOCKER",
+			RuleSpec: []string{
 				"-i", interfaceName,
 				"-j", "RETURN",
 			},
 		},
 		{
-			table: "filter",
-			chain: "FORWARD",
-			ruleSpec: []string{
+			Table: "filter",
+			Chain: "FORWARD",
+			RuleSpec: []string{
 				"-i", interfaceName,
 				"-o", interfaceName,
 				"-j", "ACCEPT",
 			},
 		},
 		{
-			table: "filter",
-			chain: "FORWARD",
-			ruleSpec: []string{
+			Table: "filter",
+			Chain: "FORWARD",
+			RuleSpec: []string{
 				"-i", interfaceName,
 				"!", "-o", interfaceName,
 				"-j", "ACCEPT",
 			},
 		},
 		{
-			table: "filter",
-			chain: "FORWARD",
-			ruleSpec: []string{
+			Table: "filter",
+			Chain: "FORWARD",
+			RuleSpec: []string{
 				"-o", interfaceName,
 				"-j", "DOCKER",
 			},
 		},
 		{
-			table: "filter",
-			chain: "FORWARD",
-			ruleSpec: []string{
+			Table: "filter",
+			Chain: "FORWARD",
+			RuleSpec: []string{
 				"-o", interfaceName,
 				"-m", "conntrack",
 				"--ctstate", "RELATED,ESTABLISHED",
@@ -168,52 +167,23 @@ func getIptablesRules(interfaceName string, hostSubnet net.IPNet) []iptablesRule
 			},
 		},
 		{
-			table: "filter",
-			chain: "DOCKER-ISOLATION-STAGE-1",
-			ruleSpec: []string{
+			Table: "filter",
+			Chain: "DOCKER-ISOLATION-STAGE-1",
+			RuleSpec: []string{
 				"-i", interfaceName,
 				"!", "-o", interfaceName,
 				"-j", "DOCKER-ISOLATION-STAGE-2",
 			},
 		},
 		{
-			table: "filter",
-			chain: "DOCKER-ISOLATION-STAGE-2",
-			ruleSpec: []string{
+			Table: "filter",
+			Chain: "DOCKER-ISOLATION-STAGE-2",
+			RuleSpec: []string{
 				"-o", interfaceName,
 				"-j", "DROP",
 			},
 		},
 	}
-}
-
-func applyIpTablesRules(rules []iptablesRule, action string) error {
-	iptablev4, err := iptables.New()
-	if err != nil {
-		log.Printf("Error initializing iptables: %v", err)
-		return err
-	}
-
-	var a func(table string, chain string, rulespec ...string) error
-	switch action {
-	case "create":
-		a = iptablev4.AppendUnique
-		break
-	case "delete":
-		a = iptablev4.Delete
-		break
-	default:
-		return fmt.Errorf("invalid action. specify 'create' or 'delete'")
-	}
-
-	for _, rule := range rules {
-		if err := a(rule.table, rule.chain, rule.ruleSpec...); err != nil {
-			log.Printf("Error applying iptables rule in table %s, chain %s: %v", rule.table, rule.chain, err)
-			return err
-		}
-	}
-
-	return nil
 }
 
 func patchBridge(bridge netlink.Link) error {

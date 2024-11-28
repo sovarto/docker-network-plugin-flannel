@@ -18,6 +18,7 @@ type AddressSpace interface {
 	GetPoolSize() int
 	GetNewPool(id string) (*net.IPNet, error)
 	GetPoolById(id string) *net.IPNet
+	GetNewOrExistingPool(id string) (*net.IPNet, error)
 	ReleasePool(id string) error
 }
 
@@ -75,6 +76,14 @@ func NewEtcdBasedAddressSpace(completeSpace []net.IPNet, poolSize int, etcdClien
 
 func (as *etcdAddressSpace) GetCompleteAddressSpace() []net.IPNet { return as.completeSpace }
 func (as *etcdAddressSpace) GetPoolSize() int                     { return as.poolSize }
+func (as *etcdAddressSpace) GetNewOrExistingPool(id string) (*net.IPNet, error) {
+	pool, has := as.pools[id]
+	if has {
+		return &pool, nil
+	}
+	return as.GetNewPool(id)
+}
+
 func (as *etcdAddressSpace) GetPoolById(id string) *net.IPNet {
 	pool, has := as.pools[id]
 	if has {

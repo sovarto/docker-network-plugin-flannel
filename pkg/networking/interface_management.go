@@ -1,8 +1,9 @@
-package driver
+package networking
 
 import (
 	"fmt"
 	"github.com/docker/docker/libnetwork/ns"
+	"github.com/pkg/errors"
 	"github.com/vishvananda/netlink"
 	"log"
 	"net"
@@ -32,15 +33,15 @@ func interfaceExists(name string, interfaceType string) (bool, error) {
 	return true, fmt.Errorf("existing interface %s is not a %s", interfaceType, name)
 }
 
-func getInterfaceName(prefix string, separator string, flannelNetworkId string) string {
-	name := prefix + separator + flannelNetworkId
+func GetInterfaceName(prefix string, separator string, networkID string) string {
+	name := prefix + separator + networkID
 	if len(name) > maxInterfaceNameLength {
 		name = name[:maxInterfaceNameLength]
 	}
 	return name
 }
 
-func replaceIPsOfInterface(link netlink.Link, ips []string) error {
+func ReplaceIPsOfInterface(link netlink.Link, ips []string) error {
 	parsedIPs := []*netlink.Addr{}
 	for _, ip := range ips {
 		if !strings.Contains(ip, "/") {
@@ -86,18 +87,30 @@ func replaceIPsOfInterface(link netlink.Link, ips []string) error {
 	return nil
 }
 
-func ensureInterfaceListensOnAddress(link netlink.Link, ip string) error {
+func EnsureInterfaceListensOnAddress(link netlink.Link, ip string) error {
 	if !strings.Contains(ip, "/") {
 		ip = fmt.Sprintf("%s/32", ip)
 	}
 	addr, err := netlink.ParseAddr(ip)
 	if err != nil {
-		log.Printf("Failed to parse IP address %s: %v\n", ip, err)
-		return err
+		return errors.Wrapf(err, "Failed to parse IP address %s", ip)
 	}
 	if err := netlink.AddrReplace(link, addr); err != nil {
-		log.Printf("Failed to add IP address %s to interface: %v\n", addr.String(), err)
-		return err
+		return errors.Wrapf(err, "Failed to add IP address %s to interface %s", addr.String(), link.Attrs().Name)
+	}
+	return nil
+}
+
+func StopListeningOnAddress(link netlink.Link, ip string) error {
+	if !strings.Contains(ip, "/") {
+		ip = fmt.Sprintf("%s/32", ip)
+	}
+	addr, err := netlink.ParseAddr(ip)
+	if err != nil {
+		return errors.Wrapf(err, "Failed to parse IP address %s", ip)
+	}
+	if err := netlink.AddrDel(link, addr); err != nil {
+		return errors.Wrapf(err, "Failed to remove IP address %s from interface %s", addr.String(), link.Attrs().Name)
 	}
 	return nil
 }
@@ -106,7 +119,7 @@ func addressesEqual(a1, a2 *netlink.Addr) bool {
 	return a1.IPNet.String() == a2.IPNet.String()
 }
 
-func ensureInterface(name string, interfaceType string, mtu int, up bool) (netlink.Link, error) {
+func EnsureInterface(name string, interfaceType string, mtu int, up bool) (netlink.Link, error) {
 	exists, err := interfaceExists(name, interfaceType)
 	if err != nil {
 		return nil, err
@@ -144,6 +157,25 @@ func ensureInterface(name string, interfaceType string, mtu int, up bool) (netli
 	if err != nil {
 		log.Printf("Error getting %s interface %s by name: %v", interfaceType, name, err)
 		return nil, err
+	}
+
+	if link.Attrs().MTU != mtu {
+		err = netlink.LinkSetMTU(link, mtu)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Couldn't set mtu of %s to %d", name, mtu)
+		}
+	}
+
+	if link.Attrs().Flags&net.FlagUp == net.FlagUp && !up {
+		err = netlink.LinkSetDown(link)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Couldn't bring interface %s down", name)
+		}
+	} else if link.Attrs().Flags&net.FlagUp != net.FlagUp && up {
+		err = netlink.LinkSetUp(link)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Couldn't bring interface %s up", name)
+		}
 	}
 
 	return link, nil

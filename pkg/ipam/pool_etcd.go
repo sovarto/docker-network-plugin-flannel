@@ -287,3 +287,12 @@ func getReservationsByPrefix(client etcd.Client, prefix string) (map[string]rese
 		return result, nil
 	})
 }
+
+func deleteAllReservations(client etcd.Client) error {
+	_, err := etcd.WithConnection(client, func(connection *etcd.Connection) (struct{}, error) {
+		_, err := connection.Client.Delete(connection.Ctx, reservedIPsKey(client), clientv3.WithPrefix())
+		return struct{}{}, err
+	})
+
+	return err
+}

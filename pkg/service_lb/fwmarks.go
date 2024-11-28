@@ -19,7 +19,6 @@ type FwmarksManagement interface {
 }
 
 type fwmarks struct {
-	marks      map[string]map[string]uint32
 	etcdClient etcd.Client
 	sync.Mutex
 }
@@ -42,7 +41,6 @@ func fwmarkServiceKey(client etcd.Client, networkID, serviceID string) string {
 
 func NewFwmarksManagement(etcdClient etcd.Client) FwmarksManagement {
 	return &fwmarks{
-		marks:      make(map[string]map[string]uint32),
 		etcdClient: etcdClient,
 	}
 }

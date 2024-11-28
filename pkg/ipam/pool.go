@@ -20,6 +20,7 @@ type AddressPool interface {
 	GetPoolSubnet() net.IPNet
 	AllocateIP(preferredIP, mac, allocationType string, random bool) (*net.IP, error)
 	ReleaseIP(ip string) error
+	ReleaseAllIPs() error
 }
 
 type reservation struct {
@@ -169,6 +170,18 @@ func (p *etcdPool) ReleaseIP(ip string) error {
 	p.unusedIPs[ip] = time.Now()
 
 	return nil
+}
+
+func (p *etcdPool) ReleaseAllIPs() error {
+	p.Lock()
+	defer p.Unlock()
+
+	err := deleteAllReservations(p.etcdClient)
+	if err != nil {
+		return errors.Wrapf(err, "Error deleting all reserved IPs for pool %s", p.poolID)
+	}
+
+	return p.syncIPs()
 }
 
 func (p *etcdPool) syncIPs() error {

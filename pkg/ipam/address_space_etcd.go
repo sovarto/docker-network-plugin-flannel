@@ -2,22 +2,19 @@ package ipam
 
 import (
 	"fmt"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"net"
 	"strings"
 )
 
-func subnetToKey(subnet string) string {
-	return strings.ReplaceAll(subnet, "/", "-")
-}
-
 func subnetsKey(e etcd.Client) string {
 	return e.GetKey()
 }
 
 func subnetKey(e etcd.Client, subnet string) string {
-	return e.GetKey(subnetToKey(subnet))
+	return e.GetKey(common.SubnetToKey(subnet))
 }
 
 func getUsedSubnets(client etcd.Client) (map[string]net.IPNet, error) {

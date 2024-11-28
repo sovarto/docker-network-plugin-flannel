@@ -2,8 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/apparentlymart/go-cidr/cidr"
-	"github.com/sovarto/FlannelNetworkPlugin/driver"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/driver"
 	"log"
 	"net"
 	"os"
@@ -27,18 +26,25 @@ func main() {
 	etcdEndPoints := strings.Split(os.Getenv("ETCD_ENDPOINTS"), ",")
 	etcdPrefix := strings.TrimRight(os.Getenv("ETCD_PREFIX"), "/")
 	defaultFlannelOptions := strings.Split(os.Getenv("DEFAULT_FLANNEL_OPTIONS"), ",")
-	availableSubnets := strings.Split(os.Getenv("AVAILABLE_SUBNETS"), ",")
+	availableSubnetsStrings := strings.Split(os.Getenv("AVAILABLE_SUBNETS"), ",")
 	networkSubnetSize := getEnvAsInt("NETWORK_SUBNET_SIZE", 20)
 	defaultHostSubnetSize := getEnvAsInt("DEFAULT_HOST_SUBNET_SIZE", 25)
-	allSubnets, err := generateAllSubnets(availableSubnets, networkSubnetSize)
 
-	if err != nil {
-		log.Fatalf("ERROR: %s init failed, invalid subnets configuration: %v", "flannel-np", err)
+	availableSubnets := []net.IPNet{}
+	for _, subnet := range availableSubnetsStrings {
+		_, parsed, err := net.ParseCIDR(subnet)
+		if err != nil {
+			log.Fatalf("ERROR: %s init failed, can't parse subnet %s: %v", "flannel-np", subnet, err)
+		}
+
+		availableSubnets = append(availableSubnets, *parsed)
 	}
 
-	driver.ServeFlannelDriver(etcdEndPoints, etcdPrefix, defaultFlannelOptions,
-		allSubnets,
-		defaultHostSubnetSize)
+	_, err := driver.NewFlannelDriver(etcdEndPoints, etcdPrefix, defaultFlannelOptions, availableSubnets, networkSubnetSize, defaultHostSubnetSize)
+
+	if err != nil {
+		log.Fatalf("ERROR: %s init failed: %v", "flannel-np", err)
+	}
 
 	fmt.Println("Flannel plugin is ready")
 }

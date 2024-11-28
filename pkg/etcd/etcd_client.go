@@ -12,6 +12,8 @@ import (
 type Client interface {
 	NewConnection() (*Connection, error)
 	GetKey(subKeys ...string) string
+	CreateSubClient(subKeys ...string) Client
+	GetEndpoints() []string
 }
 
 func WithConnection[T any](client Client, fn func(*Connection) (T, error)) (T, error) {
@@ -68,6 +70,14 @@ func (c *etcdClient) GetKey(subKeys ...string) string {
 		return c.prefix
 	}
 	return fmt.Sprintf("%s/%s", c.prefix, strings.Join(subKeys, "/"))
+}
+
+func (c *etcdClient) GetEndpoints() []string {
+	return c.endpoints
+}
+
+func (c *etcdClient) CreateSubClient(subKeys ...string) Client {
+	return NewEtcdClient(c.endpoints, c.dialTimeout, c.GetKey(subKeys...))
 }
 
 func NewEtcdClient(endpoints []string, dialTimeout time.Duration, prefix string) Client {
