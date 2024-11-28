@@ -50,6 +50,8 @@ func NewFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelO
 	}
 	driver.globalAddressSpace = globalAddressSpace
 
+	log.Println("Initialized address space")
+
 	callbacks := docker.Callbacks{
 		ContainerChanged: driver.handleContainerChanged,
 		ContainerAdded:   driver.handleContainerAdded,
@@ -66,9 +68,11 @@ func NewFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelO
 		return nil, errors.Wrap(err, "Failed to create docker data handler")
 	}
 	driver.dockerData = dockerData
+	log.Println("Initialized docker data handler")
 
 	serviceLbsManagement := service_lb.NewServiceLbManagement(driver.getEtcdClient("service-lbs"))
 	driver.serviceLbsManagement = serviceLbsManagement
+	log.Println("Initialized service load balancer management")
 
 	return driver, nil
 }
