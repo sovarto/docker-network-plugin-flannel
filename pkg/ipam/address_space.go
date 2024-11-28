@@ -65,10 +65,13 @@ func NewEtcdBasedAddressSpace(completeSpace []net.IPNet, poolSize int, etcdClien
 		etcdClient:    etcdClient,
 	}
 
+	log.Println("start etcd watcher")
 	_, err = space.watchForSubnetUsageChanges(etcdClient)
 
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating etcd watcher to watch for used subnets")
+	} else {
+		log.Println("etcd watcher started")
 	}
 
 	return space, nil
