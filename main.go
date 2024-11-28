@@ -44,6 +44,8 @@ func main() {
 
 	if err != nil {
 		log.Fatalf("ERROR: %s init failed: %v", "flannel-np", err)
+	} else {
+		fmt.Println("flannel driver initialized")
 	}
 
 	err = flannelDriver.Serve()

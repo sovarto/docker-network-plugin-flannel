@@ -39,7 +39,7 @@ func NewServiceLbManagement(etcdClient etcd.Client) ServiceLbsManagement {
 	return &serviceLbManagement{
 		loadBalancers:     make(map[string]map[string]NetworkSpecificServiceLb),
 		etcdClient:        etcdClient,
-		fwmarksManagement: NewFwmarksManagement(etcdClient),
+		fwmarksManagement: NewFwmarksManagement(etcdClient.CreateSubClient("fwmarks")),
 		networks:          make(map[string]flannel_network.Network),
 	}
 }
