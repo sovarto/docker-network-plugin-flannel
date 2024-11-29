@@ -29,7 +29,7 @@ type flannelDriver struct {
 	etcdEndPoints         []string
 	defaultFlannelOptions []string
 	defaultHostSubnetSize int
-	networks              map[string]flannel_network.Network
+	networks              map[string]flannel_network.Network // flannel network ID -> network
 	serviceLbsManagement  service_lb.ServiceLbsManagement
 	dockerData            docker.Data
 	sync.Mutex
@@ -149,20 +149,25 @@ func (d *flannelDriver) handleServiceRemoved(serviceID string) {
 }
 
 func (d *flannelDriver) handleNetworkAdded(networkID string) {
-	networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(networkID)
+	flannelNetworkID, err := d.dockerData.GetFlannelNetworkID(networkID)
+	if err != nil {
+		log.Printf("failed to get flannel network id for for network '%s': %+v\n", networkID, err)
+		return
+	}
+	networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(flannelNetworkID)
 	if err != nil {
 		log.Printf("failed to get network subnet pool for network '%s': %+v\n", networkID, err)
 		return
 	}
 
-	network, err := flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), networkID, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions)
+	network, err := flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), flannelNetworkID, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions)
 
 	if err != nil {
 		log.Printf("failed to ensure network '%s' is operational: %+v\n", networkID, err)
 		return
 	}
 
-	d.networks[networkID] = network
+	d.networks[flannelNetworkID] = network
 	err = d.serviceLbsManagement.AddNetwork(network)
 	if err != nil {
 		log.Printf("Failed to add network '%s' to service load balancer management: %+v\n", networkID, err)
@@ -175,7 +180,13 @@ func (d *flannelDriver) handleNetworkRemoved(networkID string) {
 
 func (d *flannelDriver) handleContainerAdded(containerInfo common.ContainerInfo) {
 	for networkID, ipamIP := range containerInfo.IpamIPs {
-		network, exists := d.networks[networkID]
+		flannelNetworkID, err := d.dockerData.GetFlannelNetworkID(networkID)
+		if err != nil {
+			log.Printf("failed to get flannel network id for network '%s': %+v\n", networkID, err)
+			continue
+		}
+
+		network, exists := d.networks[flannelNetworkID]
 		if !exists {
 			continue
 		}
@@ -197,7 +208,13 @@ func (d *flannelDriver) handleContainerChanged(previousContainerInfo *common.Con
 
 func (d *flannelDriver) handleContainerRemoved(containerInfo common.ContainerInfo) {
 	for networkID, ip := range containerInfo.IPs {
-		network, exists := d.networks[networkID]
+		flannelNetworkID, err := d.dockerData.GetFlannelNetworkID(networkID)
+		if err != nil {
+			log.Printf("failed to get flannel network id for network '%s': %+v\n", networkID, err)
+			continue
+		}
+
+		network, exists := d.networks[flannelNetworkID]
 		if !exists {
 			continue
 		}

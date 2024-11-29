@@ -76,7 +76,6 @@ func NewEtcdBasedAddressSpace(completeSpace []net.IPNet, poolSize int, etcdClien
 func (as *etcdAddressSpace) GetCompleteAddressSpace() []net.IPNet { return as.completeSpace }
 func (as *etcdAddressSpace) GetPoolSize() int                     { return as.poolSize }
 func (as *etcdAddressSpace) GetNewOrExistingPool(id string) (*net.IPNet, error) {
-	fmt.Printf("existing pools: %+v", lo.Keys(as.pools))
 	pool, has := as.pools[id]
 	if has {
 		return &pool, nil
