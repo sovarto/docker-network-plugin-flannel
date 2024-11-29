@@ -411,7 +411,7 @@ func (n *network) loadFlannelConfig(filename string) error {
 				return errors.Wrapf(err, "invalid CIDR format for subnet: %s", value)
 			}
 			pool, err := ipam.NewEtcdBasedAddressPool(n.id,
-				*ipNet, n.etcdClient.CreateSubClient("host-subnets", common.SubnetToKey(ipNet.String())))
+				*ipNet, n.etcdClient.CreateSubClient("address-space", "host-subnets", common.SubnetToKey(ipNet.String())))
 			if err != nil {
 				return errors.Wrapf(err, "can't create address pool for network %s and subnet %s", n.id, ipNet.String())
 			}

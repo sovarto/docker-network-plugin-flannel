@@ -354,9 +354,9 @@ func (d *data) handleService(serviceID string) error {
 	}
 
 	for _, endpoint := range service.Endpoint.VirtualIPs {
-		ip := net.ParseIP(endpoint.Addr)
-		if ip == nil {
-			return fmt.Errorf("error parsing IP address %s for service %s", endpoint.Addr, serviceID)
+		ip, _, err := net.ParseCIDR(endpoint.Addr)
+		if err != nil {
+			return errors.Wrapf(err, "error parsing IP address %s for service %s", endpoint.Addr, serviceID)
 		}
 		serviceInfo.VIPs[endpoint.NetworkID] = ip
 	}
