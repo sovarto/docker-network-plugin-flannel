@@ -54,7 +54,7 @@ func NewEtcdBasedAddressSpace(completeSpace []net.IPNet, poolSize int, etcdClien
 		})
 	}
 
-	fmt.Printf("%d total available subnets, of which %d are already used", len(allSubnets), len(pools))
+	fmt.Printf("%d total available subnets, of which %d are already used\n", len(allSubnets), len(pools))
 
 	space := &etcdAddressSpace{
 		completeSpace: completeSpace,

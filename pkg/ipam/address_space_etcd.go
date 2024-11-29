@@ -32,7 +32,7 @@ func getUsedSubnets(client etcd.Client) (map[string]net.IPNet, error) {
 				continue
 			}
 			networkID := string(kv.Value)
-			_, ipNet, err := net.ParseCIDR(key)
+			_, ipNet, err := net.ParseCIDR(strings.ReplaceAll(key, "-", "/"))
 
 			if err != nil {
 				fmt.Printf("couldn't parse %s as CIDR for network %s. Skipping...\n", key, networkID)
