@@ -21,7 +21,8 @@ import (
 )
 
 type Data interface {
-	GetFlannelNetworkID(dockerNetworkID string) (string, error)
+	GetFlannelNetworkID(dockerNetworkID string) (flannelNetworkID string, exists bool)
+	GetDockerNetworkID(flannelNetworkID string) (dockerNetworkID string, exists bool)
 	Init() error
 }
 
@@ -32,13 +33,15 @@ type Callbacks struct {
 	ServiceChanged   func(previousServiceInfo *common.ServiceInfo, currentServiceInfo common.ServiceInfo)
 	ServiceAdded     func(serviceInfo common.ServiceInfo)
 	ServiceRemoved   func(serviceID string)
-	NetworkAdded     func(networkID string)
-	NetworkRemoved   func(networkID string)
+	NetworkAdded     func(dockerNetworkID string, flannelNetworkID string)
+	NetworkChanged   func(dockerNetworkID string, flannelNetworkID string)
+	NetworkRemoved   func(dockerNetworkID string, flannelNetworkID string)
 }
 
 type data struct {
 	dockerClient                      *client.Client
 	dockerNetworkIDtoFlannelNetworkID map[string]string
+	flannelNetworkIDtoDockerNetworkID map[string]string
 	etcdClient                        etcd.Client
 	hostname                          string
 	containers                        map[string]common.ContainerInfo // containerID -> info
@@ -72,6 +75,7 @@ func NewData(etcdClient etcd.Client, callbacks Callbacks) (Data, error) {
 		etcdClient:                        etcdClient,
 		dockerClient:                      dockerClient,
 		dockerNetworkIDtoFlannelNetworkID: make(map[string]string),
+		flannelNetworkIDtoDockerNetworkID: make(map[string]string),
 		containers:                        make(map[string]common.ContainerInfo),
 		services:                          make(map[string]common.ServiceInfo),
 		callbacks:                         callbacks,
@@ -80,6 +84,15 @@ func NewData(etcdClient etcd.Client, callbacks Callbacks) (Data, error) {
 	}
 
 	return result, nil
+}
+
+func (d *data) GetFlannelNetworkID(dockerNetworkID string) (flannelNetworkID string, exists bool) {
+	flannelNetworkID, exists = d.dockerNetworkIDtoFlannelNetworkID[dockerNetworkID]
+	return flannelNetworkID, exists
+}
+func (d *data) GetDockerNetworkID(flannelNetworkID string) (dockerNetworkID string, exists bool) {
+	dockerNetworkID, exists = d.flannelNetworkIDtoDockerNetworkID[flannelNetworkID]
+	return dockerNetworkID, exists
 }
 
 func (d *data) Init() error {
@@ -111,27 +124,10 @@ func (d *data) Init() error {
 	return nil
 }
 
-func (d *data) GetFlannelNetworkID(dockerNetworkID string) (string, error) {
-	flannelNetworkID, exists := d.dockerNetworkIDtoFlannelNetworkID[dockerNetworkID]
-	if !exists {
-		err := d.syncNetworks()
-		if err != nil {
-			return "", err
-		}
-		flannelNetworkID, exists = d.dockerNetworkIDtoFlannelNetworkID[dockerNetworkID]
-	}
-
-	if !exists {
-		return "", fmt.Errorf("flannel network ID not found for docker network %s", dockerNetworkID)
-	}
-
-	return flannelNetworkID, nil
-}
-
-func (d *data) handleNetwork(networkID string) error {
-	network, err := d.dockerClient.NetworkInspect(context.Background(), networkID, network.InspectOptions{})
+func (d *data) handleNetwork(dockerNetworkID string) error {
+	network, err := d.dockerClient.NetworkInspect(context.Background(), dockerNetworkID, network.InspectOptions{})
 	if err != nil {
-		return errors.Wrapf(err, "Error inspecting docker network %s", networkID)
+		return errors.Wrapf(err, "Error inspecting docker network %s", dockerNetworkID)
 	}
 
 	id, exists := network.IPAM.Options["flannel-id"]
@@ -142,6 +138,7 @@ func (d *data) handleNetwork(networkID string) error {
 
 	_, exists = d.dockerNetworkIDtoFlannelNetworkID[id]
 	d.dockerNetworkIDtoFlannelNetworkID[network.ID] = id
+	d.flannelNetworkIDtoDockerNetworkID[id] = network.ID
 	fmt.Printf("Network %s has flannel network id: %s\n", network.ID, id)
 
 	err = storeNetworkInfo(d.etcdClient, network.ID, id)
@@ -149,26 +146,33 @@ func (d *data) handleNetwork(networkID string) error {
 		return errors.Wrapf(err, "Error storing network info for docker network %s", network.ID)
 	}
 
-	if !exists && d.callbacks.NetworkAdded != nil {
-		d.callbacks.NetworkAdded(network.ID)
+	if !exists {
+		if d.callbacks.NetworkAdded != nil {
+			d.callbacks.NetworkAdded(dockerNetworkID, id)
+		}
+	} else {
+		if d.callbacks.NetworkChanged != nil {
+			d.callbacks.NetworkChanged(dockerNetworkID, id)
+		}
 	}
 
 	return nil
 }
 
-func (d *data) handleDeletedNetwork(networkID string) error {
-	_, exists := d.dockerNetworkIDtoFlannelNetworkID[networkID]
+func (d *data) handleDeletedNetwork(dockerNetworkID string) error {
+	flannelNetworkID, exists := d.dockerNetworkIDtoFlannelNetworkID[dockerNetworkID]
 
-	delete(d.dockerNetworkIDtoFlannelNetworkID, networkID)
+	delete(d.dockerNetworkIDtoFlannelNetworkID, dockerNetworkID)
+	delete(d.flannelNetworkIDtoDockerNetworkID, flannelNetworkID)
 
-	err := deleteNetworkInfo(d.etcdClient, networkID)
+	err := deleteNetworkInfo(d.etcdClient, dockerNetworkID)
 	if err != nil {
-		return errors.Wrapf(err, "Error deleting network info for docker network %s", networkID)
+		return errors.Wrapf(err, "Error deleting network info for docker network %s", dockerNetworkID)
 	}
 
 	if exists {
 		if d.callbacks.NetworkRemoved != nil {
-			d.callbacks.NetworkRemoved(networkID)
+			d.callbacks.NetworkRemoved(dockerNetworkID, flannelNetworkID)
 		}
 	}
 
@@ -264,6 +268,9 @@ func (d *data) syncNetworks() error {
 	}
 
 	d.dockerNetworkIDtoFlannelNetworkID = loadedNetworks
+	for dockerNetworkID, flannelNetworkID := range d.dockerNetworkIDtoFlannelNetworkID {
+		d.flannelNetworkIDtoDockerNetworkID[flannelNetworkID] = dockerNetworkID
+	}
 
 	networks, err := d.dockerClient.NetworkList(context.Background(), network.ListOptions{})
 	if err != nil {

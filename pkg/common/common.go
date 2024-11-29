@@ -20,7 +20,7 @@ type ServiceInfo struct {
 }
 
 type NetworkInfo struct {
-	ID           string
+	FlannelID    string
 	MTU          int
 	Network      *net.IPNet
 	HostSubnet   *net.IPNet

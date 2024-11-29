@@ -27,7 +27,7 @@ type bridgeInterface struct {
 }
 
 func NewBridgeInterface(network common.NetworkInfo) (BridgeInterface, error) {
-	interfaceName := networking.GetInterfaceName("fl", "-", network.ID)
+	interfaceName := networking.GetInterfaceName("fl", "-", network.FlannelID)
 	result := &bridgeInterface{
 		interfaceName: interfaceName,
 		iptablesRules: getIptablesRules(interfaceName, network.HostSubnet),
@@ -37,7 +37,7 @@ func NewBridgeInterface(network common.NetworkInfo) (BridgeInterface, error) {
 	err := result.Ensure()
 
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to ensure bridge interface for network %s", network.ID)
+		return nil, errors.Wrapf(err, "failed to ensure bridge interface for network %s", network.FlannelID)
 	}
 
 	return result, nil

@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"fmt"
 	"github.com/docker/docker/libnetwork/types"
 	"github.com/docker/go-plugins-helpers/network"
 	"github.com/pkg/errors"
@@ -40,16 +41,15 @@ func (d *flannelDriver) CreateEndpoint(request *network.CreateEndpointRequest) (
 		return nil, types.InvalidParameterErrorf("Need interface info with IPv4 address and MAC address as input for endpoint %s for network %s.", request.EndpointID, request.NetworkID)
 	}
 
-	flannelNetwork, err := d.getFlannelNetworkFromDockerNetworkID(request.NetworkID)
-
-	if err != nil {
-		return nil, err
+	flannelNetwork, exists := d.networksByDockerID[request.NetworkID]
+	if !exists {
+		return nil, fmt.Errorf("network %s is missing in internal state", request.NetworkID)
 	}
 
 	ip := net.ParseIP(request.Interface.Address)
-	_, err = flannelNetwork.AddEndpoint(request.EndpointID, ip, request.Interface.MacAddress)
+	_, err := flannelNetwork.AddEndpoint(request.EndpointID, ip, request.Interface.MacAddress)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create endpoint %s for flannel network %s", request.EndpointID, flannelNetwork.GetInfo().ID)
+		return nil, errors.Wrapf(err, "failed to create endpoint %s for flannel network %s", request.EndpointID, flannelNetwork.GetInfo().FlannelID)
 	}
 
 	// Don't return the interface we got passed in. Even without changing any values, it will lead
@@ -61,13 +61,12 @@ func (d *flannelDriver) DeleteEndpoint(request *network.DeleteEndpointRequest) e
 	d.Lock()
 	defer d.Unlock()
 
-	flannelNetwork, err := d.getFlannelNetworkFromDockerNetworkID(request.NetworkID)
-
-	if err != nil {
-		return err
+	flannelNetwork, exists := d.networksByDockerID[request.NetworkID]
+	if !exists {
+		return fmt.Errorf("network %s is missing in internal state", request.NetworkID)
 	}
 
-	err = flannelNetwork.DeleteEndpoint(request.EndpointID)
+	err := flannelNetwork.DeleteEndpoint(request.EndpointID)
 	if err != nil {
 		return errors.Wrapf(err, "failed to delete endpoint %s", request.EndpointID)
 	}

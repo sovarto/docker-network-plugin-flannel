@@ -32,7 +32,7 @@ type Network interface {
 }
 
 type network struct {
-	id                    string
+	flannelID             string
 	pid                   int
 	etcdClient            etcd.Client
 	networkSubnet         net.IPNet
@@ -47,9 +47,9 @@ type network struct {
 	sync.Mutex
 }
 
-func NewNetwork(etcdClient etcd.Client, id string, networkSubnet net.IPNet, hostSubnetSize int, defaultFlannelOptions []string) (Network, error) {
+func NewNetwork(etcdClient etcd.Client, flannelID string, networkSubnet net.IPNet, hostSubnetSize int, defaultFlannelOptions []string) (Network, error) {
 	result := &network{
-		id:                    id,
+		flannelID:             flannelID,
 		etcdClient:            etcdClient,
 		networkSubnet:         networkSubnet,
 		defaultFlannelOptions: defaultFlannelOptions,
@@ -67,7 +67,7 @@ func NewNetwork(etcdClient etcd.Client, id string, networkSubnet net.IPNet, host
 
 func (n *network) GetInfo() common.NetworkInfo {
 	return common.NetworkInfo{
-		ID:           n.id,
+		FlannelID:    n.flannelID,
 		MTU:          n.mtu,
 		Network:      &n.networkSubnet,
 		HostSubnet:   &n.hostSubnet,
@@ -88,22 +88,22 @@ func (n *network) Delete() error {
 		if err == nil {
 			err := proc.Kill()
 			if err != nil {
-				return errors.Wrapf(err, "error killing flanneld process of network %s", n.id)
+				return errors.Wrapf(err, "error killing flanneld process of network %s", n.flannelID)
 			}
 			n.pid = 0
 		}
 	}
 
 	_, err := etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
-		networkConfigKey := flannelConfigKey(n.etcdClient, n.id)
+		networkConfigKey := flannelConfigKey(n.etcdClient, n.flannelID)
 
 		result, err := n.readNetworkConfig()
 		if err != nil {
-			return struct{}{}, errors.Wrapf(err, "error reading existing flannel network config for network %s", n.id)
+			return struct{}{}, errors.Wrapf(err, "error reading existing flannel network config for network %s", n.flannelID)
 		}
 		if result.found {
 			if result.config.Network != n.networkSubnet.String() {
-				return struct{}{}, fmt.Errorf("the flannel config for network %s has unexpected network %s instead of the expected %s", n.id, result.config.Network, n.networkSubnet.String())
+				return struct{}{}, fmt.Errorf("the flannel config for network %s has unexpected network %s instead of the expected %s", n.flannelID, result.config.Network, n.networkSubnet.String())
 			}
 		}
 		resp, err := connection.Client.Txn(connection.Ctx).
@@ -112,16 +112,16 @@ func (n *network) Delete() error {
 			Commit()
 
 		if err != nil {
-			return struct{}{}, errors.Wrapf(err, "error deleting flannel network config for network %s", n.id)
+			return struct{}{}, errors.Wrapf(err, "error deleting flannel network config for network %s", n.flannelID)
 		}
 
 		if !resp.Succeeded {
 			resp, err := connection.Client.Get(connection.Ctx, networkConfigKey)
 			if err != nil {
-				return struct{}{}, errors.Wrapf(err, "error deleting flannel network config for network %s, and error during check if it has since been deleted", n.id)
+				return struct{}{}, errors.Wrapf(err, "error deleting flannel network config for network %s, and error during check if it has since been deleted", n.flannelID)
 			}
 			if resp.Kvs != nil && len(resp.Kvs) > 0 {
-				return struct{}{}, fmt.Errorf("error deleting flannel network config for network %s", n.id)
+				return struct{}{}, fmt.Errorf("error deleting flannel network config for network %s", n.flannelID)
 			}
 		}
 
@@ -129,23 +129,23 @@ func (n *network) Delete() error {
 	})
 
 	if err != nil {
-		return errors.Wrapf(err, "deleting network config failed for network %s", n.id)
+		return errors.Wrapf(err, "deleting network config failed for network %s", n.flannelID)
 	}
 
 	err = n.bridge.Delete()
 	if err != nil {
-		return errors.Wrapf(err, "error deleting bridge interface for network %s", n.id)
+		return errors.Wrapf(err, "error deleting bridge interface for network %s", n.flannelID)
 	}
 
 	err = n.pool.ReleaseAllIPs()
 	if err != nil {
-		return errors.Wrapf(err, "error releasing all IPs for network %s", n.id)
+		return errors.Wrapf(err, "error releasing all IPs for network %s", n.flannelID)
 	}
 
 	for endpointID, endpoint := range n.endpoints {
 		err = endpoint.Delete()
 		if err != nil {
-			return errors.Wrapf(err, "error deleting endpoint %s for network %s", endpointID, n.id)
+			return errors.Wrapf(err, "error deleting endpoint %s for network %s", endpointID, n.flannelID)
 		}
 	}
 
@@ -184,27 +184,27 @@ type BackendConfig struct {
 	Type string `json:"Type"`
 }
 
-func flannelConfigPrefixKey(client etcd.Client, networkID string) string {
-	return client.GetKey(networkID)
+func flannelConfigPrefixKey(client etcd.Client, flannelNetworkID string) string {
+	return client.GetKey(flannelNetworkID)
 }
 
-func flannelConfigKey(client etcd.Client, networkID string) string {
-	return fmt.Sprintf("%s/config", flannelConfigPrefixKey(client, networkID))
+func flannelConfigKey(client etcd.Client, flannelNetworkID string) string {
+	return fmt.Sprintf("%s/config", flannelConfigPrefixKey(client, flannelNetworkID))
 }
 
 func (n *network) ensureFlannelConfig() (struct{}, error) {
 	return etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
-		networkConfigKey := flannelConfigKey(n.etcdClient, n.id)
+		networkConfigKey := flannelConfigKey(n.etcdClient, n.flannelID)
 
 		result, err := n.readNetworkConfig()
 		if err != nil {
-			return struct{}{}, errors.Wrapf(err, "error reading existing flannel network config for network %s", n.id)
+			return struct{}{}, errors.Wrapf(err, "error reading existing flannel network config for network %s", n.flannelID)
 		}
 		if result.found {
 			if result.config.Network == n.networkSubnet.String() {
 				return struct{}{}, nil
 			}
-			return struct{}{}, fmt.Errorf("there already is a flannel config for network %s but it is for network %s instead of the expected %s", n.id, result.config.Network, n.networkSubnet.String())
+			return struct{}{}, fmt.Errorf("there already is a flannel config for network %s but it is for network %s instead of the expected %s", n.flannelID, result.config.Network, n.networkSubnet.String())
 		}
 
 		configData := Config{
@@ -237,16 +237,16 @@ func (n *network) ensureFlannelConfig() (struct{}, error) {
 		}
 
 		if !resp.Succeeded {
-			fmt.Printf("flannel network config for network %s was created by another node. Trying to reuse", n.id)
+			fmt.Printf("flannel network config for network %s was created by another node. Trying to reuse", n.flannelID)
 			result, err := n.readNetworkConfig()
 			if err != nil {
-				return struct{}{}, errors.Wrapf(err, "error reading existing flannel network config for network %s", n.id)
+				return struct{}{}, errors.Wrapf(err, "error reading existing flannel network config for network %s", n.flannelID)
 			}
 			if result.found {
 				if result.config.Network == n.networkSubnet.String() {
 					return struct{}{}, nil
 				}
-				return struct{}{}, fmt.Errorf("there already is a flannel config for network %s but it is for network %s instead of the expected %s", n.id, result.config.Network, n.networkSubnet.String())
+				return struct{}{}, fmt.Errorf("there already is a flannel config for network %s but it is for network %s instead of the expected %s", n.flannelID, result.config.Network, n.networkSubnet.String())
 			}
 		}
 
@@ -262,11 +262,11 @@ type ReadNetworkConfigResult struct {
 
 func (n *network) readNetworkConfig() (ReadNetworkConfigResult, error) {
 	return etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (ReadNetworkConfigResult, error) {
-		networkConfigKey := flannelConfigKey(n.etcdClient, n.id)
+		networkConfigKey := flannelConfigKey(n.etcdClient, n.flannelID)
 
 		resp, err := connection.Client.Get(connection.Ctx, networkConfigKey)
 		if err != nil {
-			return ReadNetworkConfigResult{found: false}, errors.Wrapf(err, "error reading network config for network %s at %s", n.id, networkConfigKey)
+			return ReadNetworkConfigResult{found: false}, errors.Wrapf(err, "error reading network config for network %s at %s", n.flannelID, networkConfigKey)
 		}
 		if len(resp.Kvs) > 0 {
 			var configData Config
@@ -283,8 +283,8 @@ func (n *network) readNetworkConfig() (ReadNetworkConfigResult, error) {
 }
 
 func (n *network) startFlannel() error {
-	subnetFile := fmt.Sprintf("/flannel-env/%s.env", n.id)
-	etcdPrefix := flannelConfigPrefixKey(n.etcdClient, n.id)
+	subnetFile := fmt.Sprintf("/flannel-env/%s.env", n.flannelID)
+	etcdPrefix := flannelConfigPrefixKey(n.etcdClient, n.flannelID)
 
 	args := []string{
 		fmt.Sprintf("-subnet-file=%s", subnetFile),
@@ -319,7 +319,7 @@ func (n *network) startFlannel() error {
 		return err
 	}
 
-	fmt.Printf("flanneld started with PID %d for flannel network id %s\n", cmd.Process.Pid, n.id)
+	fmt.Printf("flanneld started with PID %d for flannel network id %s\n", cmd.Process.Pid, n.flannelID)
 
 	exitChan := make(chan error, 1)
 
@@ -334,18 +334,18 @@ func (n *network) startFlannel() error {
 	case err := <-exitChan:
 		// Process exited before "bootstrap done" or timeout
 		log.Printf("flanneld process exited prematurely: %v", err)
-		return errors.Wrapf(err, "flanneld exited prematurely for network %s", n.id)
+		return errors.Wrapf(err, "flanneld exited prematurely for network %s", n.flannelID)
 	case <-bootstrapDoneChan:
 		// "bootstrap done" was found
 		fmt.Println("flanneld bootstrap completed successfully")
 	case <-time.After(1500 * time.Millisecond):
 		// Timeout occurred before "bootstrap done"
-		log.Printf("flanneld failed to bootstrap within 1.5 seconds for network %s\n", n.id)
+		log.Printf("flanneld failed to bootstrap within 1.5 seconds for network %s\n", n.flannelID)
 		// Kill the process
 		if err := cmd.Process.Kill(); err != nil {
 			log.Println("Failed to kill flanneld process:", err)
 		}
-		return fmt.Errorf("flanneld failed to bootstrap within 1.5 seconds for network %s", n.id)
+		return fmt.Errorf("flanneld failed to bootstrap within 1.5 seconds for network %s", n.flannelID)
 	}
 
 	err = n.loadFlannelConfig(subnetFile)
@@ -410,10 +410,10 @@ func (n *network) loadFlannelConfig(filename string) error {
 			if err != nil {
 				return errors.Wrapf(err, "invalid CIDR format for subnet: %s", value)
 			}
-			pool, err := ipam.NewEtcdBasedAddressPool(n.id,
+			pool, err := ipam.NewEtcdBasedAddressPool(n.flannelID,
 				*ipNet, n.etcdClient.CreateSubClient("address-space", "host-subnets", common.SubnetToKey(ipNet.String())))
 			if err != nil {
-				return errors.Wrapf(err, "can't create address pool for network %s and subnet %s", n.id, ipNet.String())
+				return errors.Wrapf(err, "can't create address pool for network %s and subnet %s", n.flannelID, ipNet.String())
 			}
 			n.hostSubnet = *ipNet
 			n.localGateway = ip
@@ -450,7 +450,7 @@ func (n *network) loadFlannelConfig(filename string) error {
 func (n *network) AddEndpoint(id string, ip net.IP, mac string) (Endpoint, error) {
 	endpoint, err := NewEndpoint(n.etcdClient.CreateSubClient("endpoints"), id, ip, mac, n.bridge)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error creating endpoint for network %s", n.id)
+		return nil, errors.Wrapf(err, "error creating endpoint for network %s", n.flannelID)
 	}
 	n.endpoints[id] = endpoint
 
@@ -465,7 +465,7 @@ func (n *network) DeleteEndpoint(id string) error {
 
 	err := endpoint.Delete()
 	if err != nil {
-		return errors.Wrapf(err, "error deleting endpoint for network %s", n.id)
+		return errors.Wrapf(err, "error deleting endpoint for network %s", n.flannelID)
 	}
 
 	delete(n.endpoints, id)

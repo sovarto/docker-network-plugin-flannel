@@ -1,9 +1,13 @@
 package driver
 
 import (
+	"context"
 	"fmt"
+	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/client"
 	docker_ipam "github.com/docker/go-plugins-helpers/ipam"
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/flannel_network"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/ipam"
@@ -42,6 +46,16 @@ func (d *flannelDriver) RequestPool(request *docker_ipam.RequestPoolRequest) (*d
 		return nil, errors.New("the IPAM driver option 'flannel-id' needs to be set to a unique ID")
 	}
 
+	dockerClient, err := client.NewClientWithOpts(
+		client.WithHost("unix:///var/run/docker.sock"),
+		client.WithAPIVersionNegotiation(),
+	)
+
+	networks, err := dockerClient.NetworkList(context.Background(), network.ListOptions{})
+	fmt.Printf("Networks: %+v", lo.Map(networks, func(item network.Summary, index int) string {
+		return item.Name
+	}))
+
 	networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(flannelNetworkId)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get network subnet pool for network '%s'", flannelNetworkId)
@@ -53,7 +67,7 @@ func (d *flannelDriver) RequestPool(request *docker_ipam.RequestPoolRequest) (*d
 		return nil, errors.Wrapf(err, "failed to ensure network '%s' is operational", flannelNetworkId)
 	}
 
-	d.networks[flannelNetworkId] = network
+	d.networksByFlannelID[flannelNetworkId] = network
 
 	return &docker_ipam.RequestPoolResponse{
 		PoolID: poolID,
@@ -66,7 +80,7 @@ func (d *flannelDriver) ReleasePool(request *docker_ipam.ReleasePoolRequest) err
 	defer d.Unlock()
 
 	flannelNetworkID := poolIDtoNetworkID(request.PoolID)
-	network, exists := d.networks[flannelNetworkID]
+	network, exists := d.networksByFlannelID[flannelNetworkID]
 	if !exists {
 		return fmt.Errorf("no network found for pool '%s'", request.PoolID)
 	}
@@ -83,7 +97,11 @@ func (d *flannelDriver) ReleasePool(request *docker_ipam.ReleasePoolRequest) err
 		return errors.Wrapf(err, "failed to release address pool of network '%s'", flannelNetworkID)
 	}
 
-	delete(d.networks, flannelNetworkID)
+	delete(d.networksByFlannelID, flannelNetworkID)
+	dockerNetworkID, exists := d.dockerData.GetDockerNetworkID(flannelNetworkID)
+	if exists {
+		delete(d.networksByDockerID, dockerNetworkID)
+	}
 
 	return nil
 }
@@ -93,7 +111,7 @@ func (d *flannelDriver) RequestAddress(request *docker_ipam.RequestAddressReques
 	defer d.Unlock()
 
 	flannelNetworkID := poolIDtoNetworkID(request.PoolID)
-	network, exists := d.networks[flannelNetworkID]
+	network, exists := d.networksByFlannelID[flannelNetworkID]
 	if !exists {
 		return nil, fmt.Errorf("no network found for pool '%s'", request.PoolID)
 	}
@@ -126,7 +144,7 @@ func (d *flannelDriver) ReleaseAddress(request *docker_ipam.ReleaseAddressReques
 	defer d.Unlock()
 
 	flannelNetworkID := poolIDtoNetworkID(request.PoolID)
-	network, exists := d.networks[flannelNetworkID]
+	network, exists := d.networksByFlannelID[flannelNetworkID]
 	if !exists {
 		return fmt.Errorf("no network found for pool '%s'", request.PoolID)
 	}
