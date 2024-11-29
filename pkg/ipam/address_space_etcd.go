@@ -53,10 +53,11 @@ type PoolSubnetLeaseResult struct {
 
 func reservePoolSubnet(client etcd.Client, subnet, id string) (PoolSubnetLeaseResult, error) {
 	return etcd.WithConnection(client, func(conn *etcd.Connection) (PoolSubnetLeaseResult, error) {
+		key := subnetKey(client, subnet)
 		resp, err := conn.Client.Txn(conn.Ctx).
-			If(clientv3.Compare(clientv3.CreateRevision(subnetKey(client, subnet)), "=", 0)).
-			Then(clientv3.OpPut(subnetKey(client, subnet), id)).
-			Else(clientv3.OpGet(subnetKey(client, subnet))).
+			If(clientv3.Compare(clientv3.CreateRevision(key), "=", 0)).
+			Then(clientv3.OpPut(key, id)).
+			Else(clientv3.OpGet(key)).
 			Commit()
 
 		if err != nil {
@@ -66,7 +67,8 @@ func reservePoolSubnet(client etcd.Client, subnet, id string) (PoolSubnetLeaseRe
 		if resp.Succeeded {
 			return PoolSubnetLeaseResult{Success: true}, nil
 		}
-		return PoolSubnetLeaseResult{Success: false, PoolID: string(resp.OpResponse().Get().Kvs[0].Value)}, nil
+		fmt.Printf("reserving subnet %s from pool %s: %+v\n", subnet, id, resp)
+		return PoolSubnetLeaseResult{Success: false, PoolID: string(resp.Responses[0].GetResponseRange().Kvs[0].Value)}, nil
 	})
 }
 
