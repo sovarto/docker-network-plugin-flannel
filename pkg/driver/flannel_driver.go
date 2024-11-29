@@ -49,7 +49,7 @@ func NewFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelO
 
 	globalAddressSpace, err := ipam.NewEtcdBasedAddressSpace(completeSpace, networkSubnetSize, driver.getEtcdClient("address-space"))
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to create address space")
+		return nil, errors.WithMessage(err, "Failed to create address space")
 	}
 	driver.globalAddressSpace = globalAddressSpace
 
@@ -76,13 +76,13 @@ func NewFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelO
 
 	dockerData, err := docker.NewData(driver.getEtcdClient("docker-data"), callbacks)
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to create docker data handler")
+		return nil, errors.WithMessage(err, "Failed to create docker data handler")
 	}
 	driver.dockerData = dockerData
 
 	err = dockerData.Init()
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to initialize docker data handler")
+		return nil, errors.WithMessage(err, "Failed to initialize docker data handler")
 	}
 	fmt.Println("Initialized docker data handler")
 
@@ -95,7 +95,7 @@ func (d *flannelDriver) Serve() error {
 	api.InitNetworkMux(&handler, d)
 
 	if err := handler.ServeUnix("flannel-np", 0); err != nil {
-		return errors.Wrapf(err, "Failed to start flannel plugin server")
+		return errors.WithMessagef(err, "Failed to start flannel plugin server")
 	}
 
 	return nil

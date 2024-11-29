@@ -37,7 +37,7 @@ func NewBridgeInterface(network common.NetworkInfo) (BridgeInterface, error) {
 	err := result.Ensure()
 
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to ensure bridge interface for network %s", network.FlannelID)
+		return nil, errors.WithMessagef(err, "failed to ensure bridge interface for network %s", network.FlannelID)
 	}
 
 	return result, nil
@@ -84,7 +84,7 @@ func (b *bridgeInterface) Ensure() error {
 	b.route = *route
 
 	if err := networking.ApplyIpTablesRules(b.iptablesRules, "create"); err != nil {
-		return errors.Wrapf(err, "failed to setup IP Tables rules for bridge interface for network %s", b.interfaceName)
+		return errors.WithMessagef(err, "failed to setup IP Tables rules for bridge interface for network %s", b.interfaceName)
 	}
 
 	return nil
@@ -97,7 +97,7 @@ func (b *bridgeInterface) Delete() error {
 	}
 
 	if err := networking.ApplyIpTablesRules(b.iptablesRules, "delete"); err != nil {
-		return errors.Wrapf(err, "failed to delete IP Tables rules for bridge interface for network %s", b.interfaceName)
+		return errors.WithMessagef(err, "failed to delete IP Tables rules for bridge interface for network %s", b.interfaceName)
 	}
 
 	if err := netlink.RouteDel(&b.route); err != nil {

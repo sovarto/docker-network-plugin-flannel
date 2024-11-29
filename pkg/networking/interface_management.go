@@ -93,10 +93,10 @@ func EnsureInterfaceListensOnAddress(link netlink.Link, ip string) error {
 	}
 	addr, err := netlink.ParseAddr(ip)
 	if err != nil {
-		return errors.Wrapf(err, "Failed to parse IP address %s", ip)
+		return errors.WithMessagef(err, "Failed to parse IP address %s", ip)
 	}
 	if err := netlink.AddrReplace(link, addr); err != nil {
-		return errors.Wrapf(err, "Failed to add IP address %s to interface %s", addr.String(), link.Attrs().Name)
+		return errors.WithMessagef(err, "Failed to add IP address %s to interface %s", addr.String(), link.Attrs().Name)
 	}
 	return nil
 }
@@ -107,10 +107,10 @@ func StopListeningOnAddress(link netlink.Link, ip string) error {
 	}
 	addr, err := netlink.ParseAddr(ip)
 	if err != nil {
-		return errors.Wrapf(err, "Failed to parse IP address %s", ip)
+		return errors.WithMessagef(err, "Failed to parse IP address %s", ip)
 	}
 	if err := netlink.AddrDel(link, addr); err != nil {
-		return errors.Wrapf(err, "Failed to remove IP address %s from interface %s", addr.String(), link.Attrs().Name)
+		return errors.WithMessagef(err, "Failed to remove IP address %s from interface %s", addr.String(), link.Attrs().Name)
 	}
 	return nil
 }
@@ -162,19 +162,19 @@ func EnsureInterface(name string, interfaceType string, mtu int, up bool) (netli
 	if link.Attrs().MTU != mtu {
 		err = netlink.LinkSetMTU(link, mtu)
 		if err != nil {
-			return nil, errors.Wrapf(err, "Couldn't set mtu of %s to %d", name, mtu)
+			return nil, errors.WithMessagef(err, "Couldn't set mtu of %s to %d", name, mtu)
 		}
 	}
 
 	if link.Attrs().Flags&net.FlagUp == net.FlagUp && !up {
 		err = netlink.LinkSetDown(link)
 		if err != nil {
-			return nil, errors.Wrapf(err, "Couldn't bring interface %s down", name)
+			return nil, errors.WithMessagef(err, "Couldn't bring interface %s down", name)
 		}
 	} else if link.Attrs().Flags&net.FlagUp != net.FlagUp && up {
 		err = netlink.LinkSetUp(link)
 		if err != nil {
-			return nil, errors.Wrapf(err, "Couldn't bring interface %s up", name)
+			return nil, errors.WithMessagef(err, "Couldn't bring interface %s up", name)
 		}
 	}
 

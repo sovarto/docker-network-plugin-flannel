@@ -103,12 +103,12 @@ func storeContainerAndServiceInfo(client etcd.Client, hostname string, container
 
 		containerInfoBytes, err := json.Marshal(containerInfo)
 		if err != nil {
-			return struct{}{}, errors.Wrapf(err, "Failed to serialize container info %+v", containerInfo)
+			return struct{}{}, errors.WithMessagef(err, "Failed to serialize container info %+v", containerInfo)
 		}
 		containerInfoString := string(containerInfoBytes)
 		_, err = connection.Client.Put(connection.Ctx, containerKey, containerInfoString)
 		if err != nil {
-			return struct{}{}, errors.Wrapf(err, "Failed to store container info %+v", containerInfo)
+			return struct{}{}, errors.WithMessagef(err, "Failed to store container info %+v", containerInfo)
 		}
 
 		if serviceID != "" && serviceName != "" {
@@ -116,14 +116,14 @@ func storeContainerAndServiceInfo(client etcd.Client, hostname string, container
 			_, err = connection.Client.Put(connection.Ctx, serviceKey, serviceName)
 
 			if err != nil {
-				return struct{}{}, errors.Wrapf(err, "Failed to store service info for service %s: %+v\n", serviceID, err)
+				return struct{}{}, errors.WithMessagef(err, "Failed to store service info for service %s: %+v\n", serviceID, err)
 			}
 
 			serviceContainerKey := serviceContainerKey(client, serviceID, containerInfo.ID)
 			_, err = connection.Client.Put(connection.Ctx, serviceContainerKey, containerInfo.Name)
 
 			if err != nil {
-				return struct{}{}, errors.Wrapf(err, "Failed to store container name for container %s and service %s: %+v\n", containerInfo.ID, serviceID, err)
+				return struct{}{}, errors.WithMessagef(err, "Failed to store container name for container %s and service %s: %+v\n", containerInfo.ID, serviceID, err)
 			}
 
 			for networkID, ip := range containerInfo.IPs {
@@ -131,7 +131,7 @@ func storeContainerAndServiceInfo(client etcd.Client, hostname string, container
 				_, err = connection.Client.Put(connection.Ctx, serviceContainerNetworkKey, ip.String())
 
 				if err != nil {
-					return struct{}{}, errors.Wrapf(err, "Failed to store service container info for service %s: %+v\n", serviceID, err)
+					return struct{}{}, errors.WithMessagef(err, "Failed to store service container info for service %s: %+v\n", serviceID, err)
 				}
 			}
 		}
@@ -147,7 +147,7 @@ func storeServiceVIPs(client etcd.Client, serviceID string, vips map[string]net.
 		for networkID, vip := range vips {
 			_, err := connection.Client.Put(connection.Ctx, serviceVipKey(client, serviceID, networkID), vip.String())
 			if err != nil {
-				return struct{}{}, errors.Wrapf(err, "Failed to store vip %s for service %s: %+v\n", vip.String(), serviceID, err)
+				return struct{}{}, errors.WithMessagef(err, "Failed to store vip %s for service %s: %+v\n", vip.String(), serviceID, err)
 			}
 		}
 
@@ -163,7 +163,7 @@ func loadContainersInfo(client etcd.Client, nodeName string) (map[string]common.
 
 		resp, err := connection.Client.Get(connection.Ctx, containersKey, clientv3.WithPrefix())
 		if err != nil {
-			return nil, errors.Wrapf(err, "error reading container info for node %s: %+v", nodeName, err)
+			return nil, errors.WithMessagef(err, "error reading container info for node %s: %+v", nodeName, err)
 		}
 
 		result := map[string]common.ContainerInfo{}
@@ -172,7 +172,7 @@ func loadContainersInfo(client etcd.Client, nodeName string) (map[string]common.
 			var containerInfo common.ContainerInfo
 			err = json.Unmarshal(kv.Value, &containerInfo)
 			if err != nil {
-				return nil, errors.Wrapf(err, "error parsing container info for node %s: err: %+v, value: %+v", nodeName, err, string(kv.Value))
+				return nil, errors.WithMessagef(err, "error parsing container info for node %s: err: %+v, value: %+v", nodeName, err, string(kv.Value))
 			}
 
 			result[containerInfo.ID] = containerInfo
@@ -188,7 +188,7 @@ func loadServicesInfo(client etcd.Client) (map[string]common.ServiceInfo, error)
 
 		resp, err := connection.Client.Get(connection.Ctx, servicesKey, clientv3.WithPrefix(), clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend))
 		if err != nil {
-			return nil, errors.Wrapf(err, "error reading service info: %+v", err)
+			return nil, errors.WithMessagef(err, "error reading service info: %+v", err)
 		}
 
 		result := map[string]common.ServiceInfo{}

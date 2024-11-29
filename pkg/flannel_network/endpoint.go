@@ -64,7 +64,7 @@ func NewEndpoint(etcdClient etcd.Client, id string, ipAddress net.IP, macAddress
 	})
 
 	if err != nil {
-		return nil, errors.Wrapf(err, "error storing endpoint info for endpoint %s / %s / %s", id, ipAddress, macAddress)
+		return nil, errors.WithMessagef(err, "error storing endpoint info for endpoint %s / %s / %s", id, ipAddress, macAddress)
 	}
 
 	return &endpoint{
@@ -133,7 +133,7 @@ func (e *endpoint) Delete() error {
 	})
 
 	if err != nil {
-		return errors.Wrapf(err, "error deleting endpoint info for endpoint %s / %s / %s", e.id, e.ipAddress, e.macAddress)
+		return errors.WithMessagef(err, "error deleting endpoint info for endpoint %s / %s / %s", e.id, e.ipAddress, e.macAddress)
 	}
 
 	return nil

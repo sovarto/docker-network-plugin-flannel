@@ -247,38 +247,26 @@ func getReservationsByPrefix(client etcd.Client, prefix string) (map[string]rese
 					continue
 				}
 
-				if existing, exists := result[key]; exists {
+				addOrUpdate(result, key, reservation{
+					ip:              ip,
+					reservationType: value,
+				}, func(existing reservation) {
 					existing.ip = ip
 					existing.reservationType = value
-					result[key] = existing
-				} else {
-					result[key] = reservation{
-						ip:              ip,
-						reservationType: value,
-					}
-				}
+				})
 			} else {
 				parts := strings.Split(key, "/")
 				if len(parts) == 2 {
 					if parts[1] == macKeyName {
-						if existing, exists := result[key]; exists {
-							existing.mac = value
-							result[key] = existing
-						} else {
-							fmt.Printf("Expected reservation for %s", key)
-						}
+						addOrUpdate(result, key, reservation{mac: value}, func(existing reservation) { existing.mac = value })
 					} else if parts[1] == reservedAtKeyName {
 						reservedAt, err := time.Parse(time.RFC3339, value)
 						if err != nil {
 							fmt.Printf("Couldn't parse reserved at value '%s' for '%s'. Skipping...\n", value, key)
 							continue
 						}
-						if existing, exists := result[key]; exists {
-							existing.reservedAt = reservedAt
-							result[key] = existing
-						} else {
-							fmt.Printf("Expected reservation for %s\n", key)
-						}
+						addOrUpdate(result, key, reservation{reservedAt: reservedAt},
+							func(existing reservation) { existing.reservedAt = reservedAt })
 					}
 				}
 			}
@@ -295,4 +283,16 @@ func deleteAllReservations(client etcd.Client) error {
 	})
 
 	return err
+}
+
+func addOrUpdate[T any](store map[string]T, id string, valueToAdd T, update func(existing T)) {
+	existing, exists := store[id]
+	if exists {
+		if update != nil {
+			update(existing)
+		}
+	} else {
+		existing = valueToAdd
+	}
+	store[id] = existing
 }

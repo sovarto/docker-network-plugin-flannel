@@ -51,12 +51,12 @@ func (b *bridgeInterface) CreateAttachedVethPair(macAddress string) (VethPair, e
 	})
 
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create veth pair %s / %s for bridge %s", vethOutsideName, vethInsideName, b.interfaceName)
+		return nil, errors.WithMessagef(err, "failed to create veth pair %s / %s for bridge %s", vethOutsideName, vethInsideName, b.interfaceName)
 	}
 
 	err = b.attachInterfaceToBridge(vethOutsideName)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to attach veth %s to bridge %s", vethOutsideName, b.interfaceName)
+		return nil, errors.WithMessagef(err, "failed to attach veth %s to bridge %s", vethOutsideName, b.interfaceName)
 	}
 
 	return &vethPair{

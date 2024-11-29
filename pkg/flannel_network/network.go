@@ -88,7 +88,7 @@ func (n *network) Delete() error {
 		if err == nil {
 			err := proc.Kill()
 			if err != nil {
-				return errors.Wrapf(err, "error killing flanneld process of network %s", n.flannelID)
+				return errors.WithMessagef(err, "error killing flanneld process of network %s", n.flannelID)
 			}
 			n.pid = 0
 		}
@@ -99,7 +99,7 @@ func (n *network) Delete() error {
 
 		result, err := n.readNetworkConfig()
 		if err != nil {
-			return struct{}{}, errors.Wrapf(err, "error reading existing flannel network config for network %s", n.flannelID)
+			return struct{}{}, errors.WithMessagef(err, "error reading existing flannel network config for network %s", n.flannelID)
 		}
 		if result.found {
 			if result.config.Network != n.networkSubnet.String() {
@@ -112,13 +112,13 @@ func (n *network) Delete() error {
 			Commit()
 
 		if err != nil {
-			return struct{}{}, errors.Wrapf(err, "error deleting flannel network config for network %s", n.flannelID)
+			return struct{}{}, errors.WithMessagef(err, "error deleting flannel network config for network %s", n.flannelID)
 		}
 
 		if !resp.Succeeded {
 			resp, err := connection.Client.Get(connection.Ctx, networkConfigKey)
 			if err != nil {
-				return struct{}{}, errors.Wrapf(err, "error deleting flannel network config for network %s, and error during check if it has since been deleted", n.flannelID)
+				return struct{}{}, errors.WithMessagef(err, "error deleting flannel network config for network %s, and error during check if it has since been deleted", n.flannelID)
 			}
 			if resp.Kvs != nil && len(resp.Kvs) > 0 {
 				return struct{}{}, fmt.Errorf("error deleting flannel network config for network %s", n.flannelID)
@@ -129,23 +129,23 @@ func (n *network) Delete() error {
 	})
 
 	if err != nil {
-		return errors.Wrapf(err, "deleting network config failed for network %s", n.flannelID)
+		return errors.WithMessagef(err, "deleting network config failed for network %s", n.flannelID)
 	}
 
 	err = n.bridge.Delete()
 	if err != nil {
-		return errors.Wrapf(err, "error deleting bridge interface for network %s", n.flannelID)
+		return errors.WithMessagef(err, "error deleting bridge interface for network %s", n.flannelID)
 	}
 
 	err = n.pool.ReleaseAllIPs()
 	if err != nil {
-		return errors.Wrapf(err, "error releasing all IPs for network %s", n.flannelID)
+		return errors.WithMessagef(err, "error releasing all IPs for network %s", n.flannelID)
 	}
 
 	for endpointID, endpoint := range n.endpoints {
 		err = endpoint.Delete()
 		if err != nil {
-			return errors.Wrapf(err, "error deleting endpoint %s for network %s", endpointID, n.flannelID)
+			return errors.WithMessagef(err, "error deleting endpoint %s for network %s", endpointID, n.flannelID)
 		}
 	}
 
@@ -198,7 +198,7 @@ func (n *network) ensureFlannelConfig() (struct{}, error) {
 
 		result, err := n.readNetworkConfig()
 		if err != nil {
-			return struct{}{}, errors.Wrapf(err, "error reading existing flannel network config for network %s", n.flannelID)
+			return struct{}{}, errors.WithMessagef(err, "error reading existing flannel network config for network %s", n.flannelID)
 		}
 		if result.found {
 			if result.config.Network == n.networkSubnet.String() {
@@ -240,7 +240,7 @@ func (n *network) ensureFlannelConfig() (struct{}, error) {
 			fmt.Printf("flannel network config for network %s was created by another node. Trying to reuse", n.flannelID)
 			result, err := n.readNetworkConfig()
 			if err != nil {
-				return struct{}{}, errors.Wrapf(err, "error reading existing flannel network config for network %s", n.flannelID)
+				return struct{}{}, errors.WithMessagef(err, "error reading existing flannel network config for network %s", n.flannelID)
 			}
 			if result.found {
 				if result.config.Network == n.networkSubnet.String() {
@@ -266,13 +266,13 @@ func (n *network) readNetworkConfig() (ReadNetworkConfigResult, error) {
 
 		resp, err := connection.Client.Get(connection.Ctx, networkConfigKey)
 		if err != nil {
-			return ReadNetworkConfigResult{found: false}, errors.Wrapf(err, "error reading network config for network %s at %s", n.flannelID, networkConfigKey)
+			return ReadNetworkConfigResult{found: false}, errors.WithMessagef(err, "error reading network config for network %s at %s", n.flannelID, networkConfigKey)
 		}
 		if len(resp.Kvs) > 0 {
 			var configData Config
 			err := json.Unmarshal(resp.Kvs[0].Value, &configData)
 			if err != nil {
-				return ReadNetworkConfigResult{found: true, revision: resp.Header.Revision}, errors.Wrap(err, "error deserializing configuration")
+				return ReadNetworkConfigResult{found: true, revision: resp.Header.Revision}, errors.WithMessage(err, "error deserializing configuration")
 			}
 
 			return ReadNetworkConfigResult{config: configData, found: true, revision: resp.Header.Revision}, nil
@@ -334,7 +334,7 @@ func (n *network) startFlannel() error {
 	case err := <-exitChan:
 		// Process exited before "bootstrap done" or timeout
 		log.Printf("flanneld process exited prematurely: %v", err)
-		return errors.Wrapf(err, "flanneld exited prematurely for network %s", n.flannelID)
+		return errors.WithMessagef(err, "flanneld exited prematurely for network %s", n.flannelID)
 	case <-bootstrapDoneChan:
 		// "bootstrap done" was found
 		fmt.Println("flanneld bootstrap completed successfully")
@@ -366,11 +366,11 @@ func (n *network) loadFlannelConfig(filename string) error {
 	defer cancel()
 	err := waitForFileWithContext(ctx, filename)
 	if err != nil {
-		return errors.Wrapf(err, "flannel env %s missing", filename)
+		return errors.WithMessagef(err, "flannel env %s missing", filename)
 	}
 	file, err := os.Open(filename)
 	if err != nil {
-		return errors.Wrapf(err, "failed to open file: %s", filename)
+		return errors.WithMessagef(err, "failed to open file: %s", filename)
 	}
 	defer file.Close()
 
@@ -402,18 +402,18 @@ func (n *network) loadFlannelConfig(filename string) error {
 		case "NETWORK":
 			_, ipNet, err := net.ParseCIDR(value)
 			if err != nil {
-				return errors.Wrapf(err, "invalid CIDR format for network: %s", value)
+				return errors.WithMessagef(err, "invalid CIDR format for network: %s", value)
 			}
 			n.networkSubnet = *ipNet
 		case "SUBNET":
 			ip, ipNet, err := net.ParseCIDR(value)
 			if err != nil {
-				return errors.Wrapf(err, "invalid CIDR format for subnet: %s", value)
+				return errors.WithMessagef(err, "invalid CIDR format for subnet: %s", value)
 			}
 			pool, err := ipam.NewEtcdBasedAddressPool(n.flannelID,
 				*ipNet, n.etcdClient.CreateSubClient("address-space", "host-subnets", common.SubnetToKey(ipNet.String())))
 			if err != nil {
-				return errors.Wrapf(err, "can't create address pool for network %s and subnet %s", n.flannelID, ipNet.String())
+				return errors.WithMessagef(err, "can't create address pool for network %s and subnet %s", n.flannelID, ipNet.String())
 			}
 			n.hostSubnet = *ipNet
 			n.localGateway = ip
@@ -422,7 +422,7 @@ func (n *network) loadFlannelConfig(filename string) error {
 		case "MTU":
 			mtu, err := strconv.Atoi(value)
 			if err != nil {
-				return errors.Wrapf(err, "invalid MTU value '%s'", value)
+				return errors.WithMessagef(err, "invalid MTU value '%s'", value)
 			}
 			n.mtu = mtu
 		case "IPMASQ":
@@ -434,12 +434,12 @@ func (n *network) loadFlannelConfig(filename string) error {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return errors.Wrapf(err, "error reading file: %s", filename)
+		return errors.WithMessagef(err, "error reading file: %s", filename)
 	}
 
 	b, err := bridge.NewBridgeInterface(n.GetInfo())
 	if err != nil {
-		return errors.Wrapf(err, "error creating bridge interface")
+		return errors.WithMessagef(err, "error creating bridge interface")
 	}
 
 	n.bridge = b
@@ -450,7 +450,7 @@ func (n *network) loadFlannelConfig(filename string) error {
 func (n *network) AddEndpoint(id string, ip net.IP, mac string) (Endpoint, error) {
 	endpoint, err := NewEndpoint(n.etcdClient.CreateSubClient("endpoints"), id, ip, mac, n.bridge)
 	if err != nil {
-		return nil, errors.Wrapf(err, "error creating endpoint for network %s", n.flannelID)
+		return nil, errors.WithMessagef(err, "error creating endpoint for network %s", n.flannelID)
 	}
 	n.endpoints[id] = endpoint
 
@@ -465,7 +465,7 @@ func (n *network) DeleteEndpoint(id string) error {
 
 	err := endpoint.Delete()
 	if err != nil {
-		return errors.Wrapf(err, "error deleting endpoint for network %s", n.flannelID)
+		return errors.WithMessagef(err, "error deleting endpoint for network %s", n.flannelID)
 	}
 
 	delete(n.endpoints, id)

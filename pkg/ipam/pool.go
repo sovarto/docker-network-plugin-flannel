@@ -89,12 +89,12 @@ func (p *etcdPool) AllocateIP(reservedIP, mac, allocationType string, random boo
 			if allocationType == ReservationTypeContainerIP {
 				result, err = allocateReservedIPForContainer(p.etcdClient, parsedIP, mac)
 				if err != nil {
-					return nil, errors.Wrapf(err, "Error allocating reserved IP %s for container with MAC %s", reservedIP, mac)
+					return nil, errors.WithMessagef(err, "Error allocating reserved IP %s for container with MAC %s", reservedIP, mac)
 				}
 			} else {
 				result, err = allocateReservedIPForService(p.etcdClient, parsedIP)
 				if err != nil {
-					return nil, errors.Wrapf(err, "Error allocating reserved IP %s for service", reservedIP)
+					return nil, errors.WithMessagef(err, "Error allocating reserved IP %s for service", reservedIP)
 				}
 			}
 
@@ -116,7 +116,7 @@ func (p *etcdPool) AllocateIP(reservedIP, mac, allocationType string, random boo
 		availableUnusedIPs, err := p.getAvailableUnusedIPs()
 
 		if err != nil {
-			return nil, errors.Wrapf(err, "Error getting available unused IPs for pool %s", p.poolID)
+			return nil, errors.WithMessagef(err, "Error getting available unused IPs for pool %s", p.poolID)
 		}
 
 		var ip net.IP
@@ -125,7 +125,7 @@ func (p *etcdPool) AllocateIP(reservedIP, mac, allocationType string, random boo
 		} else {
 			nextIp, err := getNextAvailableIP(availableUnusedIPs, p.reservedIPs)
 			if err != nil {
-				return nil, errors.Wrapf(err, "Error getting next available IP for pool %s", p.poolID)
+				return nil, errors.WithMessagef(err, "Error getting next available IP for pool %s", p.poolID)
 			}
 			ip = nextIp
 		}
@@ -133,7 +133,7 @@ func (p *etcdPool) AllocateIP(reservedIP, mac, allocationType string, random boo
 		result, err := reserveIP(p.etcdClient, ip, allocationType, mac)
 
 		if err != nil {
-			return nil, errors.Wrapf(err, "Error reserving IP for pool %s", p.poolID)
+			return nil, errors.WithMessagef(err, "Error reserving IP for pool %s", p.poolID)
 		}
 
 		if result.Success {
@@ -158,7 +158,7 @@ func (p *etcdPool) ReleaseIP(ip string) error {
 	result, err := releaseReservation(p.etcdClient, reservation)
 
 	if err != nil {
-		return errors.Wrapf(err, "error releasing ip %s for pool %s", ip, p.poolID)
+		return errors.WithMessagef(err, "error releasing ip %s for pool %s", ip, p.poolID)
 	}
 
 	if !result.Success {
@@ -178,7 +178,7 @@ func (p *etcdPool) ReleaseAllIPs() error {
 
 	err := deleteAllReservations(p.etcdClient)
 	if err != nil {
-		return errors.Wrapf(err, "Error deleting all reserved IPs for pool %s", p.poolID)
+		return errors.WithMessagef(err, "Error deleting all reserved IPs for pool %s", p.poolID)
 	}
 
 	return p.syncIPs()
@@ -188,7 +188,7 @@ func (p *etcdPool) syncIPs() error {
 	reservedIPs, err := getReservations(p.etcdClient)
 
 	if err != nil {
-		return errors.Wrapf(err, "Error getting reservations for pool %s", p.poolID)
+		return errors.WithMessagef(err, "Error getting reservations for pool %s", p.poolID)
 	}
 
 	unusedIPs := make(map[string]time.Time)
@@ -218,7 +218,7 @@ func (p *etcdPool) getAvailableUnusedIPs() ([]net.IP, error) {
 	if len(availableUnusedIPs) == 0 {
 		err := p.syncIPs()
 		if err != nil {
-			return nil, errors.Wrapf(err, "Error syncing reserved IPs for pool %s when allocating a new IP and no more unused IPs were available", p.poolID)
+			return nil, errors.WithMessagef(err, "Error syncing reserved IPs for pool %s when allocating a new IP and no more unused IPs were available", p.poolID)
 		}
 		availableUnusedIPs = maps.Keys(p.unusedIPs)
 	}

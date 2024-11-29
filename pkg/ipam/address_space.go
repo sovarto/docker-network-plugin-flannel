@@ -36,12 +36,12 @@ func NewEtcdBasedAddressSpace(completeSpace []net.IPNet, poolSize int, etcdClien
 
 	allSubnets, err := generateAllSubnets(completeSpace, poolSize)
 	if err != nil {
-		return nil, errors.Wrap(err, "error generating all subnets")
+		return nil, errors.WithMessage(err, "error generating all subnets")
 	}
 
 	pools, err := getUsedSubnets(etcdClient)
 	if err != nil {
-		return nil, errors.Wrap(err, "error getting used subnets")
+		return nil, errors.WithMessage(err, "error getting used subnets")
 	}
 
 	usedSubnets := lo.Values(pools)
@@ -68,7 +68,7 @@ func NewEtcdBasedAddressSpace(completeSpace []net.IPNet, poolSize int, etcdClien
 	_, err = space.watchForSubnetUsageChanges(etcdClient)
 
 	if err != nil {
-		return nil, errors.Wrap(err, "error creating etcd watcher to watch for used subnets")
+		return nil, errors.WithMessage(err, "error creating etcd watcher to watch for used subnets")
 	}
 	return space, nil
 }
@@ -107,7 +107,7 @@ func (as *etcdAddressSpace) GetNewPool(id string) (*net.IPNet, error) {
 
 		result, err := reservePoolSubnet(as.etcdClient, subnet.String(), id)
 		if err != nil {
-			return nil, errors.Wrapf(err, "error reserving subnet %s for pool %s", subnet.String(), id)
+			return nil, errors.WithMessagef(err, "error reserving subnet %s for pool %s", subnet.String(), id)
 		}
 
 		as.unusedSubnets = as.unusedSubnets[1:]
@@ -135,7 +135,7 @@ func (as *etcdAddressSpace) ReleasePool(id string) error {
 	result, err := releasePoolSubnet(as.etcdClient, subnet.String(), id)
 
 	if err != nil {
-		return errors.Wrapf(err, "error releasing subnet %s for pool %s", subnet.String(), id)
+		return errors.WithMessagef(err, "error releasing subnet %s for pool %s", subnet.String(), id)
 	}
 
 	if !result.Success {

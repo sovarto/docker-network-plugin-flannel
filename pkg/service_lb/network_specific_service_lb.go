@@ -36,7 +36,7 @@ func NewNetworkSpecificServiceLb(link netlink.Link, dockerNetworkID, serviceID s
 
 	err := networking.EnsureInterfaceListensOnAddress(link, frontendIP.String())
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to ensure load balancer interface %s listening on %s", link.Attrs().Name, frontendIP.String())
+		return nil, errors.WithMessagef(err, "Failed to ensure load balancer interface %s listening on %s", link.Attrs().Name, frontendIP.String())
 	}
 
 	slb := &serviceLb{
@@ -50,7 +50,7 @@ func NewNetworkSpecificServiceLb(link netlink.Link, dockerNetworkID, serviceID s
 
 	err = slb.ensureServiceLoadBalancerFrontend()
 	if err != nil {
-		return nil, errors.Wrapf(err, "error creating frontend of service load balancer for service %s and network %s", serviceID, dockerNetworkID)
+		return nil, errors.WithMessagef(err, "error creating frontend of service load balancer for service %s and network %s", serviceID, dockerNetworkID)
 	}
 
 	return slb, nil
@@ -59,19 +59,19 @@ func NewNetworkSpecificServiceLb(link netlink.Link, dockerNetworkID, serviceID s
 func (slb *serviceLb) UpdateFrontendIP(ip net.IP) error {
 	err := networking.EnsureInterfaceListensOnAddress(slb.link, ip.String())
 	if err != nil {
-		return errors.Wrapf(err, "Failed to ensure load balancer interface %s listening on %s", slb.link.Attrs().Name, ip.String())
+		return errors.WithMessagef(err, "Failed to ensure load balancer interface %s listening on %s", slb.link.Attrs().Name, ip.String())
 	}
 
 	oldFrontendIP := slb.frontendIP
 	slb.frontendIP = ip
 	err = slb.ensureServiceLoadBalancerFrontend()
 	if err != nil {
-		return errors.Wrapf(err, "error creating frontend of service load balancer for service %s and network %s", slb.serviceID, slb.dockerNetworkID)
+		return errors.WithMessagef(err, "error creating frontend of service load balancer for service %s and network %s", slb.serviceID, slb.dockerNetworkID)
 	}
 
 	err = networking.StopListeningOnAddress(slb.link, oldFrontendIP.String())
 	if err != nil {
-		return errors.Wrapf(err, "error stopping interface %s listening on %s", slb.link.Attrs().Name, oldFrontendIP.String())
+		return errors.WithMessagef(err, "error stopping interface %s listening on %s", slb.link.Attrs().Name, oldFrontendIP.String())
 	}
 
 	return nil
@@ -143,7 +143,7 @@ func (slb *serviceLb) RemoveBackend(ip net.IP) error {
 	})
 
 	if err != nil {
-		return errors.Wrapf(err, "error deleting backend %s from service load balancer for service %s and network %s", ip, slb.serviceID, slb.dockerNetworkID)
+		return errors.WithMessagef(err, "error deleting backend %s from service load balancer for service %s and network %s", ip, slb.serviceID, slb.dockerNetworkID)
 	}
 
 	slb.backendIPs = lo.Filter(slb.backendIPs, func(item net.IP, index int) bool {
@@ -196,7 +196,7 @@ func (slb *serviceLb) SetBackends(ips []net.IP) error {
 			}
 			err = handle.NewDestination(svc, dest)
 			if err != nil {
-				return errors.Wrapf(err, "failed to add backend ip %s to service load balancer for service %s and networks %s", ip, slb.serviceID, slb.dockerNetworkID)
+				return errors.WithMessagef(err, "failed to add backend ip %s to service load balancer for service %s and networks %s", ip, slb.serviceID, slb.dockerNetworkID)
 			}
 		}
 	}
@@ -206,7 +206,7 @@ func (slb *serviceLb) SetBackends(ips []net.IP) error {
 		if _, found := desiredIPs[ipStr]; !found {
 			err = handle.DelDestination(svc, dest)
 			if err != nil {
-				return errors.Wrapf(err, "failed to delete backend ip %s from service load balancer for service %s and networks %s", ipStr, slb.serviceID, slb.dockerNetworkID)
+				return errors.WithMessagef(err, "failed to delete backend ip %s from service load balancer for service %s and networks %s", ipStr, slb.serviceID, slb.dockerNetworkID)
 			}
 		}
 	}
@@ -296,13 +296,13 @@ func (slb *serviceLb) ensureServiceLoadBalancerFrontend() error {
 
 	err = networking.ApplyIpTablesRules(slb.iptablesRules, "create")
 	if err != nil {
-		return errors.Wrapf(err, "failed to setup IP Tables rules for service load balancer for service %s in network %s", slb.serviceID, slb.dockerNetworkID)
+		return errors.WithMessagef(err, "failed to setup IP Tables rules for service load balancer for service %s in network %s", slb.serviceID, slb.dockerNetworkID)
 	}
 
 	if len(previousIptablesRules) > 0 {
 		err = networking.ApplyIpTablesRules(previousIptablesRules, "delete")
 		if err != nil {
-			return errors.Wrapf(err, "failed to setup IP Tables rules for service load balancer for service %s in network %s", slb.serviceID, slb.dockerNetworkID)
+			return errors.WithMessagef(err, "failed to setup IP Tables rules for service load balancer for service %s in network %s", slb.serviceID, slb.dockerNetworkID)
 		}
 	}
 
@@ -312,7 +312,7 @@ func (slb *serviceLb) ensureServiceLoadBalancerFrontend() error {
 func (slb *serviceLb) Delete() error {
 	err := networking.ApplyIpTablesRules(slb.iptablesRules, "delete")
 	if err != nil {
-		return errors.Wrapf(err, "failed to remove IP Tables rules for service load balancer for service %s in network %s", slb.serviceID, slb.dockerNetworkID)
+		return errors.WithMessagef(err, "failed to remove IP Tables rules for service load balancer for service %s in network %s", slb.serviceID, slb.dockerNetworkID)
 	}
 
 	handle, err := ipvs.New("")
@@ -328,12 +328,12 @@ func (slb *serviceLb) Delete() error {
 
 	err = handle.DelService(svc)
 	if err != nil {
-		return errors.Wrapf(err, "failed to delete IPVS service of service load balancer of service %s and network %s", slb.serviceID, slb.dockerNetworkID)
+		return errors.WithMessagef(err, "failed to delete IPVS service of service load balancer of service %s and network %s", slb.serviceID, slb.dockerNetworkID)
 	}
 
 	err = networking.StopListeningOnAddress(slb.link, slb.frontendIP.String())
 	if err != nil {
-		return errors.Wrapf(err, "failed to remove IP %s from interface %s", slb.frontendIP, slb.link.Attrs().Name)
+		return errors.WithMessagef(err, "failed to remove IP %s from interface %s", slb.frontendIP, slb.link.Attrs().Name)
 	}
 
 	return nil

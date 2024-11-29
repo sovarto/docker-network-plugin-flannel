@@ -1,13 +1,9 @@
 package driver
 
 import (
-	"context"
 	"fmt"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
 	docker_ipam "github.com/docker/go-plugins-helpers/ipam"
 	"github.com/pkg/errors"
-	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/flannel_network"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/ipam"
@@ -46,25 +42,15 @@ func (d *flannelDriver) RequestPool(request *docker_ipam.RequestPoolRequest) (*d
 		return nil, errors.New("the IPAM driver option 'flannel-id' needs to be set to a unique ID")
 	}
 
-	dockerClient, err := client.NewClientWithOpts(
-		client.WithHost("unix:///var/run/docker.sock"),
-		client.WithAPIVersionNegotiation(),
-	)
-
-	networks, err := dockerClient.NetworkList(context.Background(), network.ListOptions{})
-	fmt.Printf("Networks: %+v", lo.Map(networks, func(item network.Summary, index int) string {
-		return item.Name
-	}))
-
 	networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(flannelNetworkId)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get network subnet pool for network '%s'", flannelNetworkId)
+		return nil, errors.WithMessagef(err, "failed to get network subnet pool for network '%s'", flannelNetworkId)
 	}
 
 	network, err := flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), flannelNetworkId, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions)
 
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to ensure network '%s' is operational", flannelNetworkId)
+		return nil, errors.WithMessagef(err, "failed to ensure network '%s' is operational", flannelNetworkId)
 	}
 
 	d.networksByFlannelID[flannelNetworkId] = network
@@ -88,13 +74,13 @@ func (d *flannelDriver) ReleasePool(request *docker_ipam.ReleasePoolRequest) err
 	err := network.Delete()
 
 	if err != nil {
-		return errors.Wrapf(err, "failed to delete network '%s'", flannelNetworkID)
+		return errors.WithMessagef(err, "failed to delete network '%s'", flannelNetworkID)
 	}
 
 	err = d.globalAddressSpace.ReleasePool(request.PoolID)
 
 	if err != nil {
-		return errors.Wrapf(err, "failed to release address pool of network '%s'", flannelNetworkID)
+		return errors.WithMessagef(err, "failed to release address pool of network '%s'", flannelNetworkID)
 	}
 
 	delete(d.networksByFlannelID, flannelNetworkID)

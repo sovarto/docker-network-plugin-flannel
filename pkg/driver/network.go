@@ -49,7 +49,7 @@ func (d *flannelDriver) CreateEndpoint(request *network.CreateEndpointRequest) (
 	ip := net.ParseIP(request.Interface.Address)
 	_, err := flannelNetwork.AddEndpoint(request.EndpointID, ip, request.Interface.MacAddress)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create endpoint %s for flannel network %s", request.EndpointID, flannelNetwork.GetInfo().FlannelID)
+		return nil, errors.WithMessagef(err, "failed to create endpoint %s for flannel network %s", request.EndpointID, flannelNetwork.GetInfo().FlannelID)
 	}
 
 	// Don't return the interface we got passed in. Even without changing any values, it will lead
@@ -68,7 +68,7 @@ func (d *flannelDriver) DeleteEndpoint(request *network.DeleteEndpointRequest) e
 
 	err := flannelNetwork.DeleteEndpoint(request.EndpointID)
 	if err != nil {
-		return errors.Wrapf(err, "failed to delete endpoint %s", request.EndpointID)
+		return errors.WithMessagef(err, "failed to delete endpoint %s", request.EndpointID)
 	}
 
 	return nil
@@ -108,7 +108,7 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 
 	err = endpoint.Join(request.EndpointID)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to join endpoint %s to network %s", request.EndpointID, request.NetworkID)
+		return nil, errors.WithMessagef(err, "failed to join endpoint %s to network %s", request.EndpointID, request.NetworkID)
 	}
 
 	networkInfo := flannelNetwork.GetInfo()

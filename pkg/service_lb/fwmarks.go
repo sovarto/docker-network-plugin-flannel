@@ -142,7 +142,7 @@ func (f *fwmarks) Release(serviceID, networkID string, fwmark uint32) error {
 		}
 
 		if !resp.Succeeded {
-			return struct{}{}, errors.Wrapf(err, "failed to release fwmark %d for service %s", fwmark, serviceID)
+			return struct{}{}, errors.WithMessagef(err, "failed to release fwmark %d for service %s", fwmark, serviceID)
 		}
 
 		return struct{}{}, nil
