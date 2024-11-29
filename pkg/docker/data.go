@@ -537,29 +537,30 @@ func (d *data) invokeContainersCallbacks(previousContainerInfos map[string]commo
 	)
 }
 
-func (d *data) invokeNetworksCallbacks(previousNetworkInfos map[string]string, currentNetworkInfos map[string]string) {
-	invokeItemsCallbacks(
-		previousNetworkInfos,
-		currentNetworkInfos,
-		func(x string) string { return x },
-		func(previous *string, current string) {
-			fmt.Printf("invoke network callback: previous: %s, current: %s, currentNetworkInfos[current]: %s", previous, current, currentNetworkInfos[current])
-			if previous == nil {
-				if d.callbacks.NetworkAdded != nil {
-					d.callbacks.NetworkAdded(current, currentNetworkInfos[current])
-				}
-			} else {
-				if d.callbacks.NetworkChanged != nil {
-					d.callbacks.NetworkChanged(current, currentNetworkInfos[current])
-				}
+func (d *data) invokeNetworksCallbacks(previousDockerNetworkIDtoFlannelNetworkID map[string]string, currentDockerNetworkIDtoFlannelNetworkID map[string]string) {
+	processedItems := make(map[string]bool)
+
+	for dockerNetworkID, currentFlannelNetworkID := range currentDockerNetworkIDtoFlannelNetworkID {
+		previousFlannelNetworkID := previousDockerNetworkIDtoFlannelNetworkID[dockerNetworkID]
+		if previousFlannelNetworkID == "" {
+			if d.callbacks.NetworkAdded != nil {
+				d.callbacks.NetworkAdded(dockerNetworkID, currentFlannelNetworkID)
 			}
-		},
-		func(x string) {
-			if d.callbacks.NetworkRemoved != nil {
-				d.callbacks.NetworkRemoved(x, currentNetworkInfos[x])
+		} else {
+			if d.callbacks.NetworkChanged != nil {
+				d.callbacks.NetworkChanged(dockerNetworkID, currentFlannelNetworkID)
 			}
-		},
-	)
+		}
+		processedItems[dockerNetworkID] = true
+	}
+
+	if d.callbacks.NetworkRemoved != nil {
+		for dockerNetworkID, previousFlannelNetworkID := range previousDockerNetworkIDtoFlannelNetworkID {
+			if !processedItems[dockerNetworkID] {
+				d.callbacks.NetworkRemoved(dockerNetworkID, previousFlannelNetworkID)
+			}
+		}
+	}
 }
 
 func invokeItemCallback[T any](
