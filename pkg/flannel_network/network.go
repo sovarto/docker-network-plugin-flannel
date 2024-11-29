@@ -260,11 +260,11 @@ type ReadNetworkConfigResult struct {
 
 func (n *network) readNetworkConfig() (ReadNetworkConfigResult, error) {
 	return etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (ReadNetworkConfigResult, error) {
-		networkConfigPrefixKey := flannelConfigPrefixKey(n.etcdClient, n.id)
+		networkConfigKey := flannelConfigKey(n.etcdClient, n.id)
 
-		resp, err := connection.Client.Get(connection.Ctx, networkConfigPrefixKey)
+		resp, err := connection.Client.Get(connection.Ctx, networkConfigKey)
 		if err != nil {
-			return ReadNetworkConfigResult{found: false}, errors.Wrapf(err, "error reading network config for network %s at %s", n.id, networkConfigPrefixKey)
+			return ReadNetworkConfigResult{found: false}, errors.Wrapf(err, "error reading network config for network %s at %s", n.id, networkConfigKey)
 		}
 		if len(resp.Kvs) > 0 {
 			var configData Config
@@ -282,7 +282,7 @@ func (n *network) readNetworkConfig() (ReadNetworkConfigResult, error) {
 
 func (n *network) startFlannel() error {
 	subnetFile := fmt.Sprintf("/flannel-env/%s.env", n.id)
-	etcdPrefix := flannelConfigKey(n.etcdClient, n.id)
+	etcdPrefix := flannelConfigPrefixKey(n.etcdClient, n.id)
 
 	args := []string{
 		fmt.Sprintf("-subnet-file=%s", subnetFile),

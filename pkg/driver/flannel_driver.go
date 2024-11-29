@@ -13,6 +13,7 @@ import (
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/ipam"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/service_lb"
 	"log"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -50,6 +51,9 @@ func NewFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelO
 	}
 	driver.globalAddressSpace = globalAddressSpace
 
+	numIPsPerNode := int(math.Pow(2, float64(32-defaultHostSubnetSize)))
+	numNodesPerNetwork := int(math.Pow(2, float64(defaultHostSubnetSize-networkSubnetSize)))
+	fmt.Printf("The address space settings results in support for a total of %d networks, %d nodes and %d IP addresses (including service VIPs) per node", len(globalAddressSpace.GetCompleteAddressSpace()), numNodesPerNetwork, numIPsPerNode)
 	fmt.Println("Initialized address space")
 
 	callbacks := docker.Callbacks{
