@@ -77,14 +77,14 @@ func (b *bridgeInterface) Ensure() error {
 	}
 
 	if err := netlink.RouteChange(route); err != nil {
-		log.Printf("Failed to add route: %+v, err:%+v\n", route, err)
+		log.Printf("Failed to add route %+v for interface %s. err:%+v\n", route, b.interfaceName, err)
 		return err
 	}
 
 	b.route = *route
 
 	if err := networking.ApplyIpTablesRules(b.iptablesRules, "create"); err != nil {
-		return errors.WithMessagef(err, "failed to setup IP Tables rules for bridge interface for network %s", b.interfaceName)
+		return errors.WithMessagef(err, "failed to setup IP Tables rules for bridge interface %s for network %s", b.interfaceName, b.network.FlannelID)
 	}
 
 	return nil
