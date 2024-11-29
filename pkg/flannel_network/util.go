@@ -20,7 +20,6 @@ func readPipe(pipe io.Reader, doneChan chan struct{}) {
 		fmt.Fprintln(os.Stdout, line) // Write to os.Stdout
 		if strings.Contains(line, "bootstrap done") {
 			close(doneChan)
-			return
 		}
 	}
 	if err := scanner.Err(); err != nil {
