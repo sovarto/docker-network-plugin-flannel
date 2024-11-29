@@ -95,7 +95,7 @@ func (n *network) Delete() error {
 	_, err := etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
 		networkConfigKey := flannelConfigKey(n.etcdClient, n.id)
 
-		result, err := n.readExistingNetworkConfig()
+		result, err := n.readNetworkConfig()
 		if err != nil {
 			return struct{}{}, errors.Wrapf(err, "error reading existing flannel network config for network %s", n.id)
 		}
@@ -190,7 +190,7 @@ func (n *network) ensureFlannelConfig() (struct{}, error) {
 	return etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
 		networkConfigKey := flannelConfigKey(n.etcdClient, n.id)
 
-		result, err := n.readExistingNetworkConfig()
+		result, err := n.readNetworkConfig()
 		if err != nil {
 			return struct{}{}, errors.Wrapf(err, "error reading existing flannel network config for network %s", n.id)
 		}
@@ -232,7 +232,7 @@ func (n *network) ensureFlannelConfig() (struct{}, error) {
 
 		if !resp.Succeeded {
 			fmt.Printf("flannel network config for network %s was created by another node. Trying to reuse", n.id)
-			result, err := n.readExistingNetworkConfig()
+			result, err := n.readNetworkConfig()
 			if err != nil {
 				return struct{}{}, errors.Wrapf(err, "error reading existing flannel network config for network %s", n.id)
 			}
@@ -254,27 +254,25 @@ type ReadNetworkConfigResult struct {
 	found    bool
 }
 
-func (n *network) readExistingNetworkConfig() (ReadNetworkConfigResult, error) {
+func (n *network) readNetworkConfig() (ReadNetworkConfigResult, error) {
 	return etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (ReadNetworkConfigResult, error) {
 		networkConfigKey := flannelConfigKey(n.etcdClient, n.id)
 
 		resp, err := connection.Client.Get(connection.Ctx, networkConfigKey)
 		if err != nil {
-			log.Printf("Failed to get network config %s:\n%+v", networkConfigKey, err)
-			return ReadNetworkConfigResult{found: false}, err
+			return ReadNetworkConfigResult{found: false}, errors.Wrapf(err, "error reading network config for network %s at %s", n.id, networkConfigKey)
 		}
 		if len(resp.Kvs) > 0 {
 			var configData Config
 			err := json.Unmarshal(resp.Kvs[0].Value, &configData)
 			if err != nil {
-				log.Println("Failed to deserialize configuration:", err)
-				return ReadNetworkConfigResult{found: true, revision: resp.Header.Revision}, err
+				return ReadNetworkConfigResult{found: true, revision: resp.Header.Revision}, errors.Wrap(err, "error deserializing configuration")
 			}
 
 			return ReadNetworkConfigResult{config: configData, found: true, revision: resp.Header.Revision}, nil
 		}
-		message := fmt.Sprintf("Expected network config '%s' missing", networkConfigKey)
-		return ReadNetworkConfigResult{found: false}, errors.New(message)
+
+		return ReadNetworkConfigResult{found: false}, nil
 	})
 }
 
