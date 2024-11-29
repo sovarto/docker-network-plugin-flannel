@@ -144,25 +144,29 @@ func (d *flannelDriver) handleServiceAdded(serviceInfo common.ServiceInfo) {
 func (d *flannelDriver) handleServiceRemoved(serviceID string) {
 	err := d.serviceLbsManagement.DeleteLoadBalancer(serviceID)
 	if err != nil {
-		log.Printf("Failed to remove load balancer for service %s: %+v", serviceID, err)
+		log.Printf("Failed to remove load balancer for service %s: %+v\n", serviceID, err)
 	}
 }
 
 func (d *flannelDriver) handleNetworkAdded(networkID string) {
-	//poolID := "FlannelPool"
-	//
-	//networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool()
-	//if err != nil {
-	//	return nil, errors.Wrapf(err, "failed to get network subnet pool for network '%s'", flannelNetworkId)
-	//}
-	//
-	//network, err := flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), flannelNetworkId, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions)
-	//
-	//if err != nil {
-	//	return nil, errors.Wrapf(err, "failed to ensure network '%s' is operational", flannelNetworkId)
-	//}
-	//
-	//d.networks[flannelNetworkId] = network
+	poolID := fmt.Sprintf("FlannelPool-%s", networkID)
+
+	networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(poolID)
+	if err != nil {
+		log.Printf("failed to get network subnet pool for network '%s': %+v\n", networkID, err)
+	}
+
+	network, err := flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), networkID, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions)
+
+	if err != nil {
+		log.Printf("failed to ensure network '%s' is operational: %+v\n", networkID, err)
+	}
+
+	d.networks[networkID] = network
+	err = d.serviceLbsManagement.AddNetwork(network)
+	if err != nil {
+		log.Printf("Failed to add network '%s' to service load balancer management: %+v\n", networkID, err)
+	}
 }
 
 func (d *flannelDriver) handleNetworkRemoved(networkID string) {
