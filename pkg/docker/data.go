@@ -179,6 +179,8 @@ func (d *data) handleContainer(containerID string) error {
 		return errors.Wrapf(err, "Error inspecting docker container %s", containerID)
 	}
 
+	fmt.Printf("Found docker container %+v", container)
+
 	serviceID := container.Config.Labels["com.docker.swarm.service.id"]
 	serviceName := container.Config.Labels["com.docker.swarm.service.name"]
 	containerName := strings.TrimLeft(container.Name, "/")
@@ -214,9 +216,18 @@ func (d *data) handleContainer(containerID string) error {
 
 	serviceInfo.Containers[containerID] = containerInfo
 
-	for _, networkData := range container.NetworkSettings.Networks {
+	for networkName, networkData := range container.NetworkSettings.Networks {
+		if networkName == "host" {
+			continue
+		}
 		networkID := networkData.NetworkID
+		if networkData.IPAddress == "" {
+			log.Printf("Found network %s without IP", networkID)
+		}
 		ip := net.ParseIP(networkData.IPAddress)
+		if ip == nil {
+			log.Printf("Found network %s with invalid IP %s", networkID, networkData.IPAddress)
+		}
 		ips[networkID] = ip
 		if networkData.IPAMConfig != nil && networkData.IPAMConfig.IPv4Address != "" {
 			ipamIP := net.ParseIP(networkData.IPAMConfig.IPv4Address)
