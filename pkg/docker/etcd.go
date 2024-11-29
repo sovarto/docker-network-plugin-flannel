@@ -112,7 +112,7 @@ func storeContainerAndServiceInfo(client etcd.Client, hostname string, container
 		_, err = connection.Client.Put(connection.Ctx, containerKey, configString)
 
 		if err != nil {
-			return struct{}{}, errors.Wrapf(err, "Failed to store container info %+v: %+v\n", containerInfo, err)
+			return struct{}{}, errors.Wrapf(err, "Failed to store container info %+v", containerInfo)
 		}
 
 		if serviceID != "" && serviceName != "" {

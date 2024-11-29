@@ -144,7 +144,7 @@ func (d *data) handleNetwork(networkID string) error {
 
 	err = storeNetworkInfo(d.etcdClient, network.ID, id)
 	if err != nil {
-		return errors.Wrapf(err, "Error storing network info for docker network %s: %+v\n", network.ID, err)
+		return errors.Wrapf(err, "Error storing network info for docker network %s", network.ID)
 	}
 
 	if !exists && d.callbacks.NetworkAdded != nil {
@@ -161,7 +161,7 @@ func (d *data) handleDeletedNetwork(networkID string) error {
 
 	err := deleteNetworkInfo(d.etcdClient, networkID)
 	if err != nil {
-		return errors.Wrapf(err, "Error deleting network info for docker network %s: %+v\n", networkID, err)
+		return errors.Wrapf(err, "Error deleting network info for docker network %s", networkID)
 	}
 
 	if exists {
@@ -176,7 +176,7 @@ func (d *data) handleDeletedNetwork(networkID string) error {
 func (d *data) handleContainer(containerID string) error {
 	container, err := d.dockerClient.ContainerInspect(context.Background(), containerID)
 	if err != nil {
-		return errors.Wrapf(err, "Error inspecting docker container %s: %+v\n", containerID, err)
+		return errors.Wrapf(err, "Error inspecting docker container %s", containerID)
 	}
 
 	serviceID := container.Config.Labels["com.docker.swarm.service.id"]
@@ -235,9 +235,10 @@ func (d *data) handleContainer(containerID string) error {
 	}
 	d.containers[containerID] = containerInfo
 
+	fmt.Printf("Found container %s for service %s with info %+v", containerID, serviceID, containerInfo)
 	err = storeContainerAndServiceInfo(d.etcdClient, d.hostname, containerInfo, serviceID, serviceName)
 	if err != nil {
-		return errors.Wrapf(err, "Error storing container and service info for container %s: %+v\n", containerID, err)
+		return errors.Wrapf(err, "Error storing container and service info for container %s", containerID)
 	}
 
 	d.invokeContainerCallback(previousContainerInfo, containerInfo)
@@ -253,20 +254,20 @@ func (d *data) syncNetworks() error {
 	loadedNetworks, err := loadNetworkInfo(d.etcdClient)
 
 	if err != nil {
-		return errors.Wrapf(err, "Error loading docker network info from etcd: %+v\n", err)
+		return errors.Wrap(err, "Error loading docker network info from etcd")
 	}
 
 	d.dockerNetworkIDtoFlannelNetworkID = loadedNetworks
 
 	networks, err := d.dockerClient.NetworkList(context.Background(), network.ListOptions{})
 	if err != nil {
-		return errors.Wrapf(err, "Error listing docker networks: %+v\n", err)
+		return errors.Wrap(err, "Error listing docker networks")
 	}
 
 	for _, network := range networks {
 		err = d.handleNetwork(network.ID)
 		if err != nil {
-			return errors.Wrapf(err, "Error handling docker network %s: %+v\n", network.ID, err)
+			return errors.Wrapf(err, "Error handling docker network %s", network.ID)
 		}
 	}
 
@@ -277,15 +278,17 @@ func (d *data) syncContainersAndServices() error {
 	d.Lock()
 	defer d.Unlock()
 
+	fmt.Println("syncing containers and services")
+
 	loadedContainers, err := loadContainersInfo(d.etcdClient, d.hostname)
 	if err != nil {
-		return errors.Wrapf(err, "Error loading docker containers info from etcd: %+v\n", err)
+		return errors.Wrap(err, "Error loading docker containers info from etcd")
 	}
 	d.containers = loadedContainers
 
 	loadedServices, err := loadServicesInfo(d.etcdClient)
 	if err != nil {
-		return errors.Wrapf(err, "Error loading docker services info from etcd: %+v\n", err)
+		return errors.Wrap(err, "Error loading docker services info from etcd")
 	}
 	oldServices := d.services
 	d.services = loadedServices
@@ -293,26 +296,26 @@ func (d *data) syncContainersAndServices() error {
 
 	containers, err := d.dockerClient.ContainerList(context.Background(), container.ListOptions{})
 	if err != nil {
-		return errors.Wrapf(err, "Error listing docker containers: %+v\n", err)
+		return errors.Wrap(err, "Error listing docker containers")
 	}
 
 	for _, container := range containers {
 		err = d.handleContainer(container.ID)
 		if err != nil {
-			return errors.Wrapf(err, "Error handling docker container %s: %+v\n", container.ID, err)
+			return errors.Wrapf(err, "Error handling docker container %s", container.ID)
 		}
 	}
 
 	if d.isManagerNode {
 		services, err := d.dockerClient.ServiceList(context.Background(), types.ServiceListOptions{})
 		if err != nil {
-			return errors.Wrapf(err, "Error listing docker services: %+v\n", err)
+			return errors.Wrap(err, "Error listing docker services")
 		}
 
 		for _, service := range services {
 			err = d.handleService(service.ID)
 			if err != nil {
-				return errors.Wrapf(err, "Error handling docker service %s: %+v\n", service.ID, err)
+				return errors.Wrapf(err, "Error handling docker service %s", service.ID)
 			}
 		}
 	}
@@ -323,7 +326,7 @@ func (d *data) syncContainersAndServices() error {
 func (d *data) handleService(serviceID string) error {
 	service, _, err := d.dockerClient.ServiceInspectWithRaw(context.Background(), serviceID, types.ServiceInspectOptions{})
 	if err != nil {
-		return errors.Wrapf(err, "Error inspecting docker service %s: %+v\n", serviceID, err)
+		return errors.Wrapf(err, "Error inspecting docker service %s", serviceID)
 	}
 
 	serviceName := service.Spec.Name
@@ -356,7 +359,7 @@ func (d *data) handleService(serviceID string) error {
 
 	err = storeServiceVIPs(d.etcdClient, serviceID, serviceInfo.VIPs)
 	if err != nil {
-		return errors.Wrapf(err, "Error storing service VIPs for service %s: %+v\n", serviceID, err)
+		return errors.Wrapf(err, "Error storing service VIPs for service %s", serviceID)
 	}
 
 	d.invokeServiceCallback(previousServiceInfo, serviceInfo)
@@ -371,7 +374,7 @@ func (d *data) handleDeletedService(serviceID string) error {
 
 	err := deleteServiceInfo(d.etcdClient, serviceID)
 	if err != nil {
-		return errors.Wrapf(err, "Error deleting service info for docker service %s: %+v\n", serviceID, err)
+		return errors.Wrapf(err, "Error deleting service info for docker service %s", serviceID)
 	}
 
 	if exists {
@@ -390,7 +393,7 @@ func (d *data) handleDeletedContainer(containerID string) error {
 
 	err := deleteContainerInfo(d.etcdClient, d.hostname, containerID)
 	if err != nil {
-		return errors.Wrapf(err, "Error deleting container info for docker container %s: %+v\n", containerID, err)
+		return errors.Wrapf(err, "Error deleting container info for docker container %s", containerID)
 	}
 
 	if exists {
