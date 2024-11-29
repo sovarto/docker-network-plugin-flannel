@@ -149,17 +149,17 @@ func (d *flannelDriver) handleServiceRemoved(serviceID string) {
 }
 
 func (d *flannelDriver) handleNetworkAdded(networkID string) {
-	poolID := fmt.Sprintf("FlannelPool-%s", networkID)
-
-	networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(poolID)
+	networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(networkID)
 	if err != nil {
 		log.Printf("failed to get network subnet pool for network '%s': %+v\n", networkID, err)
+		return
 	}
 
 	network, err := flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), networkID, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions)
 
 	if err != nil {
 		log.Printf("failed to ensure network '%s' is operational: %+v\n", networkID, err)
+		return
 	}
 
 	d.networks[networkID] = network
