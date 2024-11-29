@@ -158,6 +158,7 @@ func (as *etcdAddressSpace) watchForSubnetUsageChanges(etcdClient etcd.Client) (
 	go func() {
 		for wresp := range watcher {
 			for _, ev := range wresp.Events {
+				fmt.Printf("watchForSubnetUsageChanges received event%+v\n", ev)
 				key := strings.TrimLeft(strings.TrimPrefix(string(ev.Kv.Key), prefix), "/")
 				if !strings.Contains(key, "/") {
 					switch ev.Type {

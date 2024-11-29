@@ -67,8 +67,13 @@ func reservePoolSubnet(client etcd.Client, subnet, id string) (PoolSubnetLeaseRe
 		if resp.Succeeded {
 			return PoolSubnetLeaseResult{Success: true}, nil
 		}
-		fmt.Printf("reserving subnet %s from pool %s: %+v\n", subnet, id, resp)
-		return PoolSubnetLeaseResult{Success: false, PoolID: string(resp.Responses[0].GetResponseRange().Kvs[0].Value)}, nil
+
+		poolID := string(resp.Responses[0].GetResponseRange().Kvs[0].Value)
+		if poolID == id {
+			return PoolSubnetLeaseResult{Success: true}, nil
+		}
+
+		return PoolSubnetLeaseResult{Success: false, PoolID: poolID}, nil
 	})
 }
 
