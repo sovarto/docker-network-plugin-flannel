@@ -130,29 +130,29 @@ func (d *data) handleNetwork(dockerNetworkID string) error {
 		return errors.WithMessagef(err, "Error inspecting docker network %s", dockerNetworkID)
 	}
 
-	id, exists := network.IPAM.Options["flannel-id"]
+	flannelNetworkID, exists := network.IPAM.Options["flannel-id"]
 	if !exists {
 		// Ignore, it's not for us, or it's misconfigured
 		return nil
 	}
 
-	_, exists = d.dockerNetworkIDtoFlannelNetworkID[id]
-	d.dockerNetworkIDtoFlannelNetworkID[network.ID] = id
-	d.flannelNetworkIDtoDockerNetworkID[id] = network.ID
-	fmt.Printf("Network %s has flannel network id: %s\n", network.ID, id)
+	_, exists = d.dockerNetworkIDtoFlannelNetworkID[dockerNetworkID]
+	d.dockerNetworkIDtoFlannelNetworkID[dockerNetworkID] = flannelNetworkID
+	d.flannelNetworkIDtoDockerNetworkID[flannelNetworkID] = dockerNetworkID
+	fmt.Printf("Network %s has flannel network id: %s\n", dockerNetworkID, flannelNetworkID)
 
-	err = storeNetworkInfo(d.etcdClient, network.ID, id)
+	err = storeNetworkInfo(d.etcdClient, dockerNetworkID, flannelNetworkID)
 	if err != nil {
-		return errors.WithMessagef(err, "Error storing network info for docker network %s", network.ID)
+		return errors.WithMessagef(err, "Error storing network info for docker network %s", dockerNetworkID)
 	}
 
 	if !exists {
 		if d.callbacks.NetworkAdded != nil {
-			d.callbacks.NetworkAdded(dockerNetworkID, id)
+			d.callbacks.NetworkAdded(dockerNetworkID, flannelNetworkID)
 		}
 	} else {
 		if d.callbacks.NetworkChanged != nil {
-			d.callbacks.NetworkChanged(dockerNetworkID, id)
+			d.callbacks.NetworkChanged(dockerNetworkID, flannelNetworkID)
 		}
 	}
 
@@ -273,6 +273,7 @@ func (d *data) syncNetworks() error {
 		d.flannelNetworkIDtoDockerNetworkID[flannelNetworkID] = dockerNetworkID
 	}
 
+	fmt.Printf("Networks mapping %+v\n", d.dockerNetworkIDtoFlannelNetworkID)
 	d.invokeNetworksCallbacks(oldNetworks, d.dockerNetworkIDtoFlannelNetworkID)
 
 	networks, err := d.dockerClient.NetworkList(context.Background(), network.ListOptions{})

@@ -89,8 +89,9 @@ func loadNetworkInfo(client etcd.Client) (map[string]string, error) {
 		result := map[string]string{}
 
 		for _, kv := range resp.Kvs {
-			key = strings.TrimLeft(strings.TrimPrefix(string(kv.Key), key), "/")
-			result[key] = string(kv.Value)
+			dockerNetworkID := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), key), "/")
+			flannelNetworkID := string(kv.Value)
+			result[dockerNetworkID] = flannelNetworkID
 		}
 
 		return result, nil
