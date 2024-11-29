@@ -56,7 +56,8 @@ func NewNetwork(etcdClient etcd.Client, id string, networkSubnet net.IPNet, host
 		hostSubnetSize:        hostSubnetSize,
 	}
 
-	err := result.Ensure()
+	err := result.
+		Ensure()
 	if err != nil {
 		return nil, err
 	}
@@ -355,7 +356,6 @@ func (n *network) startFlannel() error {
 	}
 
 	n.pid = cmd.Process.Pid
-	// network.ReserveAddresses(config.Gateway.String())
 
 	return nil
 }
@@ -396,6 +396,8 @@ func (n *network) loadFlannelConfig(filename string) error {
 		}
 
 		key = strings.TrimPrefix(key, "FLANNEL_")
+
+		fmt.Printf("Reading flannel config key %s and value %s\n", key, value)
 
 		switch key {
 		case "NETWORK":
