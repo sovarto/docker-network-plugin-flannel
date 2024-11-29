@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -44,6 +43,7 @@ type data struct {
 	containers                        map[string]common.ContainerInfo // containerID -> info
 	services                          map[string]common.ServiceInfo   // serviceID -> info
 	callbacks                         Callbacks
+	isManagerNode                     bool
 	sync.Mutex
 }
 
@@ -59,8 +59,12 @@ func NewData(etcdClient etcd.Client, callbacks Callbacks) (Data, error) {
 	)
 
 	if err != nil {
-		log.Println("Failed to create docker client: ", err)
-		return nil, err
+		return nil, errors.Wrap(err, "error creating docker client")
+	}
+
+	info, err := dockerClient.Info(context.Background())
+	if err != nil {
+		return nil, errors.Wrap(err, "Error getting docker info")
 	}
 
 	result := &data{
@@ -71,6 +75,7 @@ func NewData(etcdClient etcd.Client, callbacks Callbacks) (Data, error) {
 		services:                          make(map[string]common.ServiceInfo),
 		callbacks:                         callbacks,
 		hostname:                          hostname,
+		isManagerNode:                     info.Swarm.ControlAvailable,
 	}
 
 	err = result.syncNetworks()
@@ -298,27 +303,17 @@ func (d *data) syncContainersAndServices() error {
 		}
 	}
 
-	info, err := d.dockerClient.Info(context.Background())
-	if err != nil {
-		return errors.Wrap(err, "Error getting docker info")
-	}
-	infoBytes, err := json.Marshal(info)
-	if err != nil {
-		return errors.Wrap(err, "Error serializing docker info")
-	}
-
-	infoString := string(infoBytes)
-
-	fmt.Printf("Docker info: %s\n", infoString)
-	services, err := d.dockerClient.ServiceList(context.Background(), types.ServiceListOptions{})
-	if err != nil {
-		return errors.Wrapf(err, "Error listing docker services: %+v\n", err)
-	}
-
-	for _, service := range services {
-		err = d.handleService(service.ID)
+	if d.isManagerNode {
+		services, err := d.dockerClient.ServiceList(context.Background(), types.ServiceListOptions{})
 		if err != nil {
-			return errors.Wrapf(err, "Error handling docker service %s: %+v\n", service.ID, err)
+			return errors.Wrapf(err, "Error listing docker services: %+v\n", err)
+		}
+
+		for _, service := range services {
+			err = d.handleService(service.ID)
+			if err != nil {
+				return errors.Wrapf(err, "Error handling docker service %s: %+v\n", service.ID, err)
+			}
 		}
 	}
 
