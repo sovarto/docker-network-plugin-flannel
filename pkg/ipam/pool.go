@@ -242,7 +242,7 @@ func (p *etcdPool) getAvailableUnusedIPs() ([]net.IP, error) {
 func (p *etcdPool) watchForIPUsageChanges(etcdClient etcd.Client) (clientv3.WatchChan, error) {
 	prefix := reservedIPsKey(etcdClient)
 	watcher, err := etcd.WithConnection(etcdClient, func(conn *etcd.Connection) (clientv3.WatchChan, error) {
-		return conn.Client.Watch(conn.Ctx, prefix, clientv3.WithPrefix(), clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend)), nil
+		return conn.Client.Watch(conn.Ctx, prefix, clientv3.WithPrefix()), nil
 	})
 
 	go func() {
@@ -296,12 +296,7 @@ func (p *etcdPool) watchForIPUsageChanges(etcdClient etcd.Client) (clientv3.Watc
 					if _, has := p.reservedIPs[ipStr]; !has {
 						// the reservation has already been deleted in our in-memory data
 					} else {
-						// this is a valid case: When a container starts on a node, it requests an IP
-						// address, in addition to the address requested by the IPAM pass before.
-						// the address from the IPAM pass will usually be invalid unless the container
-						// is being started on the same node that was also used for IPAM.
-						// So, the node on which the container starts can detect this and relesae that IPAM IP
-						fmt.Printf("found deleted reservation for IP '%s' in pool '%s'.", ipStr, p.poolID)
+						log.Printf("found deleted reservation for IP '%s' in pool '%s'. This shouldn't happen", ipStr, p.poolID)
 						delete(p.reservedIPs, ipStr)
 						p.unusedIPs[ipStr] = time.Now()
 					}

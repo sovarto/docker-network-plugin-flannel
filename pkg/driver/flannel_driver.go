@@ -53,7 +53,7 @@ func NewFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelO
 
 	numIPsPerNode := int(math.Pow(2, float64(32-defaultHostSubnetSize)))
 	numNodesPerNetwork := int(math.Pow(2, float64(defaultHostSubnetSize-networkSubnetSize)))
-	fmt.Printf("The address space settings results in support for a total of %d networks, %d nodes and %d IP addresses (including service VIPs) per node", len(globalAddressSpace.GetCompleteAddressSpace()), numNodesPerNetwork, numIPsPerNode)
+	fmt.Printf("The address space settings results in support for a total of %d nodes and %d IP addresses per node (including service VIPs)\n", numNodesPerNetwork, numIPsPerNode)
 	fmt.Println("Initialized address space")
 
 	callbacks := docker.Callbacks{
