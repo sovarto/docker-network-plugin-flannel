@@ -151,6 +151,7 @@ func (as *etcdAddressSpace) ReleasePool(id string) error {
 
 func (as *etcdAddressSpace) watchForSubnetUsageChanges(etcdClient etcd.Client) (clientv3.WatchChan, error) {
 	prefix := subnetsKey(etcdClient)
+	fmt.Printf("watching for subnet usage changes at '%s'\n", prefix)
 	watcher, err := etcd.WithConnection(etcdClient, func(conn *etcd.Connection) (clientv3.WatchChan, error) {
 		return conn.Client.Watch(conn.Ctx, prefix, clientv3.WithPrefix()), nil
 	})
