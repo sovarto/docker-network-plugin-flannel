@@ -199,6 +199,7 @@ func (d *data) handleContainer(containerID string) error {
 
 		d.services[serviceID] = serviceInfo
 	} else {
+		previousServiceInfo = &common.ServiceInfo{}
 		err = deepcopy.Copy(previousServiceInfo, serviceInfo)
 		if err != nil {
 			return errors.Wrapf(err, "Error deepcopying service info for docker service %s", serviceID)
@@ -220,6 +221,7 @@ func (d *data) handleContainer(containerID string) error {
 	containerInfo, containerExists := d.containers[containerID]
 	var previousContainerInfo *common.ContainerInfo
 	if containerExists {
+		previousContainerInfo = &common.ContainerInfo{}
 		err = deepcopy.Copy(previousContainerInfo, containerInfo)
 		if err != nil {
 			return errors.Wrapf(err, "Error deepcopying container info for docker container %s", containerID)
@@ -329,6 +331,7 @@ func (d *data) handleService(serviceID string) error {
 
 		d.services[serviceID] = serviceInfo
 	} else {
+		previousServiceInfo = &common.ServiceInfo{}
 		err = deepcopy.Copy(previousServiceInfo, serviceInfo)
 		if err != nil {
 			return errors.Wrapf(err, "Error deepcopying service info for docker service %s", serviceID)
@@ -391,7 +394,7 @@ func (d *data) handleDeletedContainer(containerID string) error {
 	for serviceID, serviceInfo := range d.services {
 		_, exists := serviceInfo.Containers[containerID]
 		if exists {
-			var previousServiceInfo *common.ServiceInfo
+			previousServiceInfo := &common.ServiceInfo{}
 			err = deepcopy.Copy(previousServiceInfo, serviceInfo)
 			if err != nil {
 				return errors.Wrapf(err, "Error deepcopying service info for docker service %s", serviceID)
