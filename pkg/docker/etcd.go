@@ -101,16 +101,12 @@ func storeContainerAndServiceInfo(client etcd.Client, hostname string, container
 	_, err := etcd.WithConnection(client, func(connection *etcd.Connection) (struct{}, error) {
 		containerKey := containerKey(client, hostname, containerInfo.ID)
 
-		configBytes, err := json.Marshal(containerInfo)
+		containerInfoBytes, err := json.Marshal(containerInfo)
 		if err != nil {
-			log.Printf("Failed to serialize container info %+v: %+v\n", containerInfo, err)
-			return struct{}{}, err
+			return struct{}{}, errors.Wrapf(err, "Failed to serialize container info %+v", containerInfo)
 		}
-
-		configString := string(configBytes)
-
-		_, err = connection.Client.Put(connection.Ctx, containerKey, configString)
-
+		containerInfoString := string(containerInfoBytes)
+		_, err = connection.Client.Put(connection.Ctx, containerKey, containerInfoString)
 		if err != nil {
 			return struct{}{}, errors.Wrapf(err, "Failed to store container info %+v", containerInfo)
 		}

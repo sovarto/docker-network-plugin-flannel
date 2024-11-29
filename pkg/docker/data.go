@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -179,7 +180,12 @@ func (d *data) handleContainer(containerID string) error {
 		return errors.Wrapf(err, "Error inspecting docker container %s", containerID)
 	}
 
-	fmt.Printf("Found docker container %+v", container)
+	containerInfoBytes, err := json.Marshal(container)
+	if err != nil {
+		return errors.Wrapf(err, "Error serializing docker container %s", containerID)
+	}
+	containerInfoString := string(containerInfoBytes)
+	fmt.Printf("Found docker container %+v", containerInfoString)
 
 	serviceID := container.Config.Labels["com.docker.swarm.service.id"]
 	serviceName := container.Config.Labels["com.docker.swarm.service.name"]
