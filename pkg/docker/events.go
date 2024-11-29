@@ -18,7 +18,9 @@ func (d *data) handleEvents() {
 			eventsCh, errCh = d.dockerClient.Events(context.Background(), events.ListOptions{})
 		case event := <-eventsCh:
 			err := d.handleEvent(event)
-			log.Printf("Error handling docker event %+v, error: %+v\n", event, err)
+			if err != nil {
+				log.Printf("Error handling docker event %+v, error: %+v\n", event, err)
+			}
 		}
 	}
 }
