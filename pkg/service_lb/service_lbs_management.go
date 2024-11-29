@@ -1,6 +1,7 @@
 package service_lb
 
 import (
+	"fmt"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
@@ -97,7 +98,10 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.ServiceI
 	defer m.Unlock()
 
 	for networkID, vip := range service.VIPs {
-		network := m.networks[networkID]
+		network, exists := m.networks[networkID]
+		if !exists {
+			return fmt.Errorf("network %s missing in internal state of service load balancer management", networkID)
+		}
 		networkInfo := network.GetInfo()
 
 		lbs, exists := m.loadBalancers[service.ID]
