@@ -54,6 +54,7 @@ func NewNetwork(etcdClient etcd.Client, id string, networkSubnet net.IPNet, host
 		networkSubnet:         networkSubnet,
 		defaultFlannelOptions: defaultFlannelOptions,
 		hostSubnetSize:        hostSubnetSize,
+		endpoints:             make(map[string]Endpoint),
 	}
 
 	err := result.
