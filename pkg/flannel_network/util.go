@@ -14,11 +14,13 @@ import (
 )
 
 func readPipe(pipe io.Reader, doneChan chan struct{}) {
+	channelClosed := false
 	scanner := bufio.NewScanner(pipe)
 	for scanner.Scan() {
 		line := scanner.Text()
 		fmt.Fprintln(os.Stdout, line) // Write to os.Stdout
-		if strings.Contains(line, "bootstrap done") {
+		if strings.Contains(line, "bootstrap done") && !channelClosed {
+			channelClosed = true
 			close(doneChan)
 		}
 	}
