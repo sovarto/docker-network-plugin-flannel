@@ -117,7 +117,10 @@ func (d *data) GetFlannelNetworkID(dockerNetworkID string) (string, error) {
 
 	flannelNetworkID, exists := d.dockerNetworkIDtoFlannelNetworkID[dockerNetworkID]
 	if !exists {
+		d.Unlock()
 		err := d.syncNetworks()
+		d.Lock()
+		defer d.Unlock()
 		if err != nil {
 			return "", err
 		}
