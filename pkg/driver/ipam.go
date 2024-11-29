@@ -1,9 +1,13 @@
 package driver
 
 import (
+	"context"
 	"fmt"
-	docker_ipam "github.com/docker/go-plugins-helpers/ipam"
+	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/client"
+	dockerIpam "github.com/docker/go-plugins-helpers/ipam"
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/flannel_network"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/ipam"
@@ -15,18 +19,18 @@ func poolIDtoNetworkID(poolID string) string {
 	return strings.Join(strings.Split(poolID, "-")[1:], "-")
 }
 
-func (d *flannelDriver) GetIpamCapabilities() (*docker_ipam.CapabilitiesResponse, error) {
-	return &docker_ipam.CapabilitiesResponse{RequiresMACAddress: true}, nil
+func (d *flannelDriver) GetIpamCapabilities() (*dockerIpam.CapabilitiesResponse, error) {
+	return &dockerIpam.CapabilitiesResponse{RequiresMACAddress: true}, nil
 }
 
-func (d *flannelDriver) GetDefaultAddressSpaces() (*docker_ipam.AddressSpacesResponse, error) {
-	return &docker_ipam.AddressSpacesResponse{
+func (d *flannelDriver) GetDefaultAddressSpaces() (*dockerIpam.AddressSpacesResponse, error) {
+	return &dockerIpam.AddressSpacesResponse{
 		LocalDefaultAddressSpace:  "FlannelLocal",
 		GlobalDefaultAddressSpace: "FlannelGlobal",
 	}, nil
 }
 
-func (d *flannelDriver) RequestPool(request *docker_ipam.RequestPoolRequest) (*docker_ipam.RequestPoolResponse, error) {
+func (d *flannelDriver) RequestPool(request *dockerIpam.RequestPoolRequest) (*dockerIpam.RequestPoolResponse, error) {
 	d.Lock()
 	defer d.Unlock()
 
@@ -41,6 +45,15 @@ func (d *flannelDriver) RequestPool(request *docker_ipam.RequestPoolRequest) (*d
 	} else {
 		return nil, errors.New("the IPAM driver option 'flannel-id' needs to be set to a unique ID")
 	}
+	dockerClient, err := client.NewClientWithOpts(
+		client.WithHost("unix:///var/run/docker.sock"),
+		client.WithAPIVersionNegotiation(),
+	)
+
+	networks, err := dockerClient.NetworkList(context.Background(), network.ListOptions{})
+	fmt.Printf("Networks: %+v", lo.Map(networks, func(item network.Summary, index int) string {
+		return fmt.Sprintf("%s: %+v", item.Name, item.IPAM.Options)
+	}))
 
 	networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(flannelNetworkId)
 	if err != nil {
@@ -55,13 +68,13 @@ func (d *flannelDriver) RequestPool(request *docker_ipam.RequestPoolRequest) (*d
 
 	d.networks[flannelNetworkId] = network
 
-	return &docker_ipam.RequestPoolResponse{
+	return &dockerIpam.RequestPoolResponse{
 		PoolID: poolID,
 		Pool:   networkSubnet.String(),
 	}, nil
 }
 
-func (d *flannelDriver) ReleasePool(request *docker_ipam.ReleasePoolRequest) error {
+func (d *flannelDriver) ReleasePool(request *dockerIpam.ReleasePoolRequest) error {
 	d.Lock()
 	defer d.Unlock()
 
@@ -88,7 +101,7 @@ func (d *flannelDriver) ReleasePool(request *docker_ipam.ReleasePoolRequest) err
 	return nil
 }
 
-func (d *flannelDriver) RequestAddress(request *docker_ipam.RequestAddressRequest) (*docker_ipam.RequestAddressResponse, error) {
+func (d *flannelDriver) RequestAddress(request *dockerIpam.RequestAddressRequest) (*dockerIpam.RequestAddressResponse, error) {
 	d.Lock()
 	defer d.Unlock()
 
@@ -102,7 +115,7 @@ func (d *flannelDriver) RequestAddress(request *docker_ipam.RequestAddressReques
 
 	requestType, exists := request.Options["RequestAddressType"]
 	if exists && requestType == "com.docker.network.gateway" {
-		return &docker_ipam.RequestAddressResponse{Address: fmt.Sprintf("%s/32", networkInfo.LocalGateway)}, nil
+		return &dockerIpam.RequestAddressResponse{Address: fmt.Sprintf("%s/32", networkInfo.LocalGateway)}, nil
 	}
 
 	mac := request.Options["com.docker.network.endpoint.macaddress"]
@@ -118,10 +131,10 @@ func (d *flannelDriver) RequestAddress(request *docker_ipam.RequestAddressReques
 		return nil, err
 	}
 	ones, _ := networkInfo.HostSubnet.Mask.Size()
-	return &docker_ipam.RequestAddressResponse{Address: fmt.Sprintf("%s/%d", address, ones)}, nil
+	return &dockerIpam.RequestAddressResponse{Address: fmt.Sprintf("%s/%d", address, ones)}, nil
 }
 
-func (d *flannelDriver) ReleaseAddress(request *docker_ipam.ReleaseAddressRequest) error {
+func (d *flannelDriver) ReleaseAddress(request *dockerIpam.ReleaseAddressRequest) error {
 	d.Lock()
 	defer d.Unlock()
 
