@@ -243,7 +243,7 @@ func getReservationsByPrefix(client etcd.Client, prefix string) (map[string]rese
 				ip := net.ParseIP(key)
 
 				if ip == nil {
-					fmt.Printf("couldn't parse %s as IP. Skipping...", key)
+					fmt.Printf("couldn't parse %s as IP. Skipping...\n", key)
 					continue
 				}
 
@@ -270,14 +270,14 @@ func getReservationsByPrefix(client etcd.Client, prefix string) (map[string]rese
 					} else if parts[1] == reservedAtKeyName {
 						reservedAt, err := time.Parse(time.RFC3339, value)
 						if err != nil {
-							fmt.Printf("Couldn't parse reserved at value '%s' for '%s'. Skipping...", value, key)
+							fmt.Printf("Couldn't parse reserved at value '%s' for '%s'. Skipping...\n", value, key)
 							continue
 						}
 						if existing, exists := result[key]; exists {
 							existing.reservedAt = reservedAt
 							result[key] = existing
 						} else {
-							fmt.Printf("Expected reservation for %s", key)
+							fmt.Printf("Expected reservation for %s\n", key)
 						}
 					}
 				}

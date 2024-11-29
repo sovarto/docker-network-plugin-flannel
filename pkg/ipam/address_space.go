@@ -27,7 +27,7 @@ type etcdAddressSpace struct {
 	poolSize      int
 	allSubnets    []net.IPNet
 	unusedSubnets []net.IPNet
-	pools         map[string]net.IPNet
+	pools         map[string]net.IPNet // poolID (flannel network ID) -> subnet of the pool
 	etcdClient    etcd.Client
 	sync.Mutex
 }
