@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -180,13 +179,6 @@ func (d *data) handleContainer(containerID string) error {
 		return errors.Wrapf(err, "Error inspecting docker container %s", containerID)
 	}
 
-	containerInfoBytes, err := json.Marshal(container)
-	if err != nil {
-		return errors.Wrapf(err, "Error serializing docker container %s", containerID)
-	}
-	containerInfoString := string(containerInfoBytes)
-	fmt.Printf("Found docker container %+v", containerInfoString)
-
 	serviceID := container.Config.Labels["com.docker.swarm.service.id"]
 	serviceName := container.Config.Labels["com.docker.swarm.service.name"]
 	containerName := strings.TrimLeft(container.Name, "/")
@@ -200,6 +192,32 @@ func (d *data) handleContainer(containerID string) error {
 		IPs:     ips,
 		IpamIPs: ipamIPs,
 	}
+
+	for networkName, networkData := range container.NetworkSettings.Networks {
+		if networkName == "host" {
+			continue
+		}
+		networkID := networkData.NetworkID
+		if networkData.IPAddress == "" {
+			log.Printf("Found network %s without IP", networkID)
+		}
+		ip := net.ParseIP(networkData.IPAddress)
+		if ip == nil {
+			log.Printf("Found network %s with invalid IP %s", networkID, networkData.IPAddress)
+		}
+		ips[networkID] = ip
+		if networkData.IPAMConfig != nil && networkData.IPAMConfig.IPv4Address != "" {
+			ipamIP := net.ParseIP(networkData.IPAMConfig.IPv4Address)
+			ipamIPs[networkID] = ipamIP
+		}
+	}
+
+	if len(ips) == 0 {
+		return nil
+	}
+
+	previousContainerInfo := d.containers[containerID]
+	d.containers[containerID] = containerInfo
 
 	serviceInfo, serviceExists := d.services[serviceID]
 	var previousServiceInfo *common.ServiceInfo
@@ -222,29 +240,6 @@ func (d *data) handleContainer(containerID string) error {
 
 	serviceInfo.Containers[containerID] = containerInfo
 
-	for networkName, networkData := range container.NetworkSettings.Networks {
-		if networkName == "host" {
-			continue
-		}
-		networkID := networkData.NetworkID
-		if networkData.IPAddress == "" {
-			log.Printf("Found network %s without IP", networkID)
-		}
-		ip := net.ParseIP(networkData.IPAddress)
-		if ip == nil {
-			log.Printf("Found network %s with invalid IP %s", networkID, networkData.IPAddress)
-		}
-		ips[networkID] = ip
-		if networkData.IPAMConfig != nil && networkData.IPAMConfig.IPv4Address != "" {
-			ipamIP := net.ParseIP(networkData.IPAMConfig.IPv4Address)
-			ipamIPs[networkID] = ipamIP
-		}
-	}
-
-	previousContainerInfo := d.containers[containerID]
-	d.containers[containerID] = containerInfo
-
-	fmt.Printf("Found container %s for service %s with info %+v\n", containerID, serviceID, containerInfo)
 	err = storeContainerAndServiceInfo(d.etcdClient, d.hostname, containerInfo, serviceID, serviceName)
 	if err != nil {
 		return errors.Wrapf(err, "Error storing container and service info for container %s", containerID)
