@@ -121,9 +121,6 @@ func (d *data) GetFlannelNetworkID(dockerNetworkID string) (string, error) {
 }
 
 func (d *data) handleNetwork(networkID string) error {
-	d.Lock()
-	defer d.Unlock()
-
 	network, err := d.dockerClient.NetworkInspect(context.Background(), networkID, network.InspectOptions{})
 	if err != nil {
 		return errors.Wrapf(err, "Error inspecting docker network %s", networkID)
@@ -152,9 +149,6 @@ func (d *data) handleNetwork(networkID string) error {
 }
 
 func (d *data) handleDeletedNetwork(networkID string) error {
-	d.Lock()
-	defer d.Unlock()
-
 	_, exists := d.dockerNetworkIDtoFlannelNetworkID[networkID]
 
 	delete(d.dockerNetworkIDtoFlannelNetworkID, networkID)
@@ -174,9 +168,6 @@ func (d *data) handleDeletedNetwork(networkID string) error {
 }
 
 func (d *data) handleContainer(containerID string) error {
-	d.Lock()
-	defer d.Unlock()
-
 	container, err := d.dockerClient.ContainerInspect(context.Background(), containerID)
 	if err != nil {
 		return errors.Wrapf(err, "Error inspecting docker container %s: %+v\n", containerID, err)
@@ -320,9 +311,6 @@ func (d *data) syncContainersAndServices() error {
 }
 
 func (d *data) handleService(serviceID string) error {
-	d.Lock()
-	defer d.Unlock()
-
 	service, _, err := d.dockerClient.ServiceInspectWithRaw(context.Background(), serviceID, types.ServiceInspectOptions{})
 	if err != nil {
 		return errors.Wrapf(err, "Error inspecting docker service %s: %+v\n", serviceID, err)
@@ -366,9 +354,6 @@ func (d *data) handleService(serviceID string) error {
 }
 
 func (d *data) handleDeletedService(serviceID string) error {
-	d.Lock()
-	defer d.Unlock()
-
 	_, exists := d.services[serviceID]
 
 	delete(d.services, serviceID)
@@ -388,9 +373,6 @@ func (d *data) handleDeletedService(serviceID string) error {
 }
 
 func (d *data) handleDeletedContainer(containerID string) error {
-	d.Lock()
-	defer d.Unlock()
-
 	containerInfo, exists := d.containers[containerID]
 
 	delete(d.containers, containerID)
