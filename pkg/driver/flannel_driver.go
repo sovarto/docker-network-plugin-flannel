@@ -142,8 +142,6 @@ func (d *flannelDriver) handleServiceRemoved(serviceID string) {
 }
 
 func (d *flannelDriver) handleNetworkAddedOrChanged(dockerNetworkID string, flannelNetworkID string) {
-
-	fmt.Printf("handleNetworkAddedOrChanged: dockerNetworkID: %s, flannelNetworkID: %s\n", dockerNetworkID, flannelNetworkID)
 	network, exists := d.networksByDockerID[dockerNetworkID]
 	if !exists {
 		network, exists = d.networksByFlannelID[flannelNetworkID]

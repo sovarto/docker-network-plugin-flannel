@@ -136,7 +136,7 @@ func (d *data) handleNetwork(dockerNetworkID string) error {
 		return nil
 	}
 
-	_, exists = d.dockerNetworkIDtoFlannelNetworkID[dockerNetworkID]
+	previousFlannelNetworkID, exists := d.dockerNetworkIDtoFlannelNetworkID[dockerNetworkID]
 	d.dockerNetworkIDtoFlannelNetworkID[dockerNetworkID] = flannelNetworkID
 	d.flannelNetworkIDtoDockerNetworkID[flannelNetworkID] = dockerNetworkID
 	fmt.Printf("Network %s has flannel network id: %s\n", dockerNetworkID, flannelNetworkID)
@@ -150,7 +150,7 @@ func (d *data) handleNetwork(dockerNetworkID string) error {
 		if d.callbacks.NetworkAdded != nil {
 			d.callbacks.NetworkAdded(dockerNetworkID, flannelNetworkID)
 		}
-	} else {
+	} else if previousFlannelNetworkID != flannelNetworkID {
 		if d.callbacks.NetworkChanged != nil {
 			d.callbacks.NetworkChanged(dockerNetworkID, flannelNetworkID)
 		}
@@ -273,7 +273,6 @@ func (d *data) syncNetworks() error {
 		d.flannelNetworkIDtoDockerNetworkID[flannelNetworkID] = dockerNetworkID
 	}
 
-	fmt.Printf("Networks mapping %+v\n", d.dockerNetworkIDtoFlannelNetworkID)
 	d.invokeNetworksCallbacks(oldNetworks, d.dockerNetworkIDtoFlannelNetworkID)
 
 	networks, err := d.dockerClient.NetworkList(context.Background(), network.ListOptions{})
