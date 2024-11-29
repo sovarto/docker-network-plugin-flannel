@@ -267,10 +267,13 @@ func (d *data) syncNetworks() error {
 		return errors.WithMessage(err, "Error loading docker network info from etcd")
 	}
 
+	oldNetworks := d.dockerNetworkIDtoFlannelNetworkID
 	d.dockerNetworkIDtoFlannelNetworkID = loadedNetworks
 	for dockerNetworkID, flannelNetworkID := range d.dockerNetworkIDtoFlannelNetworkID {
 		d.flannelNetworkIDtoDockerNetworkID[flannelNetworkID] = dockerNetworkID
 	}
+
+	d.invokeNetworksCallbacks(oldNetworks, d.dockerNetworkIDtoFlannelNetworkID)
 
 	networks, err := d.dockerClient.NetworkList(context.Background(), network.ListOptions{})
 	if err != nil {
@@ -297,7 +300,9 @@ func (d *data) syncContainersAndServices() error {
 	if err != nil {
 		return errors.WithMessage(err, "Error loading docker containers info from etcd")
 	}
+	oldContainers := d.containers
 	d.containers = loadedContainers
+	d.invokeContainersCallbacks(oldContainers, loadedContainers)
 
 	loadedServices, err := loadServicesInfo(d.etcdClient)
 	if err != nil {
@@ -499,76 +504,103 @@ func (d *data) watchForServiceChanges(etcdClient etcd.Client) (clientv3.WatchCha
 	return watcher, err
 }
 
-func (d *data) invokeServiceCallback(previousServiceInfo *common.ServiceInfo, currentServiceInfo common.ServiceInfo) {
-	if previousServiceInfo != nil {
-		if d.callbacks.ServiceChanged != nil {
-			if !reflect.DeepEqual(*previousServiceInfo, currentServiceInfo) {
-				d.callbacks.ServiceChanged(previousServiceInfo, currentServiceInfo)
-			}
-		}
-	} else {
-		if d.callbacks.ServiceAdded != nil {
-			d.callbacks.ServiceAdded(currentServiceInfo)
-		}
-	}
+func (d *data) invokeServiceCallback(previous *common.ServiceInfo, current common.ServiceInfo) {
+	invokeItemCallback(previous, current, d.callbacks.ServiceAdded, d.callbacks.ServiceChanged)
+}
+
+func (d *data) invokeContainerCallback(previous *common.ContainerInfo, current common.ContainerInfo) {
+	invokeItemCallback(previous, current, d.callbacks.ContainerAdded, d.callbacks.ContainerChanged)
 }
 
 func (d *data) invokeServicesCallbacks(previousServiceInfos map[string]common.ServiceInfo, currentServiceInfos map[string]common.ServiceInfo) {
-
-	processedServices := make(map[string]bool)
-
-	for _, currentService := range currentServiceInfos {
-		if previousService, exists := previousServiceInfos[currentService.ID]; exists {
-			d.invokeServiceCallback(&previousService, currentService)
-		} else {
-			d.invokeServiceCallback(nil, currentService)
-		}
-		processedServices[currentService.ID] = true
-	}
-
-	if d.callbacks.ServiceRemoved != nil {
-		for _, previousService := range previousServiceInfos {
-			if !processedServices[previousService.ID] {
-				d.callbacks.ServiceRemoved(previousService.ID)
+	invokeItemsCallbacks(
+		previousServiceInfos,
+		currentServiceInfos,
+		func(s common.ServiceInfo) string { return s.ID },
+		d.invokeServiceCallback,
+		func(s common.ServiceInfo) {
+			if d.callbacks.ServiceRemoved != nil {
+				d.callbacks.ServiceRemoved(s.ID)
 			}
-		}
-	}
+		},
+	)
 }
 
-func (d *data) invokeContainerCallback(previousContainerInfo *common.ContainerInfo, currentContainerInfo common.ContainerInfo) {
-	if previousContainerInfo != nil {
-		if d.callbacks.ContainerChanged != nil {
-			if !reflect.DeepEqual(*previousContainerInfo, currentContainerInfo) {
-				d.callbacks.ContainerChanged(previousContainerInfo, currentContainerInfo)
+func (d *data) invokeContainersCallbacks(previousContainerInfos map[string]common.ContainerInfo, currentContainerInfos map[string]common.ContainerInfo) {
+	invokeItemsCallbacks(
+		previousContainerInfos,
+		currentContainerInfos,
+		func(c common.ContainerInfo) string { return c.ID },
+		d.invokeContainerCallback,
+		d.callbacks.ContainerRemoved,
+	)
+}
+
+func (d *data) invokeNetworksCallbacks(previousNetworkInfos map[string]string, currentNetworkInfos map[string]string) {
+	invokeItemsCallbacks(
+		previousNetworkInfos,
+		currentNetworkInfos,
+		func(x string) string { return x },
+		func(previous *string, current string) {
+			if previous == nil {
+				if d.callbacks.NetworkAdded != nil {
+					d.callbacks.NetworkAdded(current, currentNetworkInfos[current])
+				}
+			} else {
+				if d.callbacks.NetworkChanged != nil {
+					d.callbacks.NetworkChanged(current, currentNetworkInfos[current])
+				}
+			}
+		},
+		func(x string) {
+			if d.callbacks.NetworkRemoved != nil {
+				d.callbacks.NetworkRemoved(x, currentNetworkInfos[x])
+			}
+		},
+	)
+}
+
+func invokeItemCallback[T any](
+	previousItem *T,
+	currentItem T,
+	addedCallback func(T),
+	changedCallback func(*T, T),
+) {
+	if previousItem != nil {
+		if changedCallback != nil {
+			if !reflect.DeepEqual(*previousItem, currentItem) {
+				changedCallback(previousItem, currentItem)
 			}
 		}
 	} else {
-		if d.callbacks.ContainerAdded != nil {
-			d.callbacks.ContainerAdded(currentContainerInfo)
+		if addedCallback != nil {
+			addedCallback(currentItem)
 		}
 	}
 }
 
-func (d *data) invokeContainersCallbacks(previousContainerInfos map[string]common.ContainerInfo, currentContainerInfos map[string]common.ContainerInfo) error {
+func invokeItemsCallbacks[T any](
+	previousItems map[string]T,
+	currentItems map[string]T,
+	getID func(T) string,
+	invokeItemCallback func(previous *T, current T),
+	removedCallback func(T),
+) {
+	processedItems := make(map[string]bool)
 
-	processedContainers := make(map[string]bool)
-
-	for _, currentContainer := range currentContainerInfos {
-		if previousContainer, exists := previousContainerInfos[currentContainer.ID]; exists {
-			d.invokeContainerCallback(&previousContainer, currentContainer)
-		} else {
-			d.invokeContainerCallback(nil, currentContainer)
-		}
-		processedContainers[currentContainer.ID] = true
+	for _, currentItem := range currentItems {
+		id := getID(currentItem)
+		previousItem := previousItems[id]
+		invokeItemCallback(&previousItem, currentItem)
+		processedItems[id] = true
 	}
 
-	if d.callbacks.ContainerRemoved != nil {
-		for _, previousContainer := range previousContainerInfos {
-			if !processedContainers[previousContainer.ID] {
-				d.callbacks.ContainerRemoved(previousContainer)
+	if removedCallback != nil {
+		for _, previousItem := range previousItems {
+			id := getID(previousItem)
+			if !processedItems[id] {
+				removedCallback(previousItem)
 			}
 		}
 	}
-
-	return nil
 }
