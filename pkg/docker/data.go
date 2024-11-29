@@ -543,6 +543,7 @@ func (d *data) invokeNetworksCallbacks(previousNetworkInfos map[string]string, c
 		currentNetworkInfos,
 		func(x string) string { return x },
 		func(previous *string, current string) {
+			fmt.Printf("invoke network callback: previous: %s, current: %s, currentNetworkInfos[current]: %s", previous, current, currentNetworkInfos[current])
 			if previous == nil {
 				if d.callbacks.NetworkAdded != nil {
 					d.callbacks.NetworkAdded(current, currentNetworkInfos[current])
