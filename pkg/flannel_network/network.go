@@ -397,8 +397,6 @@ func (n *network) loadFlannelConfig(filename string) error {
 
 		key = strings.TrimPrefix(key, "FLANNEL_")
 
-		fmt.Printf("Reading flannel config key %s and value %s\n", key, value)
-
 		switch key {
 		case "NETWORK":
 			_, ipNet, err := net.ParseCIDR(value)
@@ -437,8 +435,6 @@ func (n *network) loadFlannelConfig(filename string) error {
 	if err := scanner.Err(); err != nil {
 		return errors.Wrapf(err, "error reading file: %s", filename)
 	}
-
-	fmt.Printf("flannel env %s loaded. Raw: %+v, GetInfo: %+v\n", filename, n, n.GetInfo())
 
 	b, err := bridge.NewBridgeInterface(n.GetInfo())
 	if err != nil {

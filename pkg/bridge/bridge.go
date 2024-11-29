@@ -31,6 +31,7 @@ func NewBridgeInterface(network common.NetworkInfo) (BridgeInterface, error) {
 	result := &bridgeInterface{
 		interfaceName: interfaceName,
 		iptablesRules: getIptablesRules(interfaceName, network.HostSubnet),
+		network:       network,
 	}
 
 	err := result.Ensure()
