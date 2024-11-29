@@ -95,7 +95,7 @@ func (as *etcdAddressSpace) GetNewPool(id string) (*net.IPNet, error) {
 	as.Lock()
 	defer as.Unlock()
 
-	if _, has := as.pools[id]; !has {
+	if _, has := as.pools[id]; has {
 		return nil, fmt.Errorf("address pool '%s' already exists", id)
 	}
 	for {
