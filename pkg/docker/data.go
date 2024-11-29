@@ -22,6 +22,7 @@ import (
 
 type Data interface {
 	GetFlannelNetworkID(dockerNetworkID string) (string, error)
+	Init() error
 }
 
 type Callbacks struct {
@@ -78,32 +79,36 @@ func NewData(etcdClient etcd.Client, callbacks Callbacks) (Data, error) {
 		isManagerNode:                     info.Swarm.ControlAvailable,
 	}
 
-	err = result.syncNetworks()
-	if err != nil {
-		return nil, err
-	}
-
-	err = result.syncContainersAndServices()
-	if err != nil {
-		return nil, err
-	}
-
-	go result.handleEvents()
-
-	_, err = result.watchForNetworkChanges(etcdClient)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to watch for network changes")
-	}
-	_, err = result.watchForContainerChanges(etcdClient)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to watch for container changes")
-	}
-	_, err = result.watchForServiceChanges(etcdClient)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to watch for service changes")
-	}
-
 	return result, nil
+}
+
+func (d *data) Init() error {
+	err := d.syncNetworks()
+	if err != nil {
+		return err
+	}
+
+	err = d.syncContainersAndServices()
+	if err != nil {
+		return err
+	}
+
+	go d.handleEvents()
+
+	_, err = d.watchForNetworkChanges(d.etcdClient)
+	if err != nil {
+		return errors.Wrap(err, "failed to watch for network changes")
+	}
+	_, err = d.watchForContainerChanges(d.etcdClient)
+	if err != nil {
+		return errors.Wrap(err, "failed to watch for container changes")
+	}
+	_, err = d.watchForServiceChanges(d.etcdClient)
+	if err != nil {
+		return errors.Wrap(err, "failed to watch for service changes")
+	}
+
+	return nil
 }
 
 func (d *data) GetFlannelNetworkID(dockerNetworkID string) (string, error) {

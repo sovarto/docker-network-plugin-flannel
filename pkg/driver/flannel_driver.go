@@ -76,6 +76,11 @@ func NewFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelO
 		return nil, errors.Wrap(err, "Failed to create docker data handler")
 	}
 	driver.dockerData = dockerData
+
+	err = dockerData.Init()
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to initialize docker data handler")
+	}
 	fmt.Println("Initialized docker data handler")
 
 	return driver, nil
