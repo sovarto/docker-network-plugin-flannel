@@ -438,6 +438,8 @@ func (n *network) loadFlannelConfig(filename string) error {
 		return errors.Wrapf(err, "error reading file: %s", filename)
 	}
 
+	fmt.Printf("flannel env %s loaded. Raw: %+v, GetInfo: %+v\n", filename, n, n.GetInfo())
+
 	b, err := bridge.NewBridgeInterface(n.GetInfo())
 	if err != nil {
 		return errors.Wrapf(err, "error creating bridge interface")
