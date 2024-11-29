@@ -224,24 +224,16 @@ func (d *data) handleContainer(containerID string) error {
 		}
 	}
 
-	containerInfo, containerExists := d.containers[containerID]
-	var previousContainerInfo *common.ContainerInfo
-	if containerExists {
-		previousContainerInfo = &common.ContainerInfo{}
-		err = deepcopy.Copy(previousContainerInfo, containerInfo)
-		if err != nil {
-			return errors.Wrapf(err, "Error deepcopying container info for docker container %s", containerID)
-		}
-	}
+	previousContainerInfo := d.containers[containerID]
 	d.containers[containerID] = containerInfo
 
-	fmt.Printf("Found container %s for service %s with info %+v", containerID, serviceID, containerInfo)
+	fmt.Printf("Found container %s for service %s with info %+v\n", containerID, serviceID, containerInfo)
 	err = storeContainerAndServiceInfo(d.etcdClient, d.hostname, containerInfo, serviceID, serviceName)
 	if err != nil {
 		return errors.Wrapf(err, "Error storing container and service info for container %s", containerID)
 	}
 
-	d.invokeContainerCallback(previousContainerInfo, containerInfo)
+	d.invokeContainerCallback(&previousContainerInfo, containerInfo)
 	d.invokeServiceCallback(previousServiceInfo, serviceInfo)
 
 	return nil
