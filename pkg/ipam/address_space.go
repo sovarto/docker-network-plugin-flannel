@@ -172,7 +172,7 @@ func (as *etcdAddressSpace) subnetUsageChangeHandler(watcher clientv3.WatchChan,
 						as.unusedSubnets = lo.Filter(as.unusedSubnets, func(item net.IPNet, index int) bool {
 							return item.String() != subnet.String()
 						})
-						fmt.Printf("found new used pool subnet '%s'. There are still %d pool subnets available", subnet.String(), len(as.unusedSubnets))
+						fmt.Printf("found new used pool subnet '%s'. There are still %d pool subnets available\n", subnet.String(), len(as.unusedSubnets))
 					} else {
 						// found subnet and in memory subnet are the same, so nothing to do
 					}

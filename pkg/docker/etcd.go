@@ -63,7 +63,12 @@ func serviceContainerNetworkKey(client etcd.Client, serviceID, containerID, netw
 func storeNetworkInfo(client etcd.Client, dockerNetworkID, flannelNetworkID string) error {
 	_, err := etcd.WithConnection(client, func(connection *etcd.Connection) (struct{}, error) {
 		key := networkKey(client, dockerNetworkID)
-		_, err := connection.Client.Put(connection.Ctx, key, flannelNetworkID)
+
+		_, err := connection.Client.Txn(connection.Ctx).
+			If(clientv3.Compare(clientv3.Value(key), "!=", flannelNetworkID)).
+			Then(clientv3.OpPut(key, flannelNetworkID)).
+			Commit()
+
 		if err != nil {
 			return struct{}{}, err
 		}
@@ -107,21 +112,31 @@ func storeContainerAndServiceInfo(client etcd.Client, hostname string, container
 			return struct{}{}, errors.WithMessagef(err, "Failed to serialize container info %+v", containerInfo)
 		}
 		containerInfoString := string(containerInfoBytes)
-		_, err = connection.Client.Put(connection.Ctx, containerKey, containerInfoString)
+		_, err = connection.Client.Txn(connection.Ctx).
+			If(clientv3.Compare(clientv3.Value(containerKey), "!=", containerInfoString)).
+			Then(clientv3.OpPut(containerKey, containerInfoString)).
+			Commit()
+
 		if err != nil {
 			return struct{}{}, errors.WithMessagef(err, "Failed to store container info %+v", containerInfo)
 		}
 
 		if serviceID != "" && serviceName != "" {
 			serviceKey := serviceKey(client, serviceID)
-			_, err = connection.Client.Put(connection.Ctx, serviceKey, serviceName)
+			_, err = connection.Client.Txn(connection.Ctx).
+				If(clientv3.Compare(clientv3.Value(serviceKey), "!=", serviceName)).
+				Then(clientv3.OpPut(serviceKey, serviceName)).
+				Commit()
 
 			if err != nil {
 				return struct{}{}, errors.WithMessagef(err, "Failed to store service info for service %s: %+v\n", serviceID, err)
 			}
 
 			serviceContainerKey := serviceContainerKey(client, serviceID, containerInfo.ID)
-			_, err = connection.Client.Put(connection.Ctx, serviceContainerKey, containerInfo.Name)
+			_, err = connection.Client.Txn(connection.Ctx).
+				If(clientv3.Compare(clientv3.Value(serviceContainerKey), "!=", containerInfo.Name)).
+				Then(clientv3.OpPut(serviceContainerKey, containerInfo.Name)).
+				Commit()
 
 			if err != nil {
 				return struct{}{}, errors.WithMessagef(err, "Failed to store container name for container %s and service %s: %+v\n", containerInfo.ID, serviceID, err)
@@ -129,7 +144,10 @@ func storeContainerAndServiceInfo(client etcd.Client, hostname string, container
 
 			for networkID, ip := range containerInfo.IPs {
 				serviceContainerNetworkKey := serviceContainerNetworkKey(client, serviceID, containerInfo.ID, networkID)
-				_, err = connection.Client.Put(connection.Ctx, serviceContainerNetworkKey, ip.String())
+				_, err = connection.Client.Txn(connection.Ctx).
+					If(clientv3.Compare(clientv3.Value(serviceContainerNetworkKey), "!=", ip.String())).
+					Then(clientv3.OpPut(serviceContainerNetworkKey, ip.String())).
+					Commit()
 
 				if err != nil {
 					return struct{}{}, errors.WithMessagef(err, "Failed to store service container info for service %s: %+v\n", serviceID, err)
@@ -146,7 +164,12 @@ func storeContainerAndServiceInfo(client etcd.Client, hostname string, container
 func storeServiceVIPs(client etcd.Client, serviceID string, vips map[string]net.IP) error {
 	_, err := etcd.WithConnection(client, func(connection *etcd.Connection) (struct{}, error) {
 		for networkID, vip := range vips {
-			_, err := connection.Client.Put(connection.Ctx, serviceVipKey(client, serviceID, networkID), vip.String())
+			key := serviceVipKey(client, serviceID, networkID)
+			_, err := connection.Client.Txn(connection.Ctx).
+				If(clientv3.Compare(clientv3.Value(key), "!=", vip.String())).
+				Then(clientv3.OpPut(key, vip.String())).
+				Commit()
+
 			if err != nil {
 				return struct{}{}, errors.WithMessagef(err, "Failed to store vip %s for service %s: %+v\n", vip.String(), serviceID, err)
 			}

@@ -448,7 +448,7 @@ func (d *data) handleDeletedContainer(containerID string) error {
 func (d *data) networksChangeHandler(watcher clientv3.WatchChan, prefix string) {
 	for wresp := range watcher {
 		for _, ev := range wresp.Events {
-			fmt.Printf("Received network change event from etcd: %+v", ev)
+			fmt.Printf("Received network change event from etcd: %+v\n", ev)
 			err := d.syncNetworks()
 			if err != nil {
 				log.Printf("Error syncing networks: %+v\n", err)
