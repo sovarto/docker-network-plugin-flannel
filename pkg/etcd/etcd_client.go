@@ -11,7 +11,7 @@ import (
 )
 
 type Client interface {
-	NewConnection() (*Connection, error)
+	NewConnection(withTimeout bool) (*Connection, error)
 	GetKey(subKeys ...string) string
 	CreateSubClient(subKeys ...string) Client
 	GetEndpoints() []string
@@ -19,7 +19,7 @@ type Client interface {
 }
 
 func WithConnection[T any](client Client, fn func(*Connection) (T, error)) (T, error) {
-	connection, err := client.NewConnection()
+	connection, err := client.NewConnection(true)
 	defer connection.Close()
 
 	if err != nil {
@@ -32,7 +32,7 @@ func WithConnection[T any](client Client, fn func(*Connection) (T, error)) (T, e
 }
 
 func (c *etcdClient) Watch(key string, withPrefix bool, handler func(watcher clientv3.WatchChan, key string)) (clientv3.WatchChan, *Connection, error) {
-	connection, err := c.NewConnection()
+	connection, err := c.NewConnection(false)
 
 	if err != nil {
 		return nil, nil, errors.WithMessage(err, "error connecting to etcd")
@@ -67,7 +67,7 @@ func (c *Connection) Close() {
 	}
 }
 
-func (c *etcdClient) NewConnection() (*Connection, error) {
+func (c *etcdClient) NewConnection(withTimeout bool) (*Connection, error) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   c.endpoints,
 		DialTimeout: c.dialTimeout,
@@ -78,7 +78,13 @@ func (c *etcdClient) NewConnection() (*Connection, error) {
 		return &Connection{Client: cli, Ctx: nil, Cancel: nil}, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if withTimeout {
+		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+	}
 
 	return &Connection{Client: cli, Ctx: ctx, Cancel: cancel}, nil
 }
