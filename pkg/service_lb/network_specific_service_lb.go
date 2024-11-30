@@ -230,8 +230,9 @@ func (slb *serviceLb) ensureServiceLoadBalancerFrontend() error {
 	defer handle.Close()
 
 	svc := &ipvs.Service{
-		FWMark:    slb.fwmark,
-		SchedName: "rr",
+		FWMark:        slb.fwmark,
+		SchedName:     "rr",
+		AddressFamily: unix.AF_INET,
 	}
 
 	exists := handle.IsServicePresent(svc)
