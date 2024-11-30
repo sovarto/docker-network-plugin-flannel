@@ -260,6 +260,7 @@ func (d *data) handleContainer(containerID string) error {
 func (d *data) syncNetworks() error {
 	d.Lock()
 	defer d.Unlock()
+	fmt.Println("Syncing networks...")
 
 	loadedNetworks, err := loadNetworkInfo(d.etcdClient)
 
@@ -294,7 +295,7 @@ func (d *data) syncContainersAndServices() error {
 	d.Lock()
 	defer d.Unlock()
 
-	fmt.Println("syncing containers and services")
+	fmt.Println("Syncing containers and services...")
 
 	loadedContainers, err := loadContainersInfo(d.etcdClient, d.hostname)
 	if err != nil {
