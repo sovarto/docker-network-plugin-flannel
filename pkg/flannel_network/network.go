@@ -306,8 +306,9 @@ func (n *network) startFlannel() error {
 		defer session.Close()
 
 		// TODO: Is this hardcoded value a bad idea?
-		ctx, _ := context.WithTimeout(context.Background(), 45*time.Second)
+		ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
 
+		fmt.Printf("trying to acquire lock for flannel network %s at %s", n.flannelID, etcdPrefix)
 		mutex := concurrency.NewMutex(session, etcdPrefix)
 		if err := mutex.Lock(ctx); err != nil {
 			return nil, errors.WithMessagef(err, "error acquiring lock for flannel network %s at %s", n.flannelID, etcdPrefix)
