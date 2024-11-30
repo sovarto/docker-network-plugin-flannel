@@ -13,6 +13,15 @@
       ],
       "source": "/var/run/docker.sock",
       "type": "bind"
+    },
+    {
+      "destination": "/lib/modules",
+      "name": "lib_modules",
+      "options": [
+        "rbind"
+      ],
+      "source": "/lib/modules",
+      "type": "bind"
     }
   ],
   "env": [
