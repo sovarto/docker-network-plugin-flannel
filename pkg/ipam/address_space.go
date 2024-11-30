@@ -150,6 +150,7 @@ func (as *etcdAddressSpace) ReleasePool(id string) error {
 }
 
 func (as *etcdAddressSpace) subnetUsageChangeHandler(watcher clientv3.WatchChan, prefix string) {
+	fmt.Println("Starting subnetUsageChangeHandler...")
 	for wresp := range watcher {
 		for _, ev := range wresp.Events {
 			fmt.Printf("watchForSubnetUsageChanges received event %+v\n", ev)
@@ -197,4 +198,6 @@ func (as *etcdAddressSpace) subnetUsageChangeHandler(watcher clientv3.WatchChan,
 			}
 		}
 	}
+
+	fmt.Println("subnetUsageChangeHandler finished")
 }
