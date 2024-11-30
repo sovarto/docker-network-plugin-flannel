@@ -197,6 +197,10 @@ func flannelConfigKey(client etcd.Client, flannelNetworkID string) string {
 	return fmt.Sprintf("%s/config", flannelConfigPrefixKey(client, flannelNetworkID))
 }
 
+func flannelLockKey(client etcd.Client, flannelNetworkID string) string {
+	return fmt.Sprintf("%s/lock", flannelConfigPrefixKey(client, flannelNetworkID))
+}
+
 func (n *network) ensureFlannelConfig() (struct{}, error) {
 	return etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
 		networkConfigKey := flannelConfigKey(n.etcdClient, n.flannelID)
@@ -308,10 +312,12 @@ func (n *network) startFlannel() error {
 		// TODO: Is this hardcoded value a bad idea?
 		ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
 
-		fmt.Printf("trying to acquire lock for flannel network %s at %s", n.flannelID, etcdPrefix)
-		mutex := concurrency.NewMutex(session, etcdPrefix)
+		lockKey := flannelLockKey(n.etcdClient, n.flannelID)
+
+		fmt.Printf("trying to acquire lock for flannel network %s at %s", n.flannelID, lockKey)
+		mutex := concurrency.NewMutex(session, lockKey)
 		if err := mutex.Lock(ctx); err != nil {
-			return nil, errors.WithMessagef(err, "error acquiring lock for flannel network %s at %s", n.flannelID, etcdPrefix)
+			return nil, errors.WithMessagef(err, "error acquiring lock for flannel network %s at %s", n.flannelID, lockKey)
 		}
 		defer mutex.Unlock(connection.Ctx)
 
