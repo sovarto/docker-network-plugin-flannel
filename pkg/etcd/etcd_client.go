@@ -60,6 +60,30 @@ type Connection struct {
 	Cancel context.CancelFunc
 }
 
+func (c *Connection) PutIfNewOrChanged(key string, value string) (bool, error) {
+	resp, err := c.Client.Txn(c.Ctx).
+		If(clientv3.Compare(clientv3.CreateRevision(key), "=", 0)).
+		Then(clientv3.OpPut(key, value)).
+		Commit()
+
+	if err != nil {
+		return false, errors.WithMessagef(err, "etcd put operation failed for new key %s", key)
+	}
+
+	if !resp.Succeeded {
+		resp, err = c.Client.Txn(c.Ctx).
+			If(clientv3.Compare(clientv3.Value(key), "!=", value)).
+			Then(clientv3.OpPut(key, value)).
+			Commit()
+
+		if err != nil {
+			return false, errors.WithMessagef(err, "etcd put operation failed for new key %s", key)
+		}
+	}
+
+	return resp.Succeeded, nil
+}
+
 func (c *Connection) Close() {
 	c.Client.Close()
 	if c.Cancel != nil {

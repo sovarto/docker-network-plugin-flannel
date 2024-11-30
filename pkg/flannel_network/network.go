@@ -314,7 +314,7 @@ func (n *network) startFlannel() error {
 
 		lockKey := flannelLockKey(n.etcdClient, n.flannelID)
 
-		fmt.Printf("trying to acquire lock for flannel network %s at %s", n.flannelID, lockKey)
+		fmt.Printf("trying to acquire lock for flannel network %s at %s\n", n.flannelID, lockKey)
 		mutex := concurrency.NewMutex(session, lockKey)
 		if err := mutex.Lock(ctx); err != nil {
 			return nil, errors.WithMessagef(err, "error acquiring lock for flannel network %s at %s", n.flannelID, lockKey)
