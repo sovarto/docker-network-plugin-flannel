@@ -299,15 +299,18 @@ func (n *network) startFlannel() error {
 	args = append(args, n.defaultFlannelOptions...)
 
 	cmd, err := etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (*exec.Cmd, error) {
-		session, err := concurrency.NewSession(connection.Client)
+		session, err := concurrency.NewSession(connection.Client, concurrency.WithTTL(5))
 		if err != nil {
 			return nil, errors.WithMessagef(err, "error creating concurrency session for flannel network %s", n.flannelID)
 		}
 		defer session.Close()
 
+		// TODO: Is this hardcoded value a bad idea?
+		ctx, _ := context.WithTimeout(context.Background(), 45*time.Second)
+
 		mutex := concurrency.NewMutex(session, etcdPrefix)
-		if err := mutex.Lock(connection.Ctx); err != nil {
-			return nil, errors.WithMessagef(err, "error acquiring lock for flannel network %s", n.flannelID)
+		if err := mutex.Lock(ctx); err != nil {
+			return nil, errors.WithMessagef(err, "error acquiring lock for flannel network %s at %s", n.flannelID, etcdPrefix)
 		}
 		defer mutex.Unlock(connection.Ctx)
 
