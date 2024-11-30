@@ -11,6 +11,7 @@ import (
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/ipam"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/concurrency"
 	"log"
 	"net"
 	"os"
@@ -297,59 +298,79 @@ func (n *network) startFlannel() error {
 	}
 	args = append(args, n.defaultFlannelOptions...)
 
-	cmd := exec.Command("/flanneld", args...)
-
-	// Capture stdout and stderr
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Println("Failed to get stdout pipe:", err)
-		return err
-	}
-
-	stderrPipe, err := cmd.StderrPipe()
-	if err != nil {
-		log.Println("Failed to get stderr pipe:", err)
-		return err
-	}
-
-	bootstrapDoneChan := make(chan struct{})
-
-	go readPipe(stdoutPipe, bootstrapDoneChan)
-	go readPipe(stderrPipe, bootstrapDoneChan)
-
-	// Start the process
-	if err := cmd.Start(); err != nil {
-		log.Println("Failed to start flanneld:", err)
-		return err
-	}
-
-	fmt.Printf("flanneld started with PID %d for flannel network id %s\n", cmd.Process.Pid, n.flannelID)
-
-	exitChan := make(chan error, 1)
-
-	// Goroutine to wait for the process to exit
-	go func() {
-		err := cmd.Wait()
-		exitChan <- err
-	}()
-
-	// Wait for "bootstrap done", process exit, or timeout
-	select {
-	case err := <-exitChan:
-		// Process exited before "bootstrap done" or timeout
-		log.Printf("flanneld process exited prematurely: %v", err)
-		return errors.WithMessagef(err, "flanneld exited prematurely for network %s", n.flannelID)
-	case <-bootstrapDoneChan:
-		// "bootstrap done" was found
-		fmt.Println("flanneld bootstrap completed successfully")
-	case <-time.After(1500 * time.Millisecond):
-		// Timeout occurred before "bootstrap done"
-		log.Printf("flanneld failed to bootstrap within 1.5 seconds for network %s\n", n.flannelID)
-		// Kill the process
-		if err := cmd.Process.Kill(); err != nil {
-			log.Println("Failed to kill flanneld process:", err)
+	cmd, err := etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (*exec.Cmd, error) {
+		session, err := concurrency.NewSession(connection.Client)
+		if err != nil {
+			return nil, errors.WithMessagef(err, "error creating concurrency session for flannel network %s", n.flannelID)
 		}
-		return fmt.Errorf("flanneld failed to bootstrap within 1.5 seconds for network %s", n.flannelID)
+		defer session.Close()
+
+		mutex := concurrency.NewMutex(session, etcdPrefix)
+		if err := mutex.Lock(connection.Ctx); err != nil {
+			return nil, errors.WithMessagef(err, "error acquiring lock for flannel network %s", n.flannelID)
+		}
+		defer mutex.Unlock(connection.Ctx)
+
+		cmd := exec.Command("/flanneld", args...)
+
+		// Capture stdout and stderr
+		stdoutPipe, err := cmd.StdoutPipe()
+		if err != nil {
+			log.Println("Failed to get stdout pipe:", err)
+			return nil, err
+		}
+
+		stderrPipe, err := cmd.StderrPipe()
+		if err != nil {
+			log.Println("Failed to get stderr pipe:", err)
+			return nil, err
+		}
+
+		bootstrapDoneChan := make(chan struct{})
+
+		go readPipe(stdoutPipe, bootstrapDoneChan)
+		go readPipe(stderrPipe, bootstrapDoneChan)
+
+		// Start the process
+		if err := cmd.Start(); err != nil {
+			log.Println("Failed to start flanneld:", err)
+			return nil, err
+		}
+
+		fmt.Printf("flanneld started with PID %d for flannel network id %s\n", cmd.Process.Pid, n.flannelID)
+
+		exitChan := make(chan error, 1)
+
+		// Goroutine to wait for the process to exit
+		go func() {
+			err := cmd.Wait()
+			exitChan <- err
+		}()
+
+		// Wait for "bootstrap done", process exit, or timeout
+		select {
+		case err := <-exitChan:
+			// Process exited before "bootstrap done" or timeout
+			log.Printf("flanneld process exited prematurely: %v", err)
+			return nil, errors.WithMessagef(err, "flanneld exited prematurely for network %s", n.flannelID)
+		case <-bootstrapDoneChan:
+			// "bootstrap done" was found
+			fmt.Println("flanneld bootstrap completed successfully")
+		case <-time.After(1500 * time.Millisecond):
+			// Timeout occurred before "bootstrap done"
+			log.Printf("flanneld failed to bootstrap within 1.5 seconds for network %s\n", n.flannelID)
+			// Kill the process
+			if err := cmd.Process.Kill(); err != nil {
+				log.Println("Failed to kill flanneld process:", err)
+			}
+			return nil, fmt.Errorf("flanneld failed to bootstrap within 1.5 seconds for network %s", n.flannelID)
+		}
+
+		return cmd, nil
+	})
+
+	if err != nil {
+		return err
 	}
 
 	err = n.loadFlannelConfig(subnetFile)
