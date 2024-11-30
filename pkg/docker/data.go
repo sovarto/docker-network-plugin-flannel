@@ -108,15 +108,15 @@ func (d *data) Init() error {
 
 	go d.handleEvents()
 
-	_, err = d.watchForNetworkChanges(d.etcdClient)
+	_, _, err = d.etcdClient.Watch(networksKey(d.etcdClient), true, d.networksChangeHandler)
 	if err != nil {
 		return errors.WithMessage(err, "failed to watch for network changes")
 	}
-	_, err = d.watchForContainerChanges(d.etcdClient)
+	_, _, err = d.etcdClient.Watch(containersKey(d.etcdClient, d.hostname), true, d.containersChangeHandler)
 	if err != nil {
 		return errors.WithMessage(err, "failed to watch for container changes")
 	}
-	_, err = d.watchForServiceChanges(d.etcdClient)
+	_, _, err = d.etcdClient.Watch(servicesKey(d.etcdClient), true, d.servicesChangeHandler)
 	if err != nil {
 		return errors.WithMessage(err, "failed to watch for service changes")
 	}
@@ -444,64 +444,37 @@ func (d *data) handleDeletedContainer(containerID string) error {
 	return nil
 }
 
-func (d *data) watchForNetworkChanges(etcdClient etcd.Client) (clientv3.WatchChan, error) {
-	prefix := networksKey(etcdClient)
-	watcher, err := etcd.WithConnection(etcdClient, func(conn *etcd.Connection) (clientv3.WatchChan, error) {
-		return conn.Client.Watch(conn.Ctx, prefix, clientv3.WithPrefix()), nil
-	})
-
-	go func() {
-		for wresp := range watcher {
-			for range wresp.Events {
-				err := d.syncNetworks()
-				if err != nil {
-					log.Printf("Error syncing networks: %+v\n", err)
-				}
+func (d *data) networksChangeHandler(watcher clientv3.WatchChan, prefix string) {
+	for wresp := range watcher {
+		for range wresp.Events {
+			err := d.syncNetworks()
+			if err != nil {
+				log.Printf("Error syncing networks: %+v\n", err)
 			}
 		}
-	}()
-
-	return watcher, err
+	}
 }
 
-func (d *data) watchForContainerChanges(etcdClient etcd.Client) (clientv3.WatchChan, error) {
-	prefix := containersKey(etcdClient, d.hostname)
-	watcher, err := etcd.WithConnection(etcdClient, func(conn *etcd.Connection) (clientv3.WatchChan, error) {
-		return conn.Client.Watch(conn.Ctx, prefix, clientv3.WithPrefix()), nil
-	})
-
-	go func() {
-		for wresp := range watcher {
-			for range wresp.Events {
-				err := d.syncContainersAndServices()
-				if err != nil {
-					log.Printf("Error syncing containers and services: %+v\n", err)
-				}
+func (d *data) containersChangeHandler(watcher clientv3.WatchChan, prefix string) {
+	for wresp := range watcher {
+		for range wresp.Events {
+			err := d.syncContainersAndServices()
+			if err != nil {
+				log.Printf("Error syncing containers and services: %+v\n", err)
 			}
 		}
-	}()
-
-	return watcher, err
+	}
 }
 
-func (d *data) watchForServiceChanges(etcdClient etcd.Client) (clientv3.WatchChan, error) {
-	prefix := containersKey(etcdClient, d.hostname)
-	watcher, err := etcd.WithConnection(etcdClient, func(conn *etcd.Connection) (clientv3.WatchChan, error) {
-		return conn.Client.Watch(conn.Ctx, prefix, clientv3.WithPrefix()), nil
-	})
-
-	go func() {
-		for wresp := range watcher {
-			for range wresp.Events {
-				err := d.syncContainersAndServices()
-				if err != nil {
-					log.Printf("Error syncing containers and services: %+v\n", err)
-				}
+func (d *data) servicesChangeHandler(watcher clientv3.WatchChan, prefix string) {
+	for wresp := range watcher {
+		for range wresp.Events {
+			err := d.syncContainersAndServices()
+			if err != nil {
+				log.Printf("Error syncing containers and services: %+v\n", err)
 			}
 		}
-	}()
-
-	return watcher, err
+	}
 }
 
 func (d *data) invokeServiceCallback(previous *common.ServiceInfo, current common.ServiceInfo) {

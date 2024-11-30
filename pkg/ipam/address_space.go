@@ -65,7 +65,7 @@ func NewEtcdBasedAddressSpace(completeSpace []net.IPNet, poolSize int, etcdClien
 		etcdClient:    etcdClient,
 	}
 
-	_, err = space.watchForSubnetUsageChanges(etcdClient)
+	_, _, err = etcdClient.Watch(subnetsKey(etcdClient), true, space.subnetUsageChangeHandler)
 
 	if err != nil {
 		return nil, errors.WithMessage(err, "error creating etcd watcher to watch for used subnets")
@@ -149,62 +149,52 @@ func (as *etcdAddressSpace) ReleasePool(id string) error {
 	return nil
 }
 
-func (as *etcdAddressSpace) watchForSubnetUsageChanges(etcdClient etcd.Client) (clientv3.WatchChan, error) {
-	prefix := subnetsKey(etcdClient)
-	fmt.Printf("watching for subnet usage changes at '%s'\n", prefix)
-	watcher, err := etcd.WithConnection(etcdClient, func(conn *etcd.Connection) (clientv3.WatchChan, error) {
-		return conn.Client.Watch(conn.Ctx, prefix, clientv3.WithPrefix()), nil
-	})
-
-	go func() {
-		for wresp := range watcher {
-			for _, ev := range wresp.Events {
-				fmt.Printf("watchForSubnetUsageChanges received event%+v\n", ev)
-				key := strings.TrimLeft(strings.TrimPrefix(string(ev.Kv.Key), prefix), "/")
-				if !strings.Contains(key, "/") {
-					switch ev.Type {
-					case mvccpb.PUT:
-						poolID := string(ev.Kv.Value)
-						_, subnet, err := net.ParseCIDR(strings.ReplaceAll(key, "-", "/"))
-						if err != nil {
-							log.Printf("found new used pool subnet '%s' for pool '%s', but it can't be parsed as a CIDR. This looks like a data issue. Ignoring..., err: %v", key, poolID, err)
-							continue
-						}
-						as.Lock()
-						if existingSubnet, has := as.pools[poolID]; has && existingSubnet.String() != subnet.String() {
-							fmt.Printf("found new subnet '%s' for pool '%s'. It was '%s' so far. This shouldn't happen.\n ", subnet.String(), poolID, existingSubnet.String())
-						} else if !has {
-							as.pools[poolID] = *subnet
-							as.unusedSubnets = lo.Filter(as.unusedSubnets, func(item net.IPNet, index int) bool {
-								return item.String() != subnet.String()
-							})
-							fmt.Printf("found new used pool subnet '%s'. There are still %d pool subnets available", subnet.String(), len(as.unusedSubnets))
-						} else {
-							// found subnet and in memory subnet are the same, so nothing to do
-						}
-						as.Unlock()
-						break
-					case mvccpb.DELETE:
-						poolID := string(ev.Kv.Value)
-						_, subnet, err := net.ParseCIDR(strings.ReplaceAll(key, "-", "/"))
-						if err != nil {
-							log.Printf("found deleted used pool subnet '%s' for pool '%s', but it can't be parsed as a CIDR. This looks like a data issue. Ignoring..., err: %v", key, poolID, err)
-							continue
-						}
-
-						as.Lock()
-						if _, has := as.pools[poolID]; !has {
-							// the subnet has already been deleted in our in-memory data
-						} else {
-							delete(as.pools, poolID)
-							as.unusedSubnets = append(as.unusedSubnets, *subnet)
-						}
-						as.Unlock()
+func (as *etcdAddressSpace) subnetUsageChangeHandler(watcher clientv3.WatchChan, prefix string) {
+	for wresp := range watcher {
+		for _, ev := range wresp.Events {
+			fmt.Printf("watchForSubnetUsageChanges received event %+v\n", ev)
+			key := strings.TrimLeft(strings.TrimPrefix(string(ev.Kv.Key), prefix), "/")
+			if !strings.Contains(key, "/") {
+				switch ev.Type {
+				case mvccpb.PUT:
+					poolID := string(ev.Kv.Value)
+					_, subnet, err := net.ParseCIDR(strings.ReplaceAll(key, "-", "/"))
+					if err != nil {
+						log.Printf("found new used pool subnet '%s' for pool '%s', but it can't be parsed as a CIDR. This looks like a data issue. Ignoring..., err: %v", key, poolID, err)
+						continue
 					}
+					as.Lock()
+					if existingSubnet, has := as.pools[poolID]; has && existingSubnet.String() != subnet.String() {
+						fmt.Printf("found new subnet '%s' for pool '%s'. It was '%s' so far. This shouldn't happen.\n ", subnet.String(), poolID, existingSubnet.String())
+					} else if !has {
+						as.pools[poolID] = *subnet
+						as.unusedSubnets = lo.Filter(as.unusedSubnets, func(item net.IPNet, index int) bool {
+							return item.String() != subnet.String()
+						})
+						fmt.Printf("found new used pool subnet '%s'. There are still %d pool subnets available", subnet.String(), len(as.unusedSubnets))
+					} else {
+						// found subnet and in memory subnet are the same, so nothing to do
+					}
+					as.Unlock()
+					break
+				case mvccpb.DELETE:
+					poolID := string(ev.Kv.Value)
+					_, subnet, err := net.ParseCIDR(strings.ReplaceAll(key, "-", "/"))
+					if err != nil {
+						log.Printf("found deleted used pool subnet '%s' for pool '%s', but it can't be parsed as a CIDR. This looks like a data issue. Ignoring..., err: %v", key, poolID, err)
+						continue
+					}
+
+					as.Lock()
+					if _, has := as.pools[poolID]; !has {
+						// the subnet has already been deleted in our in-memory data
+					} else {
+						delete(as.pools, poolID)
+						as.unusedSubnets = append(as.unusedSubnets, *subnet)
+					}
+					as.Unlock()
 				}
 			}
 		}
-	}()
-
-	return watcher, err
+	}
 }

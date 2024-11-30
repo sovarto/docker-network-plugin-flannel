@@ -3,6 +3,7 @@ package etcd
 import (
 	"context"
 	"fmt"
+	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"log"
 	"strings"
@@ -14,6 +15,7 @@ type Client interface {
 	GetKey(subKeys ...string) string
 	CreateSubClient(subKeys ...string) Client
 	GetEndpoints() []string
+	Watch(key string, withPrefix bool, handler func(watcher clientv3.WatchChan, key string)) (clientv3.WatchChan, *Connection, error)
 }
 
 func WithConnection[T any](client Client, fn func(*Connection) (T, error)) (T, error) {
@@ -27,6 +29,23 @@ func WithConnection[T any](client Client, fn func(*Connection) (T, error)) (T, e
 	}
 
 	return fn(connection)
+}
+
+func (c *etcdClient) Watch(key string, withPrefix bool, handler func(watcher clientv3.WatchChan, key string)) (clientv3.WatchChan, *Connection, error) {
+	connection, err := c.NewConnection()
+
+	if err != nil {
+		return nil, nil, errors.WithMessage(err, "error connecting to etcd")
+	}
+
+	opts := []clientv3.OpOption{}
+	if withPrefix {
+		opts = append(opts, clientv3.WithPrefix())
+	}
+	watcher := connection.Client.Watch(connection.Ctx, key, opts...)
+	go handler(watcher, key)
+
+	return watcher, connection, nil
 }
 
 type etcdClient struct {

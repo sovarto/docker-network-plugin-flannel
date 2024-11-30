@@ -94,6 +94,10 @@ func (n *network) Delete() error {
 		}
 	}
 
+	if err := deleteFileIfExists(n.getFlannelEnvFilename()); err != nil {
+		fmt.Println(err)
+	}
+
 	_, err := etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
 		networkConfigKey := flannelConfigKey(n.etcdClient, n.flannelID)
 
@@ -283,7 +287,7 @@ func (n *network) readNetworkConfig() (ReadNetworkConfigResult, error) {
 }
 
 func (n *network) startFlannel() error {
-	subnetFile := fmt.Sprintf("/flannel-env/%s.env", n.flannelID)
+	subnetFile := n.getFlannelEnvFilename()
 	etcdPrefix := flannelConfigPrefixKey(n.etcdClient, n.flannelID)
 
 	args := []string{
@@ -359,6 +363,10 @@ func (n *network) startFlannel() error {
 	n.pid = cmd.Process.Pid
 
 	return nil
+}
+
+func (n *network) getFlannelEnvFilename() string {
+	return fmt.Sprintf("/flannel-env/%s.env", n.flannelID)
 }
 
 func (n *network) loadFlannelConfig(filename string) error {
@@ -474,4 +482,21 @@ func (n *network) DeleteEndpoint(id string) error {
 
 func (n *network) GetEndpoint(id string) Endpoint {
 	return n.endpoints[id]
+}
+
+func deleteFileIfExists(filename string) error {
+	if _, err := os.Stat(filename); err == nil {
+		// File exists, proceed to delete
+		if err := os.Remove(filename); err != nil {
+			return fmt.Errorf("error deleting file: %w", err)
+		}
+		fmt.Println("File deleted successfully.")
+	} else if os.IsNotExist(err) {
+		// File does not exist, nothing to delete
+		fmt.Println("File does not exist.")
+	} else {
+		// An error occurred while checking if the file exists
+		return fmt.Errorf("error checking file: %w", err)
+	}
+	return nil
 }

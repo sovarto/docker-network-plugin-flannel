@@ -141,11 +141,17 @@ func (d *flannelDriver) handleServiceRemoved(serviceID string) {
 	}
 }
 
-func (d *flannelDriver) handleNetworkAddedOrChanged(dockerNetworkID string, flannelNetworkID string) {
+func (d *flannelDriver) getNetwork(dockerNetworkID string, flannelNetworkID string) (flannel_network.Network, bool) {
 	network, exists := d.networksByDockerID[dockerNetworkID]
 	if !exists {
 		network, exists = d.networksByFlannelID[flannelNetworkID]
 	}
+
+	return network, exists
+}
+
+func (d *flannelDriver) handleNetworkAddedOrChanged(dockerNetworkID string, flannelNetworkID string) {
+	network, exists := d.getNetwork(dockerNetworkID, flannelNetworkID)
 	if !exists {
 		if flannelNetworkID != "" {
 			networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(flannelNetworkID)
@@ -175,6 +181,13 @@ func (d *flannelDriver) handleNetworkAddedOrChanged(dockerNetworkID string, flan
 }
 
 func (d *flannelDriver) handleNetworkRemoved(dockerNetworkID string, flannelNetworkID string) {
+	network, exists := d.getNetwork(dockerNetworkID, flannelNetworkID)
+	if exists {
+		err := network.Delete()
+		if err != nil {
+			log.Printf("Failed to remove network '%s': %+v\n", flannelNetworkID, err)
+		}
+	}
 	delete(d.networksByDockerID, dockerNetworkID)
 	delete(d.networksByFlannelID, flannelNetworkID)
 }
