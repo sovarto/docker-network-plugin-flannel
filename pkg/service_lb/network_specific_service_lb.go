@@ -32,28 +32,17 @@ type serviceLb struct {
 	link            netlink.Link
 }
 
-func NewNetworkSpecificServiceLb(link netlink.Link, dockerNetworkID, serviceID string, fwmark uint32, frontendIP net.IP) (NetworkSpecificServiceLb, error) {
-
-	err := networking.EnsureInterfaceListensOnAddress(link, frontendIP.String())
-	if err != nil {
-		return nil, errors.WithMessagef(err, "Failed to ensure load balancer interface %s listening on %s", link.Attrs().Name, frontendIP.String())
-	}
+func NewNetworkSpecificServiceLb(link netlink.Link, dockerNetworkID, serviceID string, fwmark uint32) NetworkSpecificServiceLb {
 
 	slb := &serviceLb{
 		dockerNetworkID: dockerNetworkID,
 		serviceID:       serviceID,
 		fwmark:          fwmark,
-		frontendIP:      frontendIP,
 		backendIPs:      make([]net.IP, 0),
 		link:            link,
 	}
 
-	err = slb.ensureServiceLoadBalancerFrontend()
-	if err != nil {
-		return nil, errors.WithMessagef(err, "error creating frontend of service load balancer for service %s and network %s", serviceID, dockerNetworkID)
-	}
-
-	return slb, nil
+	return slb
 }
 
 func (slb *serviceLb) UpdateFrontendIP(ip net.IP) error {
@@ -69,9 +58,11 @@ func (slb *serviceLb) UpdateFrontendIP(ip net.IP) error {
 		return errors.WithMessagef(err, "error creating frontend of service load balancer for service %s and network %s", slb.serviceID, slb.dockerNetworkID)
 	}
 
-	err = networking.StopListeningOnAddress(slb.link, oldFrontendIP.String())
-	if err != nil {
-		return errors.WithMessagef(err, "error stopping interface %s listening on %s", slb.link.Attrs().Name, oldFrontendIP.String())
+	if oldFrontendIP != nil {
+		err = networking.StopListeningOnAddress(slb.link, oldFrontendIP.String())
+		if err != nil {
+			return errors.WithMessagef(err, "error stopping interface %s listening on %s", slb.link.Attrs().Name, oldFrontendIP.String())
+		}
 	}
 
 	return nil

@@ -18,7 +18,7 @@ type Client interface {
 	Watch(key string, withPrefix bool, handler func(watcher clientv3.WatchChan, key string)) (clientv3.WatchChan, *Connection, error)
 }
 
-func (c *etcdClient) Watch(key string, withPrefix bool, handler func(watcher clientv3.WatchChan, key string)) (clientv3.WatchChan, *Connection, error) {
+func (c *etcdClient) Watch(key string, withPrefix bool, handler func(watchChan clientv3.WatchChan, key string)) (clientv3.WatchChan, *Connection, error) {
 	connection, err := c.NewConnection(false)
 
 	if err != nil {

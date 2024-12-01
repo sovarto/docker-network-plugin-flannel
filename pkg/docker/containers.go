@@ -11,74 +11,76 @@ import (
 	"strings"
 )
 
-// syncContainers
-// The truth here is not etcd but Docker:
-// - The internal state will be populated from Docker
-// - New, changed and deleted items wrt the internal state will be reported via callbacks
-// - etcd will be brought in sync with the internal state
+func (d *data) initContainers() error {
+	d.Lock()
+	defer d.Unlock()
+
+	containerInfos, err := d.getContainersInfosFromDocker()
+
+	err = d.containers.Init(containerInfos)
+	if err != nil {
+		return errors.WithMessage(err, "Error initializing containers")
+	}
+
+	return nil
+}
+
 func (d *data) syncContainers() error {
 	d.Lock()
 	defer d.Unlock()
 
 	fmt.Println("Syncing containers...")
 
-	containerInfos, containerIDtoServiceID, containerIDtoServiceName, err := d.getContainersInfosFromDocker()
+	containerInfos, err := d.getContainersInfosFromDocker()
 
 	err = d.containers.Sync(containerInfos)
 	if err != nil {
 		return errors.WithMessage(err, "Error syncing containers")
 	}
 
-	err = d.syncServicesContainers(containerInfos, containerIDtoServiceID, containerIDtoServiceName)
-	if err != nil {
-		return errors.WithMessage(err, "Error syncing services containers")
-	}
-
 	return nil
 }
 
-func (d *data) getContainersInfosFromDocker() (containerInfos map[string]common.ContainerInfo, containerIDtoServiceID map[string]string, containerIDtoServiceName map[string]string, err error) {
+func (d *data) getContainersInfosFromDocker() (containerInfos map[string]common.ContainerInfo, err error) {
 	rawContainers, err := d.dockerClient.ContainerList(context.Background(), container.ListOptions{})
 	if err != nil {
-		return nil, nil, nil, errors.WithMessage(err, "Error listing docker containers")
+		return nil, errors.WithMessage(err, "Error listing docker containers")
 	}
 
-	containerIDtoServiceID = map[string]string{}
-	containerIDtoServiceName = map[string]string{}
 	containerInfos = map[string]common.ContainerInfo{}
 
 	for _, container := range rawContainers {
-		containerInfo, serviceID, serviceName, err := d.getContainerInfoFromDocker(container.ID)
+		containerInfo, err := d.getContainerInfoFromDocker(container.ID)
 		if err != nil {
 			log.Printf("Error getting container info for container with ID %s. Skipping...\n", container.ID)
 			continue
 		}
 		containerInfos[containerInfo.ID] = *containerInfo
-		containerIDtoServiceID[container.ID] = serviceID
-		containerIDtoServiceName[container.ID] = serviceName
 	}
 
 	return
 }
 
-func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *common.ContainerInfo, serviceID string, serviceName string, err error) {
+func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *common.ContainerInfo, err error) {
 	container, err := d.dockerClient.ContainerInspect(context.Background(), containerID)
 	if err != nil {
-		return nil, "", "", errors.WithMessagef(err, "Error inspecting docker container %s", containerID)
+		return nil, errors.WithMessagef(err, "Error inspecting docker container %s", containerID)
 	}
 
-	serviceID = container.Config.Labels["com.docker.swarm.service.id"]
-	serviceName = container.Config.Labels["com.docker.swarm.service.name"]
+	serviceID := container.Config.Labels["com.docker.swarm.service.id"]
+	serviceName := container.Config.Labels["com.docker.swarm.service.name"]
 	containerName := strings.TrimLeft(container.Name, "/")
 
 	ips := make(map[string]net.IP)
 	ipamIPs := make(map[string]net.IP)
 
 	containerInfo = &common.ContainerInfo{
-		ID:      containerID,
-		Name:    containerName,
-		IPs:     ips,
-		IpamIPs: ipamIPs,
+		ID:          containerID,
+		Name:        containerName,
+		ServiceID:   serviceID,
+		ServiceName: serviceName,
+		IPs:         ips,
+		IpamIPs:     ipamIPs,
 	}
 
 	for networkName, networkData := range container.NetworkSettings.Networks {
@@ -101,4 +103,24 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *co
 	}
 
 	return
+}
+
+func (d *data) handleContainer(containerID string) error {
+	containerInfo, err := d.getContainerInfoFromDocker(containerID)
+	if err != nil {
+		return errors.WithMessagef(err, "Error inspecting docker container %s", containerID)
+	}
+
+	if len(containerInfo.IPs) == 0 {
+		return nil
+	}
+	err = d.containers.AddOrUpdateItem(containerID, *containerInfo)
+	if err != nil {
+		return errors.WithMessagef(err, "Error adding or updating container info %s", containerID)
+	}
+	return nil
+}
+
+func (d *data) handleDeletedContainer(containerID string) error {
+	return d.containers.DeleteItem(containerID)
 }

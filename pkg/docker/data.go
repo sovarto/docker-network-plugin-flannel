@@ -3,20 +3,14 @@ package docker
 import (
 	"context"
 	"fmt"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
-	"github.com/tiendc/go-deepcopy"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"log"
-	"net"
 	"os"
-	"reflect"
-	"strings"
 	"sync"
 )
 
@@ -24,18 +18,14 @@ type Data interface {
 	GetFlannelNetworkID(dockerNetworkID string) (flannelNetworkID string, exists bool)
 	GetDockerNetworkID(flannelNetworkID string) (dockerNetworkID string, exists bool)
 	Init() error
+	GetContainers() etcd.ShardedDistributedStore[common.ContainerInfo]
+	GetServices() etcd.Store[common.ServiceInfo]
 }
 
 type Callbacks struct {
-	ContainerChanged func(previousContainerInfo *common.ContainerInfo, currentContainerInfo common.ContainerInfo)
-	ContainerAdded   func(containerInfo common.ContainerInfo)
-	ContainerRemoved func(removedContainerInfo common.ContainerInfo)
-	ServiceChanged   func(previousServiceInfo *common.ServiceInfo, currentServiceInfo common.ServiceInfo)
-	ServiceAdded     func(serviceInfo common.ServiceInfo)
-	ServiceRemoved   func(serviceID string)
-	NetworkAdded     func(dockerNetworkID string, flannelNetworkID string)
-	NetworkChanged   func(dockerNetworkID string, flannelNetworkID string)
-	NetworkRemoved   func(dockerNetworkID string, flannelNetworkID string)
+	NetworkAdded   func(dockerNetworkID string, flannelNetworkID string)
+	NetworkChanged func(dockerNetworkID string, flannelNetworkID string)
+	NetworkRemoved func(dockerNetworkID string, flannelNetworkID string)
 }
 
 type data struct {
@@ -45,13 +35,16 @@ type data struct {
 	etcdClient                        etcd.Client
 	hostname                          string
 	containers                        etcd.ShardedDistributedStore[common.ContainerInfo]
-	serviceContainers                 map[string]ServiceContainersServiceInfo
-	services                          map[string]common.ServiceInfo // serviceID -> info
+	services                          etcd.Store[common.ServiceInfo]
 	isManagerNode                     bool
+	callbacks                         Callbacks
 	sync.Mutex
 }
 
-func NewData(etcdClient etcd.Client, containerHandlers etcd.Handlers[common.ContainerInfo]) (Data, error) {
+func NewData(etcdClient etcd.Client,
+	containerHandlers etcd.ShardItemsHandlers[common.ContainerInfo],
+	serviceHandlers etcd.ItemsHandlers[common.ServiceInfo],
+	callbacks Callbacks) (Data, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, errors.WithMessage(err, "error getting hostname")
@@ -70,20 +63,37 @@ func NewData(etcdClient etcd.Client, containerHandlers etcd.Handlers[common.Cont
 	if err != nil {
 		return nil, errors.WithMessage(err, "Error getting docker info")
 	}
+	isManagerNode := info.Swarm.ControlAvailable
+
+	containers := etcd.NewShardedDistributedStore(etcdClient.CreateSubClient("containers"), hostname, containerHandlers)
+	var services etcd.Store[common.ServiceInfo]
+	servicesEtcdClient := etcdClient.CreateSubClient("services", "ipam-vips")
+	if isManagerNode {
+		services = etcd.NewWriteOnlyStore(servicesEtcdClient, serviceHandlers)
+	} else {
+		services = etcd.NewReadOnlyStore(servicesEtcdClient, serviceHandlers)
+	}
 
 	result := &data{
 		etcdClient:                        etcdClient,
 		dockerClient:                      dockerClient,
 		dockerNetworkIDtoFlannelNetworkID: make(map[string]string),
 		flannelNetworkIDtoDockerNetworkID: make(map[string]string),
-		containers:                        etcd.NewShardedDistributedStore(etcdClient.CreateSubClient("containers"), hostname, containerHandlers),
-		services:                          make(map[string]common.ServiceInfo),
+		containers:                        containers,
+		services:                          services,
 		hostname:                          hostname,
-		isManagerNode:                     info.Swarm.ControlAvailable,
+		callbacks:                         callbacks,
+		isManagerNode:                     isManagerNode,
 	}
 
 	return result, nil
 }
+
+func (d *data) GetContainers() etcd.ShardedDistributedStore[common.ContainerInfo] {
+	return d.containers
+}
+
+func (d *data) GetServices() etcd.Store[common.ServiceInfo] { return d.services }
 
 func (d *data) GetFlannelNetworkID(dockerNetworkID string) (flannelNetworkID string, exists bool) {
 	flannelNetworkID, exists = d.dockerNetworkIDtoFlannelNetworkID[dockerNetworkID]
@@ -100,24 +110,21 @@ func (d *data) Init() error {
 		return err
 	}
 
-	err = d.syncContainersAndServices()
+	err = d.initServices()
 	if err != nil {
 		return err
 	}
 
-	go d.handleEvents()
+	err = d.initContainers()
+	if err != nil {
+		return err
+	}
+
+	go d.handleDockerEvents()
 
 	_, _, err = d.etcdClient.Watch(d.networksKey(), true, d.networksChangeHandler)
 	if err != nil {
 		return errors.WithMessage(err, "failed to watch for network changes")
-	}
-	_, _, err = d.etcdClient.Watch(d.localContainersKey(), true, d.containersChangeHandler)
-	if err != nil {
-		return errors.WithMessage(err, "failed to watch for container changes")
-	}
-	_, _, err = d.etcdClient.Watch(d.servicesKey(), true, d.servicesChangeHandler)
-	if err != nil {
-		return errors.WithMessage(err, "failed to watch for service changes")
 	}
 
 	return nil
@@ -140,7 +147,7 @@ func (d *data) handleNetwork(dockerNetworkID string) error {
 	d.flannelNetworkIDtoDockerNetworkID[flannelNetworkID] = dockerNetworkID
 	fmt.Printf("Network %s has flannel network id: %s\n", dockerNetworkID, flannelNetworkID)
 
-	err = d.storeNetworkInfo(d.etcdClient, dockerNetworkID, flannelNetworkID)
+	err = d.storeNetworkInfo(dockerNetworkID, flannelNetworkID)
 	if err != nil {
 		return errors.WithMessagef(err, "Error storing network info for docker network %s", dockerNetworkID)
 	}
@@ -164,7 +171,7 @@ func (d *data) handleDeletedNetwork(dockerNetworkID string) error {
 	delete(d.dockerNetworkIDtoFlannelNetworkID, dockerNetworkID)
 	delete(d.flannelNetworkIDtoDockerNetworkID, flannelNetworkID)
 
-	err := deleteNetworkInfo(d.etcdClient, dockerNetworkID)
+	err := d.deleteNetworkInfo(dockerNetworkID)
 	if err != nil {
 		return errors.WithMessagef(err, "Error deleting network info for docker network %s", dockerNetworkID)
 	}
@@ -178,58 +185,12 @@ func (d *data) handleDeletedNetwork(dockerNetworkID string) error {
 	return nil
 }
 
-func (d *data) handleContainer(containerID string) error {
-	containerInfo, serviceID, serviceName, err := d.getContainerInfoFromDocker(containerID)
-	if err != nil {
-		return errors.WithMessagef(err, "Error inspecting docker container %s", containerID)
-	}
-
-	if len(containerInfo.IPs) == 0 {
-		return nil
-	}
-
-	previousContainerInfo := getPtrFromMap(d.containers, containerID)
-	d.containers[containerID] = *containerInfo
-
-	err = d.storeContainerInfo(*containerInfo)
-	if err != nil {
-		return errors.WithMessagef(err, "Error storing container info for docker container %s", containerID)
-	}
-
-	d.invokeContainerCallback(previousContainerInfo, *containerInfo)
-
-	serviceInfo, serviceExists := d.services[serviceID]
-	var previousServiceInfo *common.ServiceInfo
-	if !serviceExists {
-		serviceInfo = common.ServiceInfo{
-			ID:         serviceID,
-			Name:       serviceName,
-			Containers: make(map[string]common.ContainerInfo),
-			VIPs:       make(map[string]net.IP),
-		}
-
-		d.services[serviceID] = serviceInfo
-	} else {
-		previousServiceInfo = &common.ServiceInfo{}
-		err = deepcopy.Copy(previousServiceInfo, serviceInfo)
-		if err != nil {
-			return errors.WithMessagef(err, "Error deepcopying service info for docker service %s", serviceID)
-		}
-	}
-
-	serviceInfo.Containers[containerID] = containerInfo
-
-	d.invokeServiceCallback(previousServiceInfo, serviceInfo)
-
-	return nil
-}
-
 func (d *data) syncNetworks() error {
 	d.Lock()
 	defer d.Unlock()
 	fmt.Println("Syncing networks...")
 
-	loadedNetworks, err := loadNetworkInfo(d.etcdClient)
+	loadedNetworks, err := d.loadNetworkInfo()
 
 	if err != nil {
 		return errors.WithMessage(err, "Error loading docker network info from etcd")
@@ -258,162 +219,6 @@ func (d *data) syncNetworks() error {
 	return nil
 }
 
-func (d *data) syncContainersAndServices() error {
-	d.Lock()
-	defer d.Unlock()
-
-	fmt.Println("Syncing containers and services...")
-
-	loadedContainers, err := loadContainersInfo(d.etcdClient, d.hostname)
-	if err != nil {
-		return errors.WithMessage(err, "Error loading docker containers info from etcd")
-	}
-
-	loadedServices, err := loadServicesInfo(d.etcdClient)
-	if err != nil {
-		return errors.WithMessage(err, "Error loading docker services info from etcd")
-	}
-
-	containers, err := d.dockerClient.ContainerList(context.Background(), container.ListOptions{})
-	if err != nil {
-		return errors.WithMessage(err, "Error listing docker containers")
-	}
-
-	oldContainers := d.containers
-	d.containers = loadedContainers
-	d.invokeContainersCallbacks(oldContainers, loadedContainers)
-
-	oldServices := d.services
-	d.services = loadedServices
-	d.invokeServicesCallbacks(oldServices, loadedServices)
-
-	for _, container := range containers {
-		err = d.handleContainer(container.ID)
-		if err != nil {
-			return errors.WithMessagef(err, "Error handling docker container %s", container.ID)
-		}
-	}
-
-	if d.isManagerNode {
-		services, err := d.dockerClient.ServiceList(context.Background(), types.ServiceListOptions{})
-		if err != nil {
-			return errors.WithMessage(err, "Error listing docker services")
-		}
-
-		for _, service := range services {
-			err = d.handleService(service.ID)
-			if err != nil {
-				return errors.WithMessagef(err, "Error handling docker service %s", service.ID)
-			}
-		}
-	}
-
-	return nil
-}
-
-func (d *data) handleService(serviceID string) error {
-	service, _, err := d.dockerClient.ServiceInspectWithRaw(context.Background(), serviceID, types.ServiceInspectOptions{})
-	if err != nil {
-		return errors.WithMessagef(err, "Error inspecting docker service %s", serviceID)
-	}
-
-	serviceName := service.Spec.Name
-	serviceInfo, serviceExists := d.services[serviceID]
-	var previousServiceInfo *common.ServiceInfo
-	if !serviceExists {
-		serviceInfo = common.ServiceInfo{
-			ID:         serviceID,
-			Name:       serviceName,
-			Containers: make(map[string]common.ContainerInfo),
-			VIPs:       make(map[string]net.IP),
-		}
-
-		d.services[serviceID] = serviceInfo
-	} else {
-		previousServiceInfo = &common.ServiceInfo{}
-		err = deepcopy.Copy(previousServiceInfo, serviceInfo)
-		if err != nil {
-			return errors.WithMessagef(err, "Error deepcopying service info for docker service %s", serviceID)
-		}
-	}
-
-	for _, endpoint := range service.Endpoint.VirtualIPs {
-		ip, _, err := net.ParseCIDR(endpoint.Addr)
-		if err != nil {
-			return errors.WithMessagef(err, "error parsing IP address %s for service %s", endpoint.Addr, serviceID)
-		}
-		serviceInfo.VIPs[endpoint.NetworkID] = ip
-	}
-
-	err = storeServiceVIPs(d.etcdClient, serviceID, serviceInfo.VIPs)
-	if err != nil {
-		return errors.WithMessagef(err, "Error storing service VIPs for service %s", serviceID)
-	}
-
-	d.invokeServiceCallback(previousServiceInfo, serviceInfo)
-
-	return nil
-}
-
-func (d *data) handleDeletedService(serviceID string) error {
-	_, exists := d.services[serviceID]
-
-	delete(d.services, serviceID)
-
-	err := deleteServiceInfo(d.etcdClient, serviceID)
-	if err != nil {
-		return errors.WithMessagef(err, "Error deleting service info for docker service %s", serviceID)
-	}
-
-	if exists {
-		if d.callbacks.ServiceRemoved != nil {
-			d.callbacks.ServiceRemoved(serviceID)
-		}
-	}
-
-	return nil
-}
-
-func (d *data) handleDeletedContainer(containerID string) error {
-	containerInfo, exists := d.containers[containerID]
-
-	delete(d.containers, containerID)
-
-	err := deleteContainerInfo(d.etcdClient, d.hostname, containerID)
-	if err != nil {
-		return errors.WithMessagef(err, "Error deleting container info for docker container %s", containerID)
-	}
-
-	if exists {
-		if d.callbacks.ContainerRemoved != nil {
-			d.callbacks.ContainerRemoved(containerInfo)
-		}
-	}
-
-	for serviceID, serviceInfo := range d.services {
-		_, exists := serviceInfo.Containers[containerID]
-		if exists {
-			previousServiceInfo := &common.ServiceInfo{}
-			err = deepcopy.Copy(previousServiceInfo, serviceInfo)
-			if err != nil {
-				return errors.WithMessagef(err, "Error deepcopying service info for docker service %s", serviceID)
-			}
-
-			delete(serviceInfo.Containers, containerID)
-			err = deleteContainerFromServiceInfo(d.etcdClient, serviceID, containerID)
-			if err != nil {
-				return errors.WithMessagef(err, "Error deleting container %s from service %s", containerID, serviceID)
-			}
-			if d.callbacks.ServiceChanged != nil {
-				d.callbacks.ServiceChanged(previousServiceInfo, serviceInfo)
-			}
-			break
-		}
-	}
-
-	return nil
-}
-
 func (d *data) networksChangeHandler(watcher clientv3.WatchChan, prefix string) {
 	for wresp := range watcher {
 		for _, ev := range wresp.Events {
@@ -424,52 +229,6 @@ func (d *data) networksChangeHandler(watcher clientv3.WatchChan, prefix string) 
 			}
 		}
 	}
-}
-
-func (d *data) containersChangeHandler(watcher clientv3.WatchChan, prefix string) {
-	for wresp := range watcher {
-		for range wresp.Events {
-			err := d.syncContainersAndServices()
-			if err != nil {
-				log.Printf("Error syncing containers and services: %+v\n", err)
-			}
-		}
-	}
-}
-
-func (d *data) servicesChangeHandler(watcher clientv3.WatchChan, prefix string) {
-	for wresp := range watcher {
-		for range wresp.Events {
-			err := d.syncContainersAndServices()
-			if err != nil {
-				log.Printf("Error syncing containers and services: %+v\n", err)
-			}
-		}
-	}
-}
-
-func (d *data) invokeServicesCallbacks(previousServiceInfos map[string]common.ServiceInfo, currentServiceInfos map[string]common.ServiceInfo) {
-	invokeItemsCallbacks(
-		previousServiceInfos,
-		currentServiceInfos,
-		func(s common.ServiceInfo) string { return s.ID },
-		d.invokeServiceCallback,
-		func(s common.ServiceInfo) {
-			if d.callbacks.ServiceRemoved != nil {
-				d.callbacks.ServiceRemoved(s.ID)
-			}
-		},
-	)
-}
-
-func (d *data) invokeContainersCallbacks(previousContainerInfos map[string]common.ContainerInfo, currentContainerInfos map[string]common.ContainerInfo) {
-	invokeItemsCallbacks(
-		previousContainerInfos,
-		currentContainerInfos,
-		func(c common.ContainerInfo) string { return c.ID },
-		d.invokeContainerCallback,
-		d.callbacks.ContainerRemoved,
-	)
 }
 
 func (d *data) invokeNetworksCallbacks(previousDockerNetworkIDtoFlannelNetworkID map[string]string, currentDockerNetworkIDtoFlannelNetworkID map[string]string) {
@@ -493,51 +252,6 @@ func (d *data) invokeNetworksCallbacks(previousDockerNetworkIDtoFlannelNetworkID
 		for dockerNetworkID, previousFlannelNetworkID := range previousDockerNetworkIDtoFlannelNetworkID {
 			if !processedItems[dockerNetworkID] {
 				d.callbacks.NetworkRemoved(dockerNetworkID, previousFlannelNetworkID)
-			}
-		}
-	}
-}
-
-func invokeItemCallback[T any](
-	previousItem *T,
-	currentItem T,
-	addedCallback func(T),
-	changedCallback func(*T, T),
-) {
-	if previousItem != nil {
-		if changedCallback != nil {
-			if !reflect.DeepEqual(*previousItem, currentItem) {
-				changedCallback(previousItem, currentItem)
-			}
-		}
-	} else {
-		if addedCallback != nil {
-			addedCallback(currentItem)
-		}
-	}
-}
-
-func invokeItemsCallbacks[T any](
-	previousItems map[string]T,
-	currentItems map[string]T,
-	getID func(T) string,
-	invokeItemCallback func(previous *T, current T),
-	removedCallback func(T),
-) {
-	processedItems := make(map[string]bool)
-
-	for _, currentItem := range currentItems {
-		id := getID(currentItem)
-		previousItem := previousItems[id]
-		invokeItemCallback(&previousItem, currentItem)
-		processedItems[id] = true
-	}
-
-	if removedCallback != nil {
-		for _, previousItem := range previousItems {
-			id := getID(previousItem)
-			if !processedItems[id] {
-				removedCallback(previousItem)
 			}
 		}
 	}

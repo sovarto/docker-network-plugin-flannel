@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func (d *data) handleEvents() {
+func (d *data) handleDockerEvents() {
 	eventsCh, errCh := d.dockerClient.Events(context.Background(), events.ListOptions{})
 	for {
 		select {

@@ -6,24 +6,18 @@ import (
 )
 
 type ContainerInfo struct {
-	ID      string            `json:"ContainerID"`
-	Name    string            `json:"ContainerName"`
-	IPs     map[string]net.IP `json:"IPs"`     // -> networkID -> IP
-	IpamIPs map[string]net.IP `json:"IpamIPs"` // -> networkID -> IP
+	ID          string            `json:"ContainerID"`
+	Name        string            `json:"ContainerName"`
+	ServiceID   string            `json:"ServiceID"`
+	ServiceName string            `json:"ServiceName"`
+	IPs         map[string]net.IP `json:"IPs"`     // networkID -> IP
+	IpamIPs     map[string]net.IP `json:"IpamIPs"` // networkID -> IP
 }
 
 type ServiceInfo struct {
-	ID         string
-	Name       string
-	VIPs       map[string]map[string]net.IP        // hostname -> networkID -> VIP
-	IpamVIPs   map[string]net.IP                   // networkID -> VIP
-	Containers map[string]map[string]ContainerInfo // hostname -> containerID -> info
-}
-
-type ServiceContainerInfo struct {
-	ID         string
-	Name       string
-	Containers map[string]map[string]ContainerInfo // hostname -> containerID -> info
+	ID       string            `json:"ServiceID"`
+	Name     string            `json:"ServiceName"`
+	IpamVIPs map[string]net.IP `json:"IpamVIPs"` // networkID -> VIP
 }
 
 type NetworkInfo struct {
@@ -54,13 +48,29 @@ func (c ContainerInfo) Equals(other Equaler) bool {
 	if !ok {
 		return false
 	}
+	if c.ID != o.ID || c.Name != o.Name || c.ServiceID != o.ServiceID || c.ServiceName != o.ServiceName {
+		return false
+	}
+	if !CompareIPMaps(c.IPs, o.IPs) {
+		return false
+	}
+	if !CompareIPMaps(c.IpamIPs, o.IpamIPs) {
+		return false
+	}
+
+	return true
+}
+
+func (c ServiceInfo) Equals(other Equaler) bool {
+	// Type assertion to *ContainerInfo
+	o, ok := other.(ServiceInfo)
+	if !ok {
+		return false
+	}
 	if c.ID != o.ID || c.Name != o.Name {
 		return false
 	}
-	if !compareIPMaps(c.IPs, o.IPs) {
-		return false
-	}
-	if !compareIPMaps(c.IpamIPs, o.IpamIPs) {
+	if !CompareIPMaps(c.IpamVIPs, o.IpamVIPs) {
 		return false
 	}
 

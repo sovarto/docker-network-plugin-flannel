@@ -21,8 +21,10 @@ type ShardItem[T any] struct {
 }
 
 type ShardItemChange[T any] struct {
-	Previous ShardItem[T]
-	Current  ShardItem[T]
+	ShardKey string
+	ID       string
+	Previous T
+	Current  T
 }
 
 type ShardItemsHandlers[T any] struct {
@@ -55,7 +57,7 @@ type shardedDistributedStore[T common.Equaler] struct {
 	shardedData    map[string]map[string]T // shardKey -> itemID -> item
 	data           map[string]T            // itemID -> item
 	itemToShardKey map[string]string       // itemID -> shardKey
-	sync.RWMutex
+	sync.Mutex
 }
 
 func NewShardedDistributedStore[T common.Equaler](client Client, localShardKey string, handlers ShardItemsHandlers[T]) ShardedDistributedStore[T] {
@@ -72,7 +74,7 @@ func NewShardedDistributedStore[T common.Equaler](client Client, localShardKey s
 }
 
 func (s *shardedDistributedStore[T]) Init(localShardItems map[string]T) error {
-	err := s.Sync(localShardItems)
+	err := s.sync(localShardItems, false)
 	if err != nil {
 		return err
 	}
@@ -89,16 +91,16 @@ func (s *shardedDistributedStore[T]) GetAll() map[string]map[string]T { return s
 func (s *shardedDistributedStore[T]) GetLocalShardKey() string        { return s.localShardKey }
 
 func (s *shardedDistributedStore[T]) GetShard(key string) (shardItems map[string]T, shardExists bool) {
-	s.RLock()
-	defer s.RUnlock()
+	s.Lock()
+	defer s.Unlock()
 
 	shardItems, shardExists = s.shardedData[key]
 	return
 }
 
 func (s *shardedDistributedStore[T]) GetItem(itemID string) (shardKey string, item T, itemExists bool) {
-	s.RLock()
-	defer s.RUnlock()
+	s.Lock()
+	defer s.Unlock()
 
 	item, itemExists = s.data[itemID]
 	shardKey = s.itemToShardKey[itemID]
@@ -113,11 +115,6 @@ func (s *shardedDistributedStore[T]) AddOrUpdateItem(itemID string, item T) erro
 	shardItems := s.shardedData[shardKey]
 
 	previousItem, exists := shardItems[itemID]
-	currentItem := ShardItem[T]{
-		ShardKey: shardKey,
-		ID:       itemID,
-		Value:    item,
-	}
 
 	shardItems[itemID] = item
 	s.data[itemID] = item
@@ -139,15 +136,12 @@ func (s *shardedDistributedStore[T]) AddOrUpdateItem(itemID string, item T) erro
 	if exists {
 		if !previousItem.Equals(item) {
 			if s.handlers.OnChanged != nil {
-				s.handlers.OnChanged([]ShardItemChange[T]{{
-					Previous: ShardItem[T]{ID: itemID, Value: previousItem, ShardKey: shardKey},
-					Current:  currentItem,
-				}})
+				s.handlers.OnChanged([]ShardItemChange[T]{{ShardKey: shardKey, ID: itemID, Previous: previousItem, Current: item}})
 			}
 		}
 	} else {
 		if s.handlers.OnAdded != nil {
-			s.handlers.OnAdded([]ShardItem[T]{currentItem})
+			s.handlers.OnAdded([]ShardItem[T]{{ShardKey: shardKey, ID: itemID, Value: item}})
 		}
 	}
 
@@ -190,6 +184,10 @@ func (s *shardedDistributedStore[T]) DeleteItem(itemID string) error {
 }
 
 func (s *shardedDistributedStore[T]) Sync(localShardItems map[string]T) error {
+	return s.sync(localShardItems, true)
+}
+
+func (s *shardedDistributedStore[T]) sync(localShardItems map[string]T, callHandlers bool) error {
 	s.Lock()
 	defer s.Unlock()
 
@@ -232,14 +230,16 @@ func (s *shardedDistributedStore[T]) Sync(localShardItems map[string]T) error {
 		return err
 	}
 
-	if len(added) > 0 && s.handlers.OnAdded != nil {
-		s.handlers.OnAdded(added)
-	}
-	if len(changes) > 0 && s.handlers.OnChanged != nil {
-		s.handlers.OnChanged(changes)
-	}
-	if len(removed) > 0 && s.handlers.OnRemoved != nil {
-		s.handlers.OnRemoved(removed)
+	if callHandlers {
+		if len(added) > 0 && s.handlers.OnAdded != nil {
+			s.handlers.OnAdded(added)
+		}
+		if len(changes) > 0 && s.handlers.OnChanged != nil {
+			s.handlers.OnChanged(changes)
+		}
+		if len(removed) > 0 && s.handlers.OnRemoved != nil {
+			s.handlers.OnRemoved(removed)
+		}
 	}
 
 	return nil
@@ -254,20 +254,21 @@ func (s *shardedDistributedStore[T]) syncToInternalState(shardKey string, truth 
 
 	for id, item := range truth {
 		previousItem, exists := shardItems[id]
-		currentItem := ShardItem[T]{
-			ShardKey: shardKey,
-			ID:       id,
-			Value:    item,
-		}
 		if exists {
 			if !previousItem.Equals(item) {
 				changes = append(changes, ShardItemChange[T]{
-					Previous: ShardItem[T]{ID: id, Value: previousItem, ShardKey: shardKey},
-					Current:  currentItem,
+					ID:       id,
+					ShardKey: shardKey,
+					Previous: previousItem,
+					Current:  item,
 				})
 			}
 		} else {
-			added = append(added, currentItem)
+			added = append(added, ShardItem[T]{
+				ShardKey: shardKey,
+				ID:       id,
+				Value:    item,
+			})
 		}
 	}
 
@@ -375,17 +376,18 @@ func (s *shardedDistributedStore[T]) handleWatchEvents(watcher clientv3.WatchCha
 					}
 					previousItem, exists := shardedItems[itemID]
 					shardedItems[itemID] = item
-					currentItem := ShardItem[T]{ShardKey: shardKey, ID: itemID, Value: item}
 					if exists {
 						if s.handlers.OnChanged != nil && !previousItem.Equals(item) {
 							s.handlers.OnChanged([]ShardItemChange[T]{{
-								Previous: ShardItem[T]{ID: itemID, Value: previousItem, ShardKey: shardKey},
-								Current:  currentItem,
+								ShardKey: shardKey,
+								ID:       itemID,
+								Previous: previousItem,
+								Current:  item,
 							}})
 						}
 					} else {
 						if s.handlers.OnAdded != nil {
-							s.handlers.OnAdded([]ShardItem[T]{currentItem})
+							s.handlers.OnAdded([]ShardItem[T]{{ShardKey: shardKey, ID: itemID, Value: item}})
 						}
 					}
 				}

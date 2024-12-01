@@ -38,3 +38,18 @@ TODO:
   - -> Remove backend from load balancer / set weight to 0
   - -> Test IPVS handling of removed backends and backends with weight 0 WRT existing connections
 - Check proper locking in all relevant methods
+
+
+
+
+
+Container:
+- for DNS lookup of container name
+- for backend IPs of service load balancer
+
+- can be used to create frontend of service load balancer
+  - requires storing of frontend IPs and fwmarks per node
+- can't be used to reuse the IPAM allocated VIP on the IPAM node
+
+
+Services

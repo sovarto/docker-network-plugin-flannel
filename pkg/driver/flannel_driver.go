@@ -59,22 +59,31 @@ func NewFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelO
 	fmt.Println("Initialized address space")
 
 	callbacks := docker.Callbacks{
-		ContainerChanged: driver.handleContainerChanged,
-		ContainerAdded:   driver.handleContainerAdded,
-		ContainerRemoved: driver.handleContainerRemoved,
-		ServiceChanged:   driver.handleServiceChanged,
-		ServiceAdded:     driver.handleServiceAdded,
-		ServiceRemoved:   driver.handleServiceRemoved,
-		NetworkAdded:     driver.handleNetworkAddedOrChanged,
-		NetworkChanged:   driver.handleNetworkAddedOrChanged,
-		NetworkRemoved:   driver.handleNetworkRemoved,
+		NetworkAdded:   driver.handleNetworkAddedOrChanged,
+		NetworkChanged: driver.handleNetworkAddedOrChanged,
+		NetworkRemoved: driver.handleNetworkRemoved,
 	}
 
-	serviceLbsManagement := service_lb.NewServiceLbManagement(driver.getEtcdClient("service-lbs"))
+	containerCallbacks := etcd.ShardItemsHandlers[common.ContainerInfo]{
+		OnAdded:   driver.handleContainersAdded,
+		OnChanged: driver.handleContainersChanged,
+		OnRemoved: driver.handleContainersRemoved,
+	}
+
+	serviceCallbacks := etcd.ItemsHandlers[common.ServiceInfo]{
+		OnAdded:   driver.handleServicesAdded,
+		OnChanged: driver.handleServicesChanged,
+		OnRemoved: driver.handleServicesRemoved,
+	}
+
+	serviceLbsManagement, err := service_lb.NewServiceLbManagement(driver.getEtcdClient("service-lbs"))
+	if err != nil {
+		return nil, errors.WithMessage(err, "Failed to create service lbs management")
+	}
 	driver.serviceLbsManagement = serviceLbsManagement
 	fmt.Println("Initialized service load balancer management")
 
-	dockerData, err := docker.NewData(driver.getEtcdClient("docker-data"), callbacks)
+	dockerData, err := docker.NewData(driver.getEtcdClient("docker-data"), containerCallbacks, serviceCallbacks, callbacks)
 	if err != nil {
 		return nil, errors.WithMessage(err, "Failed to create docker data handler")
 	}
@@ -120,24 +129,30 @@ func (d *flannelDriver) getEndpoint(dockerNetworkID, endpointID string) (flannel
 	return flannelNetwork, endpoint, nil
 }
 
-func (d *flannelDriver) handleServiceChanged(previousServiceInfo *common.ServiceInfo, currentServiceInfo common.ServiceInfo) {
-	err := d.serviceLbsManagement.UpdateLoadBalancer(currentServiceInfo)
-	if err != nil {
-		log.Printf("Failed to update load balancer for service %s: %v", currentServiceInfo.ID, err)
+func (d *flannelDriver) handleServicesAdded(added []etcd.Item[common.ServiceInfo]) {
+	for _, addedItem := range added {
+		err := d.serviceLbsManagement.EnsureLoadBalancer(addedItem.Value)
+		if err != nil {
+			log.Printf("Failed to create load balancer for service %s: %v", addedItem.Value.ID, err)
+		}
 	}
 }
 
-func (d *flannelDriver) handleServiceAdded(serviceInfo common.ServiceInfo) {
-	err := d.serviceLbsManagement.CreateLoadBalancer(serviceInfo)
-	if err != nil {
-		log.Printf("Failed to create load balancer for service %s: %v", serviceInfo.ID, err)
+func (d *flannelDriver) handleServicesChanged(changed []etcd.ItemChange[common.ServiceInfo]) {
+	for _, changedItem := range changed {
+		err := d.serviceLbsManagement.EnsureLoadBalancer(changedItem.Current)
+		if err != nil {
+			log.Printf("Failed to create load balancer for service %s: %v", changedItem.Current.ID, err)
+		}
 	}
 }
 
-func (d *flannelDriver) handleServiceRemoved(serviceID string) {
-	err := d.serviceLbsManagement.DeleteLoadBalancer(serviceID)
-	if err != nil {
-		log.Printf("Failed to remove load balancer for service %s: %+v\n", serviceID, err)
+func (d *flannelDriver) handleServicesRemoved(removed []etcd.Item[common.ServiceInfo]) {
+	for _, removedItem := range removed {
+		err := d.serviceLbsManagement.DeleteLoadBalancer(removedItem.ID)
+		if err != nil {
+			log.Printf("Failed to remove load balancer for service %s: %+v\n", removedItem.ID, err)
+		}
 	}
 }
 
@@ -192,42 +207,68 @@ func (d *flannelDriver) handleNetworkRemoved(dockerNetworkID string, flannelNetw
 	delete(d.networksByFlannelID, flannelNetworkID)
 }
 
-func (d *flannelDriver) handleContainerAdded(containerInfo common.ContainerInfo) {
-	for dockerNetworkID, ipamIP := range containerInfo.IpamIPs {
+func (d *flannelDriver) handleContainersAdded(added []etcd.ShardItem[common.ContainerInfo]) {
+	for _, addedItem := range added {
+		containerInfo := addedItem.Value
+		for dockerNetworkID, ipamIP := range containerInfo.IpamIPs {
 
-		network, exists := d.networksByDockerID[dockerNetworkID]
-		if !exists {
-			continue
-		}
+			network, exists := d.networksByDockerID[dockerNetworkID]
+			if !exists {
+				continue
+			}
 
-		if !ipamIP.Equal(containerInfo.IPs[dockerNetworkID]) {
-			if network.GetInfo().HostSubnet.Contains(ipamIP) {
-				err := network.GetPool().ReleaseIP(ipamIP.String())
-				if err != nil {
-					log.Printf("Failed to release IPAM IP %s for network %s: %v", ipamIP.String(), dockerNetworkID, err)
+			if !ipamIP.Equal(containerInfo.IPs[dockerNetworkID]) {
+				if network.GetInfo().HostSubnet.Contains(ipamIP) {
+					err := network.GetPool().ReleaseIP(ipamIP.String())
+					if err != nil {
+						log.Printf("Failed to release IPAM IP %s for network %s: %v", ipamIP.String(), dockerNetworkID, err)
+					}
 				}
 			}
 		}
-	}
-}
 
-func (d *flannelDriver) handleContainerChanged(previousContainerInfo *common.ContainerInfo, currentContainerInfo common.ContainerInfo) {
-
-}
-
-func (d *flannelDriver) handleContainerRemoved(containerInfo common.ContainerInfo) {
-	for dockerNetworkID, ip := range containerInfo.IPs {
-
-		network, exists := d.networksByDockerID[dockerNetworkID]
-		if !exists {
-			continue
-		}
-
-		if network.GetInfo().HostSubnet.Contains(ip) {
-			err := network.GetPool().ReleaseIP(ip.String())
+		if containerInfo.ServiceID != "" {
+			err := d.serviceLbsManagement.AddBackendIPsToLoadBalancer(containerInfo.ServiceID, containerInfo.IPs)
 			if err != nil {
-				log.Printf("Failed to release IP %s for network %s: %v", ip.String(), dockerNetworkID, err)
+				log.Printf("error adding backend IPs to load balancer of service %s: %v", containerInfo.ServiceID, err)
 			}
 		}
 	}
 }
+
+func (d *flannelDriver) handleContainersChanged(changed []etcd.ShardItemChange[common.ContainerInfo]) {
+	for _, changedItem := range changed {
+		log.Printf("Received container changed info for container %s on host %s. Previous: %+v, Current: %+v\n", changedItem.ID, changedItem.ShardKey, changedItem.Previous, changedItem.Current)
+	}
+}
+
+func (d *flannelDriver) handleContainersRemoved(removed []etcd.ShardItem[common.ContainerInfo]) {
+	for _, removedItem := range removed {
+		containerInfo := removedItem.Value
+		//for dockerNetworkID, ip := range containerInfo.IPs {
+
+		//network, exists := d.networksByDockerID[dockerNetworkID]
+		//if !exists {
+		//	continue
+		//}
+
+		// This should be handled by IPAM
+		//if network.GetInfo().HostSubnet.Contains(ip) {
+		//	err := network.GetPool().ReleaseIP(ip.String())
+		//	if err != nil {
+		//		log.Printf("Failed to release IP %s for network %s: %v", ip.String(), dockerNetworkID, err)
+		//	}
+		//}
+		//}
+
+		if containerInfo.ServiceID != "" {
+			d.serviceLbsManagement.RemoveBackendIPsFromLoadBalancer(containerInfo.ServiceID, containerInfo.IPs)
+		}
+	}
+}
+
+// TODO: Handle service created, changed and deleted: create, change (?) and delete load balancer
+// Allocate and release IPs and fwmark here, not in service_lbs_management -> ???
+// Store allocated IPs, use sharded distributed store for it
+
+// TODO: Properly handle startup
