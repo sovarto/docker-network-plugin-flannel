@@ -36,7 +36,7 @@ func fwmarkServicesKey(client etcd.Client, networkID string) string {
 }
 
 func fwmarkServiceKey(client etcd.Client, networkID, serviceID string) string {
-	return fmt.Sprintf("%s/%s/%s", fwmarkServicesKey(client, networkID), serviceID)
+	return fmt.Sprintf("%s/%s", fwmarkServicesKey(client, networkID), serviceID)
 }
 
 func NewFwmarksManagement(etcdClient etcd.Client) FwmarksManagement {

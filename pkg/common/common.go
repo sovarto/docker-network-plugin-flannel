@@ -15,8 +15,8 @@ type ContainerInfo struct {
 type ServiceInfo struct {
 	ID         string
 	Name       string
-	VIPs       map[string]net.IP        // networkID -> VIP
-	Containers map[string]ContainerInfo // containerID -> info
+	VIPs       map[string]net.IP                   // networkID -> VIP
+	Containers map[string]map[string]ContainerInfo // hostname -> containerID -> info
 }
 
 type NetworkInfo struct {

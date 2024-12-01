@@ -29,7 +29,7 @@ type Data interface {
 type Callbacks struct {
 	ContainerChanged func(previousContainerInfo *common.ContainerInfo, currentContainerInfo common.ContainerInfo)
 	ContainerAdded   func(containerInfo common.ContainerInfo)
-	ContainerRemoved func(containerInfo common.ContainerInfo)
+	ContainerRemoved func(removedContainerInfo common.ContainerInfo)
 	ServiceChanged   func(previousServiceInfo *common.ServiceInfo, currentServiceInfo common.ServiceInfo)
 	ServiceAdded     func(serviceInfo common.ServiceInfo)
 	ServiceRemoved   func(serviceID string)
@@ -108,15 +108,15 @@ func (d *data) Init() error {
 
 	go d.handleEvents()
 
-	_, _, err = d.etcdClient.Watch(networksKey(d.etcdClient), true, d.networksChangeHandler)
+	_, _, err = d.etcdClient.Watch(d.networksKey(), true, d.networksChangeHandler)
 	if err != nil {
 		return errors.WithMessage(err, "failed to watch for network changes")
 	}
-	_, _, err = d.etcdClient.Watch(containersKey(d.etcdClient, d.hostname), true, d.containersChangeHandler)
+	_, _, err = d.etcdClient.Watch(d.localContainersKey(), true, d.containersChangeHandler)
 	if err != nil {
 		return errors.WithMessage(err, "failed to watch for container changes")
 	}
-	_, _, err = d.etcdClient.Watch(servicesKey(d.etcdClient), true, d.servicesChangeHandler)
+	_, _, err = d.etcdClient.Watch(d.servicesKey(), true, d.servicesChangeHandler)
 	if err != nil {
 		return errors.WithMessage(err, "failed to watch for service changes")
 	}
@@ -141,7 +141,7 @@ func (d *data) handleNetwork(dockerNetworkID string) error {
 	d.flannelNetworkIDtoDockerNetworkID[flannelNetworkID] = dockerNetworkID
 	fmt.Printf("Network %s has flannel network id: %s\n", dockerNetworkID, flannelNetworkID)
 
-	err = storeNetworkInfo(d.etcdClient, dockerNetworkID, flannelNetworkID)
+	err = d.storeNetworkInfo(d.etcdClient, dockerNetworkID, flannelNetworkID)
 	if err != nil {
 		return errors.WithMessagef(err, "Error storing network info for docker network %s", dockerNetworkID)
 	}
@@ -180,50 +180,24 @@ func (d *data) handleDeletedNetwork(dockerNetworkID string) error {
 }
 
 func (d *data) handleContainer(containerID string) error {
-	container, err := d.dockerClient.ContainerInspect(context.Background(), containerID)
+	containerInfo, serviceID, serviceName, err := d.getContainerInfoFromDocker(containerID)
 	if err != nil {
 		return errors.WithMessagef(err, "Error inspecting docker container %s", containerID)
 	}
 
-	serviceID := container.Config.Labels["com.docker.swarm.service.id"]
-	serviceName := container.Config.Labels["com.docker.swarm.service.name"]
-	containerName := strings.TrimLeft(container.Name, "/")
-
-	ips := make(map[string]net.IP)
-	ipamIPs := make(map[string]net.IP)
-
-	containerInfo := common.ContainerInfo{
-		ID:      containerID,
-		Name:    containerName,
-		IPs:     ips,
-		IpamIPs: ipamIPs,
-	}
-
-	for networkName, networkData := range container.NetworkSettings.Networks {
-		if networkName == "host" {
-			continue
-		}
-		networkID := networkData.NetworkID
-		if networkData.IPAddress == "" {
-			log.Printf("Found network %s without IP", networkID)
-		}
-		ip := net.ParseIP(networkData.IPAddress)
-		if ip == nil {
-			log.Printf("Found network %s with invalid IP %s", networkID, networkData.IPAddress)
-		}
-		ips[networkID] = ip
-		if networkData.IPAMConfig != nil && networkData.IPAMConfig.IPv4Address != "" {
-			ipamIP := net.ParseIP(networkData.IPAMConfig.IPv4Address)
-			ipamIPs[networkID] = ipamIP
-		}
-	}
-
-	if len(ips) == 0 {
+	if len(containerInfo.IPs) == 0 {
 		return nil
 	}
 
-	previousContainerInfo := d.containers[containerID]
-	d.containers[containerID] = containerInfo
+	previousContainerInfo := getPtrFromMap(d.containers, containerID)
+	d.containers[containerID] = *containerInfo
+
+	err = d.storeContainerInfo(*containerInfo)
+	if err != nil {
+		return errors.WithMessagef(err, "Error storing container info for docker container %s", containerID)
+	}
+
+	d.invokeContainerCallback(previousContainerInfo, *containerInfo)
 
 	serviceInfo, serviceExists := d.services[serviceID]
 	var previousServiceInfo *common.ServiceInfo
@@ -246,12 +220,6 @@ func (d *data) handleContainer(containerID string) error {
 
 	serviceInfo.Containers[containerID] = containerInfo
 
-	err = storeContainerAndServiceInfo(d.etcdClient, d.hostname, containerInfo, serviceID, serviceName)
-	if err != nil {
-		return errors.WithMessagef(err, "Error storing container and service info for container %s", containerID)
-	}
-
-	d.invokeContainerCallback(&previousContainerInfo, containerInfo)
 	d.invokeServiceCallback(previousServiceInfo, serviceInfo)
 
 	return nil
@@ -301,22 +269,24 @@ func (d *data) syncContainersAndServices() error {
 	if err != nil {
 		return errors.WithMessage(err, "Error loading docker containers info from etcd")
 	}
-	oldContainers := d.containers
-	d.containers = loadedContainers
-	d.invokeContainersCallbacks(oldContainers, loadedContainers)
 
 	loadedServices, err := loadServicesInfo(d.etcdClient)
 	if err != nil {
 		return errors.WithMessage(err, "Error loading docker services info from etcd")
 	}
-	oldServices := d.services
-	d.services = loadedServices
-	d.invokeServicesCallbacks(oldServices, loadedServices)
 
 	containers, err := d.dockerClient.ContainerList(context.Background(), container.ListOptions{})
 	if err != nil {
 		return errors.WithMessage(err, "Error listing docker containers")
 	}
+
+	oldContainers := d.containers
+	d.containers = loadedContainers
+	d.invokeContainersCallbacks(oldContainers, loadedContainers)
+
+	oldServices := d.services
+	d.services = loadedServices
+	d.invokeServicesCallbacks(oldServices, loadedServices)
 
 	for _, container := range containers {
 		err = d.handleContainer(container.ID)
@@ -435,7 +405,7 @@ func (d *data) handleDeletedContainer(containerID string) error {
 			if err != nil {
 				return errors.WithMessagef(err, "Error deleting container %s from service %s", containerID, serviceID)
 			}
-			if d.callbacks.ServiceAdded != nil {
+			if d.callbacks.ServiceChanged != nil {
 				d.callbacks.ServiceChanged(previousServiceInfo, serviceInfo)
 			}
 			break
@@ -477,14 +447,6 @@ func (d *data) servicesChangeHandler(watcher clientv3.WatchChan, prefix string) 
 			}
 		}
 	}
-}
-
-func (d *data) invokeServiceCallback(previous *common.ServiceInfo, current common.ServiceInfo) {
-	invokeItemCallback(previous, current, d.callbacks.ServiceAdded, d.callbacks.ServiceChanged)
-}
-
-func (d *data) invokeContainerCallback(previous *common.ContainerInfo, current common.ContainerInfo) {
-	invokeItemCallback(previous, current, d.callbacks.ContainerAdded, d.callbacks.ContainerChanged)
 }
 
 func (d *data) invokeServicesCallbacks(previousServiceInfos map[string]common.ServiceInfo, currentServiceInfos map[string]common.ServiceInfo) {
@@ -580,4 +542,11 @@ func invokeItemsCallbacks[T any](
 			}
 		}
 	}
+}
+
+func getPtrFromMap[K comparable, V any](m map[K]V, key K) *V {
+	if val, ok := m[key]; ok {
+		return &val
+	}
+	return nil
 }
