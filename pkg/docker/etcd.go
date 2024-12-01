@@ -133,20 +133,3 @@ func deleteContainerInfo(client etcd.Client, nodeName, containerID string) error
 func deleteContainerFromServiceInfo(client etcd.Client, serviceID, containerID string) error {
 	return deleteKey(client, serviceContainerKey(client, serviceID, containerID), true)
 }
-
-func (d *data) deleteKey(key string, withPrefix bool) error {
-	_, err := etcd.WithConnection(d.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
-		options := []clientv3.OpOption{}
-		if withPrefix {
-			options = append(options, clientv3.WithPrefix())
-		}
-		_, err := connection.Client.Delete(connection.Ctx, key, options...)
-		if err != nil {
-			return struct{}{}, err
-		}
-
-		return struct{}{}, nil
-	})
-
-	return err
-}

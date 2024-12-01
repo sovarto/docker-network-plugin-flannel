@@ -44,14 +44,14 @@ type data struct {
 	flannelNetworkIDtoDockerNetworkID map[string]string
 	etcdClient                        etcd.Client
 	hostname                          string
-	containers                        map[string]common.ContainerInfo // containerID -> info
-	services                          map[string]common.ServiceInfo   // serviceID -> info
-	callbacks                         Callbacks
+	containers                        etcd.ShardedDistributedStore[common.ContainerInfo]
+	serviceContainers                 map[string]ServiceContainersServiceInfo
+	services                          map[string]common.ServiceInfo // serviceID -> info
 	isManagerNode                     bool
 	sync.Mutex
 }
 
-func NewData(etcdClient etcd.Client, callbacks Callbacks) (Data, error) {
+func NewData(etcdClient etcd.Client, containerHandlers etcd.Handlers[common.ContainerInfo]) (Data, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, errors.WithMessage(err, "error getting hostname")
@@ -76,9 +76,8 @@ func NewData(etcdClient etcd.Client, callbacks Callbacks) (Data, error) {
 		dockerClient:                      dockerClient,
 		dockerNetworkIDtoFlannelNetworkID: make(map[string]string),
 		flannelNetworkIDtoDockerNetworkID: make(map[string]string),
-		containers:                        make(map[string]common.ContainerInfo),
+		containers:                        etcd.NewShardedDistributedStore(etcdClient.CreateSubClient("containers"), hostname, containerHandlers),
 		services:                          make(map[string]common.ServiceInfo),
-		callbacks:                         callbacks,
 		hostname:                          hostname,
 		isManagerNode:                     info.Swarm.ControlAvailable,
 	}
@@ -542,11 +541,4 @@ func invokeItemsCallbacks[T any](
 			}
 		}
 	}
-}
-
-func getPtrFromMap[K comparable, V any](m map[K]V, key K) *V {
-	if val, ok := m[key]; ok {
-		return &val
-	}
-	return nil
 }

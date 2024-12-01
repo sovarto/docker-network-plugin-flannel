@@ -2,14 +2,10 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/pkg/errors"
-	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
-	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"log"
 	"net"
 	"strings"
@@ -26,71 +22,14 @@ func (d *data) syncContainers() error {
 
 	fmt.Println("Syncing containers...")
 
-	rawContainers, err := d.dockerClient.ContainerList(context.Background(), container.ListOptions{})
+	containerInfos, containerIDtoServiceID, containerIDtoServiceName, err := d.getContainersInfosFromDocker()
+
+	err = d.containers.Sync(containerInfos)
 	if err != nil {
-		return errors.WithMessage(err, "Error listing docker containers")
+		return errors.WithMessage(err, "Error syncing containers")
 	}
 
-	containerToServiceID := map[string]string{}
-	containerToServiceName := map[string]string{}
-	containers := map[string]common.ContainerInfo{}
-
-	for _, container := range rawContainers {
-		containerInfo, serviceID, serviceName, err := d.getContainerInfoFromDocker(container.ID)
-		if err != nil {
-			log.Printf("Error getting container info for container with ID %s. Skipping...\n", container.ID)
-			continue
-		}
-		containers[containerInfo.ID] = *containerInfo
-		containerToServiceID[container.ID] = serviceID
-		containerToServiceName[container.ID] = serviceName
-	}
-
-	toBeDeletedFromInternalState, _ := lo.Difference(lo.Keys(d.containers), lo.Keys(containers))
-
-	for containerID, containerInfo := range containers {
-		previousContainerInfo := getPtrFromMap(d.containers, containerID)
-		d.containers[containerID] = containerInfo
-
-		err = d.storeContainerInfo(containerInfo)
-		if err != nil {
-			log.Printf("Error storing container info for container with ID %s. Skipping...\n", containerID)
-			continue
-		}
-
-		d.invokeContainerCallback(previousContainerInfo, containerInfo)
-	}
-
-	for _, containerID := range toBeDeletedFromInternalState {
-		containerInfo := d.containers[containerID]
-		delete(d.containers, containerID)
-		err = d.deleteKey(d.localContainerKey(containerID), true)
-		if err != nil {
-			log.Printf("Error deleting container info for container with ID %s. Skipping...\n", containerID)
-			continue
-		}
-
-		if d.callbacks.ContainerRemoved != nil {
-			d.callbacks.ContainerRemoved(containerInfo)
-		}
-	}
-
-	loadedContainers, err := d.loadLocalContainersInfo()
-	if err != nil {
-		return errors.WithMessage(err, "Error loading docker containers info from etcd")
-	}
-
-	toBeDeletedFromEtcd, _ := lo.Difference(lo.Keys(loadedContainers), lo.Keys(containers))
-
-	for _, containerID := range toBeDeletedFromEtcd {
-		err = d.deleteKey(d.localContainerKey(containerID), true)
-		if err != nil {
-			log.Printf("Error deleting container info for container with ID %s. Skipping...\n", containerID)
-			continue
-		}
-	}
-
-	err = d.syncServicesContainers(d.containers, containerToServiceID, containerToServiceName)
+	err = d.syncServicesContainers(containerInfos, containerIDtoServiceID, containerIDtoServiceName)
 	if err != nil {
 		return errors.WithMessage(err, "Error syncing services containers")
 	}
@@ -98,8 +37,28 @@ func (d *data) syncContainers() error {
 	return nil
 }
 
-func (d *data) getContainersInfosFromDocker() {
+func (d *data) getContainersInfosFromDocker() (containerInfos map[string]common.ContainerInfo, containerIDtoServiceID map[string]string, containerIDtoServiceName map[string]string, err error) {
+	rawContainers, err := d.dockerClient.ContainerList(context.Background(), container.ListOptions{})
+	if err != nil {
+		return nil, nil, nil, errors.WithMessage(err, "Error listing docker containers")
+	}
 
+	containerIDtoServiceID = map[string]string{}
+	containerIDtoServiceName = map[string]string{}
+	containerInfos = map[string]common.ContainerInfo{}
+
+	for _, container := range rawContainers {
+		containerInfo, serviceID, serviceName, err := d.getContainerInfoFromDocker(container.ID)
+		if err != nil {
+			log.Printf("Error getting container info for container with ID %s. Skipping...\n", container.ID)
+			continue
+		}
+		containerInfos[containerInfo.ID] = *containerInfo
+		containerIDtoServiceID[container.ID] = serviceID
+		containerIDtoServiceName[container.ID] = serviceName
+	}
+
+	return
 }
 
 func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *common.ContainerInfo, serviceID string, serviceName string, err error) {
@@ -141,63 +100,5 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *co
 		}
 	}
 
-	return containerInfo, serviceID, serviceName, nil
-}
-
-func (d *data) localContainersKey() string {
-	return d.etcdClient.GetKey("containers", d.hostname)
-}
-
-func (d *data) localContainerKey(id string) string {
-	return fmt.Sprintf("%s/%s", d.localContainersKey(), id)
-}
-
-func (d *data) storeContainerInfo(containerInfo common.ContainerInfo) error {
-	_, err := etcd.WithConnection(d.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
-		containerKey := d.localContainerKey(containerInfo.ID)
-
-		containerInfoBytes, err := json.Marshal(containerInfo)
-		if err != nil {
-			return struct{}{}, errors.WithMessagef(err, "Failed to serialize container info %+v", containerInfo)
-		}
-		containerInfoString := string(containerInfoBytes)
-		_, err = connection.PutIfNewOrChanged(containerKey, containerInfoString)
-
-		if err != nil {
-			return struct{}{}, errors.WithMessagef(err, "Failed to store container info %+v", containerInfo)
-		}
-
-		return struct{}{}, nil
-	})
-
-	return err
-}
-
-func (d *data) loadLocalContainersInfo() (map[string]common.ContainerInfo, error) {
-	return etcd.WithConnection(d.etcdClient, func(connection *etcd.Connection) (map[string]common.ContainerInfo, error) {
-		containersKey := d.localContainersKey()
-
-		resp, err := connection.Client.Get(connection.Ctx, containersKey, clientv3.WithPrefix())
-		if err != nil {
-			return nil, errors.WithMessagef(err, "error reading container info for node %s: %+v", d.hostname, err)
-		}
-
-		result := map[string]common.ContainerInfo{}
-
-		for _, kv := range resp.Kvs {
-			var containerInfo common.ContainerInfo
-			err = json.Unmarshal(kv.Value, &containerInfo)
-			if err != nil {
-				return nil, errors.WithMessagef(err, "error parsing container info for node %s: err: %+v, value: %+v", d.hostname, err, string(kv.Value))
-			}
-
-			result[containerInfo.ID] = containerInfo
-		}
-
-		return result, nil
-	})
-}
-
-func (d *data) invokeContainerCallback(previous *common.ContainerInfo, current common.ContainerInfo) {
-	invokeItemCallback(previous, current, d.callbacks.ContainerAdded, d.callbacks.ContainerChanged)
+	return
 }
