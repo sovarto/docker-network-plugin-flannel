@@ -335,7 +335,7 @@ func (s *shardedDistributedStore[T]) parseItem(kv *mvccpb.KeyValue, prefix strin
 	itemID = parts[1]
 	err = json.Unmarshal(kv.Value, &item)
 	if err != nil {
-		err = errors.WithMessagef(err, "error parsing item %s for shard %s: err: %+v, value: %+v", itemID, shardKey, err, string(kv.Value))
+		err = errors.WithMessagef(err, "error parsing item %s for shard %s: err: %+v, value: %+v, prefix: %s", itemID, shardKey, err, string(kv.Value), prefix)
 		return
 	}
 

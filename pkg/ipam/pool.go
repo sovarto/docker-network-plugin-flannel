@@ -163,7 +163,7 @@ func (p *etcdPool) ReleaseIP(ip string) error {
 
 	if !result.Success {
 		p.reservedIPs[ip] = result.Reservation
-		return fmt.Errorf("couldn't release ip %s for pool %s. It has since been reserved like this: %+v. This shouldn't happen.\n", ip, p.poolID, result.Reservation)
+		return fmt.Errorf("couldn't release ip %s for pool %s. It has since been reserved like this: Reservation Type: %s; IP: %s; MAC %s, Reserved At: %s. This shouldn't happen.\n", ip, p.poolID, result.Reservation.reservationType, result.Reservation.ip.String(), result.Reservation.mac, result.Reservation.reservedAt.Format(time.RFC3339))
 	}
 
 	delete(p.reservedIPs, ip)
