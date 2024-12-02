@@ -246,6 +246,7 @@ func (d *flannelDriver) handleNetworksRemoved(removed []etcd.Item[docker.Network
 		networkInfo := removedItem.Value
 		network, exists := d.getNetwork(networkInfo.DockerID, networkInfo.FlannelID)
 		if exists {
+			fmt.Printf("Deleting network %s\n", networkInfo.FlannelID)
 			err := network.Delete()
 			if err != nil {
 				log.Printf("Failed to remove network '%s': %+v\n", networkInfo.FlannelID, err)
