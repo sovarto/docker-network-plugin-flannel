@@ -10,6 +10,7 @@ import (
 	"golang.org/x/sys/unix"
 	"log"
 	"net"
+	"strings"
 )
 
 type BridgeInterface interface {
@@ -77,9 +78,13 @@ func (b *bridgeInterface) Ensure() error {
 	}
 
 	log.Printf("Setting route: %+v", route)
-	if err := netlink.RouteReplace(route); err != nil {
-		log.Printf("Failed to set route %+v for interface %s. err:%+v\n", route, b.interfaceName, err)
-		return err
+	if err := netlink.RouteAdd(route); err != nil {
+		if strings.Contains(err.Error(), "file exists") {
+			if err := netlink.RouteReplace(route); err != nil {
+				log.Printf("Failed to set route %+v for interface %s. err:%+v\n", route, b.interfaceName, err)
+				return err
+			}
+		}
 	}
 
 	b.route = *route
