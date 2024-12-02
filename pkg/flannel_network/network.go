@@ -187,13 +187,9 @@ type Config struct {
 	Backend   BackendConfig `json:"Backend"`
 }
 
-type BackendData struct {
-	VNI int `json:"VNI"`
-}
-
 type BackendConfig struct {
-	Type        string      `json:"Type"`
-	BackendData BackendData `json:"BackendData"`
+	Type string `json:"Type"`
+	VNI  int    `json:"VNI"`
 }
 
 func flannelConfigPrefixKey(client etcd.Client, flannelNetworkID string) string {
@@ -228,9 +224,7 @@ func (n *network) ensureFlannelConfig() (struct{}, error) {
 			SubnetLen: n.hostSubnetSize,
 			Backend: BackendConfig{
 				Type: "vxlan",
-				BackendData: BackendData{
-					VNI: n.vni,
-				},
+				VNI:  n.vni,
 			},
 		}
 
