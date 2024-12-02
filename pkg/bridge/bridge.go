@@ -77,7 +77,6 @@ func (b *bridgeInterface) Ensure() error {
 		Protocol:  unix.RTPROT_KERNEL,
 	}
 
-	log.Printf("Setting route: %+v", route)
 	if err := netlink.RouteAdd(route); err != nil {
 		if strings.Contains(err.Error(), "file exists") {
 			if err := netlink.RouteReplace(route); err != nil {
