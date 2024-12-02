@@ -60,7 +60,6 @@ func NewFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelO
 	numIPsPerNode := int(math.Pow(2, float64(32-defaultHostSubnetSize)))
 	numNodesPerNetwork := int(math.Pow(2, float64(defaultHostSubnetSize-networkSubnetSize)))
 	fmt.Printf("The address space settings result in support for a total of %d docker networks, %d nodes and %d IP addresses per node and docker network (including service VIPs)\n", numNetworks, numNodesPerNetwork, numIPsPerNode)
-	fmt.Println("Initialized address space")
 
 	return driver
 }
@@ -82,13 +81,15 @@ func (d *flannelDriver) Serve() error {
 }
 
 func (d *flannelDriver) Init() error {
+	fmt.Println("before wait until available")
 	err := d.getEtcdClient("").WaitUntilAvailable(5*time.Second, 6)
-
+	fmt.Println("after wait until available")
 	globalAddressSpace, err := ipam.NewEtcdBasedAddressSpace(d.completeAddressSpace, d.networkSubnetSize, d.getEtcdClient("address-space"))
 	if err != nil {
 		return errors.WithMessage(err, "Failed to create address space")
 	}
 	d.globalAddressSpace = globalAddressSpace
+	fmt.Println("Initialized address space")
 
 	containerCallbacks := etcd.ShardItemsHandlers[docker.ContainerInfo]{
 		OnAdded:   d.handleContainersAdded,
