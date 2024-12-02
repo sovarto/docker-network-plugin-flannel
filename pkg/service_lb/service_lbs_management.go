@@ -5,6 +5,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/docker"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/flannel_network"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/ipam"
@@ -23,7 +24,7 @@ import (
 type ServiceLbsManagement interface {
 	AddNetwork(dockerNetworkID string, network flannel_network.Network) error
 	DeleteNetwork(dockerNetworkID string) error
-	EnsureLoadBalancer(service common.ServiceInfo) error
+	EnsureLoadBalancer(service docker.ServiceInfo) error
 	DeleteLoadBalancer(serviceID string) error
 	AddBackendIPsToLoadBalancer(serviceID string, ips map[string]net.IP) error
 	RemoveBackendIPsFromLoadBalancer(serviceID string, ips map[string]net.IP) error
@@ -116,7 +117,7 @@ func (m *serviceLbManagement) RemoveBackendIPsFromLoadBalancer(serviceID string,
 	return nil
 }
 
-func (m *serviceLbManagement) EnsureLoadBalancer(service common.ServiceInfo) error {
+func (m *serviceLbManagement) EnsureLoadBalancer(service docker.ServiceInfo) error {
 	err := m.createOrUpdateLoadBalancer(service.ID, maps.Keys(service.IpamVIPs))
 	if err != nil {
 		return errors.WithMessagef(err, "error ensuring load balancer for service %s", service.ID)

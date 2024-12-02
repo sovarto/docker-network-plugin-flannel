@@ -5,21 +5,6 @@ import (
 	"strings"
 )
 
-type ContainerInfo struct {
-	ID          string            `json:"ContainerID"`
-	Name        string            `json:"ContainerName"`
-	ServiceID   string            `json:"ServiceID"`
-	ServiceName string            `json:"ServiceName"`
-	IPs         map[string]net.IP `json:"IPs"`     // networkID -> IP
-	IpamIPs     map[string]net.IP `json:"IpamIPs"` // networkID -> IP
-}
-
-type ServiceInfo struct {
-	ID       string            `json:"ServiceID"`
-	Name     string            `json:"ServiceName"`
-	IpamVIPs map[string]net.IP `json:"IpamVIPs"` // networkID -> VIP
-}
-
 type NetworkInfo struct {
 	FlannelID    string
 	MTU          int
@@ -40,41 +25,6 @@ func GetPtrFromMap[K comparable, V any](m map[K]V, key K) *V {
 
 type Equaler interface {
 	Equals(other Equaler) bool
-}
-
-func (c ContainerInfo) Equals(other Equaler) bool {
-	// Type assertion to *ContainerInfo
-	o, ok := other.(ContainerInfo)
-	if !ok {
-		return false
-	}
-	if c.ID != o.ID || c.Name != o.Name || c.ServiceID != o.ServiceID || c.ServiceName != o.ServiceName {
-		return false
-	}
-	if !CompareIPMaps(c.IPs, o.IPs) {
-		return false
-	}
-	if !CompareIPMaps(c.IpamIPs, o.IpamIPs) {
-		return false
-	}
-
-	return true
-}
-
-func (c ServiceInfo) Equals(other Equaler) bool {
-	// Type assertion to *ContainerInfo
-	o, ok := other.(ServiceInfo)
-	if !ok {
-		return false
-	}
-	if c.ID != o.ID || c.Name != o.Name {
-		return false
-	}
-	if !CompareIPMaps(c.IpamVIPs, o.IpamVIPs) {
-		return false
-	}
-
-	return true
 }
 
 func CompareIPMaps(a, b map[string]net.IP) bool {

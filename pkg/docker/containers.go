@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/pkg/errors"
-	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"log"
 	"net"
 	"strings"
@@ -41,13 +40,13 @@ func (d *data) syncContainers() error {
 	return nil
 }
 
-func (d *data) getContainersInfosFromDocker() (containerInfos map[string]common.ContainerInfo, err error) {
+func (d *data) getContainersInfosFromDocker() (containerInfos map[string]ContainerInfo, err error) {
 	rawContainers, err := d.dockerClient.ContainerList(context.Background(), container.ListOptions{})
 	if err != nil {
 		return nil, errors.WithMessage(err, "Error listing docker containers")
 	}
 
-	containerInfos = map[string]common.ContainerInfo{}
+	containerInfos = map[string]ContainerInfo{}
 
 	for _, container := range rawContainers {
 		containerInfo, err := d.getContainerInfoFromDocker(container.ID)
@@ -61,7 +60,7 @@ func (d *data) getContainersInfosFromDocker() (containerInfos map[string]common.
 	return
 }
 
-func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *common.ContainerInfo, err error) {
+func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *ContainerInfo, err error) {
 	container, err := d.dockerClient.ContainerInspect(context.Background(), containerID)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "Error inspecting docker container %s", containerID)
@@ -74,7 +73,7 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *co
 	ips := make(map[string]net.IP)
 	ipamIPs := make(map[string]net.IP)
 
-	containerInfo = &common.ContainerInfo{
+	containerInfo = &ContainerInfo{
 		ID:          containerID,
 		Name:        containerName,
 		ServiceID:   serviceID,

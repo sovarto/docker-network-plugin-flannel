@@ -16,6 +16,7 @@ type Client interface {
 	CreateSubClient(subKeys ...string) Client
 	GetEndpoints() []string
 	Watch(key string, withPrefix bool, handler func(watcher clientv3.WatchChan, key string)) (clientv3.WatchChan, *Connection, error)
+	WaitUntilAvailable(retryDelay time.Duration, maxRetries int) error
 }
 
 func (c *etcdClient) Watch(key string, withPrefix bool, handler func(watchChan clientv3.WatchChan, key string)) (clientv3.WatchChan, *Connection, error) {
@@ -85,4 +86,31 @@ func NewEtcdClient(endpoints []string, dialTimeout time.Duration, prefix string)
 		dialTimeout: dialTimeout,
 		prefix:      strings.TrimRight(prefix, "/"),
 	}
+}
+
+func (c *etcdClient) WaitUntilAvailable(retryDelay time.Duration, maxRetries int) error {
+	var err error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		connection, err := c.NewConnection(true)
+		if err != nil {
+			log.Printf("Attempt %d: Failed to create etcd client: %v", attempt, err)
+		} else {
+			_, err = connection.Client.Get(connection.Ctx, "healthcheck")
+			if err == nil {
+				log.Printf("Successfully connected to etcd on attempt %d", attempt)
+				return nil
+			}
+			log.Printf("Attempt %d: etcd not available: %v", attempt, err)
+			connection.Close()
+		}
+
+		// Wait before the next retry
+		if attempt < maxRetries {
+			log.Printf("Waiting for %v before next retry...", retryDelay)
+			time.Sleep(retryDelay)
+		}
+	}
+
+	return fmt.Errorf("failed to connect to etcd after %d attempts: last error: %w", maxRetries, err)
 }
