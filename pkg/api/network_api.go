@@ -41,8 +41,9 @@ type NetworkDriver interface {
 }
 
 func InitNetworkMux(h *sdk.Handler, n NetworkDriver) {
-	o := CommonHandlerOptions{Api: "Network", IsInitialized: n.IsInitialized}
+	o := CommonHandlerOptions{Api: "IPAM", IsInitialized: func() bool { return true }}
 	h.HandleFunc(capabilitiesPath, MakeHandlerWithOutput(o, n.GetCapabilities))
+	o = CommonHandlerOptions{Api: "Network", IsInitialized: n.IsInitialized}
 	h.HandleFunc(createNetworkPath, MakeHandlerWithInput(o, n.CreateNetwork))
 	h.HandleFunc(allocateNetworkPath, MakeHandlerWithInputAndOutput(o, n.AllocateNetwork))
 	h.HandleFunc(deleteNetworkPath, MakeHandlerWithInput(o, n.DeleteNetwork))
