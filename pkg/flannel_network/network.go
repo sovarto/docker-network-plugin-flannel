@@ -517,14 +517,11 @@ func (n *network) GetEndpoint(id string) Endpoint {
 
 func deleteFileIfExists(filename string) error {
 	if _, err := os.Stat(filename); err == nil {
-		// File exists, proceed to delete
 		if err := os.Remove(filename); err != nil {
 			return fmt.Errorf("error deleting file: %w", err)
 		}
-		fmt.Println("File deleted successfully.")
 	} else if os.IsNotExist(err) {
-		// File does not exist, nothing to delete
-		fmt.Println("File does not exist.")
+		fmt.Printf("File %s does not exist.\n", filename)
 	} else {
 		// An error occurred while checking if the file exists
 		return fmt.Errorf("error checking file: %w", err)
