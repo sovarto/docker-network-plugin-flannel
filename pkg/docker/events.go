@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"fmt"
 	"github.com/docker/docker/api/types/events"
 	"log"
 	"time"
