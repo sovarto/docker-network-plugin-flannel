@@ -4,8 +4,6 @@ import (
 	"fmt"
 	docker_ipam "github.com/docker/go-plugins-helpers/ipam"
 	"github.com/pkg/errors"
-	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
-	"github.com/sovarto/FlannelNetworkPlugin/pkg/flannel_network"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/ipam"
 	"log"
 	"strings"
@@ -35,32 +33,21 @@ func (d *flannelDriver) RequestPool(request *docker_ipam.RequestPoolRequest) (*d
 	}
 
 	poolID := "FlannelPool"
-	flannelNetworkId, exists := request.Options["flannel-id"]
-	if exists && flannelNetworkId != "" {
-		poolID = fmt.Sprintf("%s-%s", poolID, flannelNetworkId)
+	flannelNetworkID, exists := request.Options["flannel-id"]
+	if exists && flannelNetworkID != "" {
+		poolID = fmt.Sprintf("%s-%s", poolID, flannelNetworkID)
 	} else {
 		return nil, fmt.Errorf("the IPAM driver option 'flannel-id' needs to be set to a unique ID")
 	}
 
-	networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(flannelNetworkId)
+	network, err := d.getOrCreateNetwork("", flannelNetworkID)
 	if err != nil {
-		return nil, errors.WithMessagef(err, "failed to get network subnet pool for network '%s'", flannelNetworkId)
-	}
-
-	_, exists = d.networksByFlannelID[flannelNetworkId]
-	if !exists {
-		network, err := flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), flannelNetworkId, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions)
-
-		if err != nil {
-			return nil, errors.WithMessagef(err, "failed to ensure network '%s' is operational", flannelNetworkId)
-		}
-
-		d.networksByFlannelID[flannelNetworkId] = network
+		return nil, errors.WithMessagef(err, "failed to ensure network '%s' is operational", flannelNetworkID)
 	}
 
 	return &docker_ipam.RequestPoolResponse{
 		PoolID: poolID,
-		Pool:   networkSubnet.String(),
+		Pool:   network.GetInfo().Network.String(),
 	}, nil
 }
 

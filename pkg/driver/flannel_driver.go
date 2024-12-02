@@ -33,6 +33,7 @@ type flannelDriver struct {
 	networksByDockerID    map[string]flannel_network.Network // docker network ID -> network
 	serviceLbsManagement  service_lb.ServiceLbsManagement
 	dockerData            docker.Data
+	vniStart              int
 	sync.Mutex
 }
 
@@ -45,6 +46,7 @@ func NewFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelO
 		defaultHostSubnetSize: defaultHostSubnetSize,
 		networksByFlannelID:   make(map[string]flannel_network.Network),
 		networksByDockerID:    make(map[string]flannel_network.Network),
+		vniStart:              6514,
 	}
 
 	globalAddressSpace, err := ipam.NewEtcdBasedAddressSpace(completeSpace, networkSubnetSize, driver.getEtcdClient("address-space"))
@@ -160,39 +162,50 @@ func (d *flannelDriver) getNetwork(dockerNetworkID string, flannelNetworkID stri
 	network, exists := d.networksByDockerID[dockerNetworkID]
 	if !exists {
 		network, exists = d.networksByFlannelID[flannelNetworkID]
+		if exists && dockerNetworkID != "" {
+			d.networksByDockerID[dockerNetworkID] = network
+		}
+	} else if flannelNetworkID != "" {
+		d.networksByFlannelID[flannelNetworkID] = network
 	}
 
 	return network, exists
 }
 
-func (d *flannelDriver) handleNetworkAddedOrChanged(dockerNetworkID string, flannelNetworkID string) {
+func (d *flannelDriver) getOrCreateNetwork(dockerNetworkID string, flannelNetworkID string) (flannel_network.Network, error) {
 	network, exists := d.getNetwork(dockerNetworkID, flannelNetworkID)
-	if !exists {
-		if flannelNetworkID != "" {
-			networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(flannelNetworkID)
-			if err != nil {
-				log.Printf("failed to get network subnet pool for network '%s': %+v\n", flannelNetworkID, err)
-				return
-			}
+	if exists {
+		return network, nil
+	}
 
-			network, err = flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), flannelNetworkID, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions)
+	networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(flannelNetworkID)
+	if err != nil {
+		return nil, errors.WithMessagef(err, "failed to get network subnet pool for network '%s'", flannelNetworkID)
+	}
 
-			if err != nil {
-				log.Printf("failed to ensure network '%s' is operational: %+v\n", flannelNetworkID, err)
-				return
-			}
+	vni := d.vniStart + common.Max(len(d.networksByFlannelID), len(d.networksByDockerID)) + 1
+	network, err = flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), flannelNetworkID, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions, vni)
 
-			err = d.serviceLbsManagement.AddNetwork(dockerNetworkID, network)
-			if err != nil {
-				log.Printf("Failed to add network '%s' to service load balancer management: %+v\n", flannelNetworkID, err)
-			}
-		} else {
-			log.Printf("network changed or added with docker ID %s but without flannel network ID. This shouldn't happen\n", dockerNetworkID)
-		}
+	if err != nil {
+		return nil, errors.WithMessagef(err, "failed to ensure network '%s' is operational", flannelNetworkID)
+	}
+
+	err = d.serviceLbsManagement.AddNetwork(dockerNetworkID, network)
+	if err != nil {
+		return nil, errors.WithMessagef(err, "Failed to add network '%s' to service load balancer management", flannelNetworkID)
 	}
 
 	d.networksByDockerID[dockerNetworkID] = network
 	d.networksByFlannelID[flannelNetworkID] = network
+
+	return network, nil
+}
+
+func (d *flannelDriver) handleNetworkAddedOrChanged(dockerNetworkID string, flannelNetworkID string) {
+	_, err := d.getOrCreateNetwork(dockerNetworkID, flannelNetworkID)
+	if err != nil {
+		log.Printf("Failed to handle added or changed network %s / %s: %s", dockerNetworkID, flannelNetworkID, err)
+	}
 }
 
 func (d *flannelDriver) handleNetworkRemoved(dockerNetworkID string, flannelNetworkID string) {

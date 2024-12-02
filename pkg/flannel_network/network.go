@@ -45,10 +45,11 @@ type network struct {
 	pool                  ipam.AddressPool
 	bridge                bridge.BridgeInterface
 	endpoints             map[string]Endpoint
+	vni                   int
 	sync.Mutex
 }
 
-func NewNetwork(etcdClient etcd.Client, flannelID string, networkSubnet net.IPNet, hostSubnetSize int, defaultFlannelOptions []string) (Network, error) {
+func NewNetwork(etcdClient etcd.Client, flannelID string, networkSubnet net.IPNet, hostSubnetSize int, defaultFlannelOptions []string, vni int) (Network, error) {
 	result := &network{
 		flannelID:             flannelID,
 		etcdClient:            etcdClient,
@@ -56,6 +57,7 @@ func NewNetwork(etcdClient etcd.Client, flannelID string, networkSubnet net.IPNe
 		defaultFlannelOptions: defaultFlannelOptions,
 		hostSubnetSize:        hostSubnetSize,
 		endpoints:             make(map[string]Endpoint),
+		vni:                   vni,
 	}
 
 	err := result.
@@ -185,8 +187,13 @@ type Config struct {
 	Backend   BackendConfig `json:"Backend"`
 }
 
+type BackendData struct {
+	VNI int `json:"VNI"`
+}
+
 type BackendConfig struct {
-	Type string `json:"Type"`
+	Type        string      `json:"Type"`
+	BackendData BackendData `json:"BackendData"`
 }
 
 func flannelConfigPrefixKey(client etcd.Client, flannelNetworkID string) string {
@@ -221,6 +228,9 @@ func (n *network) ensureFlannelConfig() (struct{}, error) {
 			SubnetLen: n.hostSubnetSize,
 			Backend: BackendConfig{
 				Type: "vxlan",
+				BackendData: BackendData{
+					VNI: n.vni,
+				},
 			},
 		}
 
