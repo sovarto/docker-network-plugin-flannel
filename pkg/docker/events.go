@@ -29,7 +29,6 @@ func (d *data) handleEvent(event events.Message) error {
 	d.Lock()
 	defer d.Unlock()
 
-	fmt.Printf("Received docker event: %+v\n", event)
 	switch event.Type {
 	case events.NetworkEventType:
 		switch event.Action {
