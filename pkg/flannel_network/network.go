@@ -242,12 +242,10 @@ func (n *network) ensureFlannelConfig() (struct{}, error) {
 		}
 
 		configString := string(configBytes)
-
-		txn := connection.Client.Txn(connection.Ctx).If(
-			clientv3.Compare(clientv3.CreateRevision(networkConfigKey), "=", 0),
-		).Then(
-			clientv3.OpPut(networkConfigKey, configString),
-		)
+		fmt.Printf("Flannel config: %s\n", configString)
+		txn := connection.Client.Txn(connection.Ctx).
+			If(clientv3.Compare(clientv3.CreateRevision(networkConfigKey), "=", 0)).
+			Then(clientv3.OpPut(networkConfigKey, configString))
 
 		resp, err := txn.Commit()
 		if err != nil {
