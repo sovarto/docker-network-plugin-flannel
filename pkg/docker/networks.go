@@ -96,6 +96,7 @@ func (d *data) getNetworkInfoFromDocker(dockerNetworkID string) (networkInfo *Ne
 }
 
 func (d *data) handleNetwork(dockerNetworkID string) error {
+	fmt.Printf("Handling docker network %s\n", dockerNetworkID)
 	networkInfo, ignored, err := d.getNetworkInfoFromDocker(dockerNetworkID)
 	if err != nil {
 		return errors.WithMessagef(err, "Error inspecting docker network %s", dockerNetworkID)
@@ -112,5 +113,6 @@ func (d *data) handleNetwork(dockerNetworkID string) error {
 }
 
 func (d *data) handleDeletedNetwork(dockerNetworkID string) error {
+	fmt.Printf("Deleting network %s\n", dockerNetworkID)
 	return d.networks.(etcd.WriteOnlyStore[NetworkInfo]).DeleteItem(dockerNetworkID)
 }

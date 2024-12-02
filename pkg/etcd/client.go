@@ -94,20 +94,20 @@ func (c *etcdClient) WaitUntilAvailable(retryDelay time.Duration, maxRetries int
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		connection, err := c.NewConnection(true)
 		if err != nil {
-			fmt.Printf("Attempt %d: Failed to create etcd client: %v", attempt, err)
+			fmt.Printf("Attempt %d: Failed to create etcd client: %v\n", attempt, err)
 		} else {
 			_, err = connection.Client.Get(connection.Ctx, "healthcheck")
 			if err == nil {
-				fmt.Printf("Successfully connected to etcd on attempt %d", attempt)
+				fmt.Printf("Successfully connected to etcd on attempt %d\n", attempt)
 				return nil
 			}
-			fmt.Printf("Attempt %d: etcd not available: %v", attempt, err)
+			fmt.Printf("Attempt %d: etcd not available: %v\n", attempt, err)
 			connection.Close()
 		}
 
 		// Wait before the next retry
 		if attempt < maxRetries {
-			fmt.Printf("Waiting for %v before next retry...", retryDelay)
+			fmt.Printf("Waiting for %v before next retry...\n", retryDelay)
 			time.Sleep(retryDelay)
 		}
 	}

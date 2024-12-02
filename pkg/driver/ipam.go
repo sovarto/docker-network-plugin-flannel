@@ -91,6 +91,10 @@ func (d *flannelDriver) RequestAddress(request *docker_ipam.RequestAddressReques
 }
 
 func (d *flannelDriver) ReleaseAddress(request *docker_ipam.ReleaseAddressRequest) error {
+	if request.Address == "" {
+		return nil
+	}
+
 	d.Lock()
 	defer d.Unlock()
 
