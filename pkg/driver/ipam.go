@@ -104,7 +104,7 @@ func (d *flannelDriver) ReleaseAddress(request *docker_ipam.ReleaseAddressReques
 	// it actually uses. This happens, because Docker doesn't really support overlay networks
 	// with distinct subnets per host and therefore requests IP addresses for all containers
 	// of a service from a single host.
-	_ := network.GetPool().ReleaseIP(request.Address)
+	_ = network.GetPool().ReleaseIP(request.Address)
 
 	return nil
 }
