@@ -47,13 +47,16 @@ func (d *flannelDriver) RequestPool(request *docker_ipam.RequestPoolRequest) (*d
 		return nil, errors.WithMessagef(err, "failed to get network subnet pool for network '%s'", flannelNetworkId)
 	}
 
-	network, err := flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), flannelNetworkId, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions)
+	_, exists = d.networksByFlannelID[flannelNetworkId]
+	if !exists {
+		network, err := flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), flannelNetworkId, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions)
 
-	if err != nil {
-		return nil, errors.WithMessagef(err, "failed to ensure network '%s' is operational", flannelNetworkId)
+		if err != nil {
+			return nil, errors.WithMessagef(err, "failed to ensure network '%s' is operational", flannelNetworkId)
+		}
+
+		d.networksByFlannelID[flannelNetworkId] = network
 	}
-
-	d.networksByFlannelID[flannelNetworkId] = network
 
 	return &docker_ipam.RequestPoolResponse{
 		PoolID: poolID,
