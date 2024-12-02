@@ -149,6 +149,8 @@ func (p *etcdPool) ReleaseIP(ip string) error {
 	p.Lock()
 	defer p.Unlock()
 
+	fmt.Printf("Releasing IP %s for pool %s...", ip, p.poolID)
+
 	reservation, has := p.reservedIPs[ip]
 
 	if !has {
