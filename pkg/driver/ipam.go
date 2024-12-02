@@ -52,32 +52,34 @@ func (d *flannelDriver) RequestPool(request *docker_ipam.RequestPoolRequest) (*d
 }
 
 func (d *flannelDriver) ReleasePool(request *docker_ipam.ReleasePoolRequest) error {
-	d.Lock()
-	defer d.Unlock()
-
-	flannelNetworkID := poolIDtoNetworkID(request.PoolID)
-	network, exists := d.networksByFlannelID[flannelNetworkID]
-	if !exists {
-		return fmt.Errorf("no network found for pool '%s'", request.PoolID)
-	}
-
-	err := network.Delete()
-
-	if err != nil {
-		return errors.WithMessagef(err, "failed to delete network '%s'", flannelNetworkID)
-	}
-
-	err = d.globalAddressSpace.ReleasePool(request.PoolID)
-
-	if err != nil {
-		return errors.WithMessagef(err, "failed to release address pool of network '%s'", flannelNetworkID)
-	}
-
-	delete(d.networksByFlannelID, flannelNetworkID)
-	dockerNetworkID, exists := d.dockerData.GetDockerNetworkID(flannelNetworkID)
-	if exists {
-		delete(d.networksByDockerID, dockerNetworkID)
-	}
+	// TODO: We should not do that here. Instead flannel network handling is entirely based on
+	// the existence or absence of docker networks
+	//d.Lock()
+	//defer d.Unlock()
+	//
+	//flannelNetworkID := poolIDtoNetworkID(request.PoolID)
+	//network, exists := d.networksByFlannelID[flannelNetworkID]
+	//if !exists {
+	//	return fmt.Errorf("no network found for pool '%s'", request.PoolID)
+	//}
+	//
+	//err := network.Delete()
+	//
+	//if err != nil {
+	//	return errors.WithMessagef(err, "failed to delete network '%s'", flannelNetworkID)
+	//}
+	//
+	//err = d.globalAddressSpace.ReleasePool(request.PoolID)
+	//
+	//if err != nil {
+	//	return errors.WithMessagef(err, "failed to release address pool of network '%s'", flannelNetworkID)
+	//}
+	//
+	//delete(d.networksByFlannelID, flannelNetworkID)
+	//dockerNetworkID, exists := d.dockerData.GetDockerNetworkID(flannelNetworkID)
+	//if exists {
+	//	delete(d.networksByDockerID, dockerNetworkID)
+	//}
 
 	return nil
 }

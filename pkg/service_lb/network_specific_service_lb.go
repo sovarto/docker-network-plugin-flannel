@@ -72,10 +72,11 @@ func (slb *serviceLb) GetFrontendIP() net.IP { return slb.frontendIP }
 func (slb *serviceLb) GetFwmark() uint32     { return slb.fwmark }
 
 func (slb *serviceLb) AddBackend(ip net.IP) error {
-	svc := &ipvs.Service{
-		FWMark:    slb.fwmark,
-		SchedName: "rr",
+	svc, err := slb.ensureIpvsService()
+	if err != nil {
+		return err
 	}
+
 	handle, err := ipvs.New("")
 	if err != nil {
 		return fmt.Errorf("failed to initialize IPVS handle: %v", err)
@@ -110,10 +111,11 @@ func (slb *serviceLb) AddBackend(ip net.IP) error {
 	return err
 }
 func (slb *serviceLb) RemoveBackend(ip net.IP) error {
-	svc := &ipvs.Service{
-		FWMark:    slb.fwmark,
-		SchedName: "rr",
+	svc, err := slb.ensureIpvsService()
+	if err != nil {
+		return err
 	}
+
 	handle, err := ipvs.New("")
 	if err != nil {
 		return fmt.Errorf("failed to initialize IPVS handle: %v", err)
