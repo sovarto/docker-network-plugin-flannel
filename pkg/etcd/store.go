@@ -8,6 +8,7 @@ import (
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"log"
 	"maps"
 	"strings"
 	"sync"
@@ -121,7 +122,8 @@ func (s *storeBase[T]) loadData(connection *Connection) (map[string]T, error) {
 	for _, kv := range resp.Kvs {
 		itemID, item, ignored, err := s.parseItem(kv, prefix)
 		if err != nil {
-			return nil, err
+			log.Printf("%+v, skipping...", err)
+			continue
 		}
 		if ignored {
 			continue
