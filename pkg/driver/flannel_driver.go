@@ -245,6 +245,7 @@ func (d *flannelDriver) handleContainersChanged(changed []etcd.ShardItemChange[c
 func (d *flannelDriver) handleContainersRemoved(removed []etcd.ShardItem[common.ContainerInfo]) {
 	for _, removedItem := range removed {
 		containerInfo := removedItem.Value
+		// This should be handled by IPAM
 		//for dockerNetworkID, ip := range containerInfo.IPs {
 
 		//network, exists := d.networksByDockerID[dockerNetworkID]
@@ -252,7 +253,6 @@ func (d *flannelDriver) handleContainersRemoved(removed []etcd.ShardItem[common.
 		//	continue
 		//}
 
-		// This should be handled by IPAM
 		//if network.GetInfo().HostSubnet.Contains(ip) {
 		//	err := network.GetPool().ReleaseIP(ip.String())
 		//	if err != nil {

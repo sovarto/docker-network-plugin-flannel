@@ -78,8 +78,10 @@ func NewEndpoint(etcdClient etcd.Client, id string, ipAddress net.IP, macAddress
 
 func (e *endpoint) GetInfo() endpointInfo {
 	return endpointInfo{
-		IpAddress:  e.ipAddress,
-		MacAddress: e.macAddress,
+		IpAddress:   e.ipAddress,
+		MacAddress:  e.macAddress,
+		VethInside:  e.vethPair.GetInside(),
+		VethOutside: e.vethPair.GetOutside(),
 	}
 }
 

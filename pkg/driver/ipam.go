@@ -39,7 +39,7 @@ func (d *flannelDriver) RequestPool(request *docker_ipam.RequestPoolRequest) (*d
 	if exists && flannelNetworkId != "" {
 		poolID = fmt.Sprintf("%s-%s", poolID, flannelNetworkId)
 	} else {
-		return nil, errors.New("the IPAM driver option 'flannel-id' needs to be set to a unique ID")
+		return nil, fmt.Errorf("the IPAM driver option 'flannel-id' needs to be set to a unique ID")
 	}
 
 	networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(flannelNetworkId)
