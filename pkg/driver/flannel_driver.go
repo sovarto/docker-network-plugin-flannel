@@ -81,9 +81,8 @@ func (d *flannelDriver) Serve() error {
 }
 
 func (d *flannelDriver) Init() error {
-	fmt.Println("before wait until available")
 	err := d.getEtcdClient("").WaitUntilAvailable(5*time.Second, 6)
-	fmt.Println("after wait until available")
+
 	globalAddressSpace, err := ipam.NewEtcdBasedAddressSpace(d.completeAddressSpace, d.networkSubnetSize, d.getEtcdClient("address-space"))
 	if err != nil {
 		return errors.WithMessage(err, "Failed to create address space")
