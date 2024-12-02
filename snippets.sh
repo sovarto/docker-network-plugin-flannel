@@ -34,6 +34,7 @@ docker plugin disable --force flannel:dev || true && docker plugin upgrade flann
 
 docker network rm fweb
 docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=flannel-id=$(uuidgen) f3
+docker service create --name s10_1 --network f10 --mode global traefik/whoami
 
 docker service update --network-rm fweb whoami
 docker service update --network-add fweb whoami

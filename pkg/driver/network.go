@@ -47,6 +47,9 @@ func (d *flannelDriver) CreateEndpoint(request *network.CreateEndpointRequest) (
 	}
 
 	ip := net.ParseIP(request.Interface.Address)
+	if ip == nil {
+		return nil, fmt.Errorf("failed to parse IP address %s", request.Interface.Address)
+	}
 	_, err := flannelNetwork.AddEndpoint(request.EndpointID, ip, request.Interface.MacAddress)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "failed to create endpoint %s for flannel network %s", request.EndpointID, flannelNetwork.GetInfo().FlannelID)

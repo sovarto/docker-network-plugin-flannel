@@ -48,7 +48,7 @@ func NewEndpoint(etcdClient etcd.Client, id string, ipAddress net.IP, macAddress
 			If(clientv3.Compare(clientv3.CreateRevision(endpointKey), "=", 0)).
 			Then(
 				clientv3.OpPut(endpointKey, ipAddress.String()),
-				clientv3.OpPut(macKey, ipAddress.String()),
+				clientv3.OpPut(macKey, macAddress),
 			).
 			Commit()
 
@@ -114,7 +114,7 @@ func (e *endpoint) Delete() error {
 		endpointKey := endpointKey(e.etcdClient, e.id)
 		macKey := macKey(e.etcdClient, e.id)
 		resp, err := connection.Client.Txn(connection.Ctx).
-			If(clientv3.Compare(clientv3.Value(endpointKey), "=", e.ipAddress)).
+			If(clientv3.Compare(clientv3.Value(endpointKey), "=", e.ipAddress.String())).
 			Then(
 				clientv3.OpDelete(endpointKey),
 				clientv3.OpDelete(macKey),
