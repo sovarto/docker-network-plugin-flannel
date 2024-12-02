@@ -99,5 +99,12 @@ func (d *flannelDriver) ReleaseAddress(request *docker_ipam.ReleaseAddressReques
 	if !exists {
 		return fmt.Errorf("no network found for pool '%s'", request.PoolID)
 	}
-	return network.GetPool().ReleaseIP(request.Address)
+	// Ignore errors from ReleaseIP, because they are expected:
+	// When a container starts, we release the IP it got from IPAM if it the same as the IP
+	// it actually uses. This happens, because Docker doesn't really support overlay networks
+	// with distinct subnets per host and therefore requests IP addresses for all containers
+	// of a service from a single host.
+	_ := network.GetPool().ReleaseIP(request.Address)
+
+	return nil
 }
