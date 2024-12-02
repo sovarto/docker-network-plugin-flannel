@@ -76,8 +76,8 @@ func (b *bridgeInterface) Ensure() error {
 		Protocol:  unix.RTPROT_KERNEL,
 	}
 
-	if err := netlink.RouteChange(route); err != nil {
-		log.Printf("Failed to add route %+v for interface %s. err:%+v\n", route, b.interfaceName, err)
+	if err := netlink.RouteReplace(route); err != nil {
+		log.Printf("Failed to set route %+v for interface %s. err:%+v\n", route, b.interfaceName, err)
 		return err
 	}
 
