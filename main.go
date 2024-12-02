@@ -42,19 +42,22 @@ func main() {
 
 	flannelDriver := driver.NewFlannelDriver(etcdEndPoints, etcdPrefix, defaultFlannelOptions, availableSubnets, networkSubnetSize, defaultHostSubnetSize)
 
+	// In a go-routine because it may take a while and docker marks us as disabled if our startup takes too long
+	go func() {
+		fmt.Println("Initializing Flannel plugin...")
+
+		err := flannelDriver.Init()
+		if err != nil {
+			log.Fatalf("ERROR: %s initializing flannel plugin failed: %v", "flannel-np", err)
+		}
+
+		fmt.Println("Flannel plugin is ready")
+	}()
+
 	err := flannelDriver.Serve()
 	if err != nil {
 		log.Fatalf("ERROR: %s start flannel plugin failed: %v", "flannel-np", err)
 	}
-
-	fmt.Println("Initializing Flannel plugin...")
-
-	err = flannelDriver.Init()
-	if err != nil {
-		log.Fatalf("ERROR: %s initializing flannel plugin failed: %v", "flannel-np", err)
-	}
-
-	fmt.Println("Flannel plugin is ready")
 }
 
 func getEnvAsInt(name string, defaultVal int) int {
