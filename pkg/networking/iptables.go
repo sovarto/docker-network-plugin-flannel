@@ -32,7 +32,7 @@ func ApplyIpTablesRules(rules []IptablesRule, action string) error {
 	}
 
 	for _, rule := range rules {
-		log.Printf("Applying iptables rule %+v\n", rule)
+		fmt.Printf("Applying iptables rule %+v\n", rule)
 		if err := a(rule.Table, rule.Chain, rule.RuleSpec...); err != nil {
 			log.Printf("Error applying iptables rule in table %s, chain %s: %v", rule.Table, rule.Chain, err)
 			return err

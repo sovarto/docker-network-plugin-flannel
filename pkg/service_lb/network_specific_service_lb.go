@@ -145,10 +145,11 @@ func (slb *serviceLb) RemoveBackend(ip net.IP) error {
 }
 
 func (slb *serviceLb) SetBackends(ips []net.IP) error {
-	svc := &ipvs.Service{
-		FWMark:    slb.fwmark,
-		SchedName: "rr",
+	svc, err := slb.ensureIpvsService()
+	if err != nil {
+		return err
 	}
+
 	handle, err := ipvs.New("")
 	if err != nil {
 		return fmt.Errorf("failed to initialize IPVS handle: %v", err)
@@ -207,16 +208,10 @@ func (slb *serviceLb) SetBackends(ips []net.IP) error {
 	return nil
 }
 
-func (slb *serviceLb) ensureServiceLoadBalancerFrontend() error {
-	vip := slb.frontendIP.String()
-	vipIP := net.ParseIP(vip)
-	if vipIP == nil {
-		return fmt.Errorf("invalid VIP address: %s", vip)
-	}
-
+func (slb *serviceLb) ensureIpvsService() (*ipvs.Service, error) {
 	handle, err := ipvs.New("")
 	if err != nil {
-		return fmt.Errorf("failed to initialize IPVS handle: %v", err)
+		return nil, fmt.Errorf("failed to initialize IPVS handle: %v", err)
 	}
 	defer handle.Close()
 
@@ -228,21 +223,35 @@ func (slb *serviceLb) ensureServiceLoadBalancerFrontend() error {
 
 	exists := handle.IsServicePresent(svc)
 	if !exists {
-		fmt.Printf("IPVS service for fwmark %d and IP %s didn't exist. Creating...\n", slb.fwmark, vip)
+		fmt.Printf("IPVS service for fwmark %d didn't exist. Creating...\n", slb.fwmark)
 		err = handle.NewService(svc)
 		if err != nil {
-			return fmt.Errorf("failed to create IPVS service: %v", err)
+			return nil, fmt.Errorf("failed to create IPVS service: %v", err)
 		}
 	} else {
 		existingSvc, err := handle.GetService(svc)
 		if err != nil {
-			return fmt.Errorf("failed to get existing IPVS service: %v", err)
+			return nil, fmt.Errorf("failed to get existing IPVS service: %v", err)
 		}
 
 		if existingSvc.SchedName != svc.SchedName || existingSvc.Flags != svc.Flags || existingSvc.Timeout != svc.Timeout || existingSvc.PEName != svc.PEName {
 			err = handle.UpdateService(svc)
-			return fmt.Errorf("failed to update existing IPVS service: %v", err)
+			return nil, fmt.Errorf("failed to update existing IPVS service: %v", err)
 		}
+	}
+
+	return svc, nil
+}
+
+func (slb *serviceLb) ensureServiceLoadBalancerFrontend() error {
+	vip := slb.frontendIP.String()
+	vipIP := net.ParseIP(vip)
+	if vipIP == nil {
+		return fmt.Errorf("invalid VIP address: %s", vip)
+	}
+
+	if _, err := slb.ensureIpvsService(); err != nil {
+		return err
 	}
 
 	fwmarkStr := strconv.FormatUint(uint64(slb.fwmark), 10)
@@ -286,7 +295,7 @@ func (slb *serviceLb) ensureServiceLoadBalancerFrontend() error {
 		},
 	}
 
-	err = networking.ApplyIpTablesRules(slb.iptablesRules, "create")
+	err := networking.ApplyIpTablesRules(slb.iptablesRules, "create")
 	if err != nil {
 		return errors.WithMessagef(err, "failed to setup IP Tables rules for service load balancer for service %s in network %s", slb.serviceID, slb.dockerNetworkID)
 	}
