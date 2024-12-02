@@ -238,7 +238,9 @@ func (slb *serviceLb) ensureIpvsService() (*ipvs.Service, error) {
 
 		if existingSvc.SchedName != svc.SchedName || existingSvc.Flags != svc.Flags || existingSvc.Timeout != svc.Timeout || existingSvc.PEName != svc.PEName {
 			err = handle.UpdateService(svc)
-			return nil, fmt.Errorf("failed to update existing IPVS service: %v", err)
+			if err != nil {
+				return nil, fmt.Errorf("failed to update existing IPVS service: %v", err)
+			}
 		}
 	}
 
