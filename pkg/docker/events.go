@@ -35,7 +35,7 @@ func (d *data) handleEvent(event events.Message) error {
 		switch event.Action {
 		case events.ActionUpdate:
 			return d.handleNetwork(event.Actor.ID)
-		case events.ActionDelete:
+		case events.ActionRemove:
 			return d.handleDeletedNetwork(event.Actor.ID)
 		case events.ActionConnect:
 			return d.handleContainer(event.Actor.Attributes["container"])
