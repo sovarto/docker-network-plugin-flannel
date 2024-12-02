@@ -123,10 +123,6 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 			DstPrefix: "eth",
 		},
 		StaticRoutes: []*network.StaticRoute{
-			//{
-			//	Destination: networkInfo.HostSubnet.String(),
-			//	RouteType:   types.CONNECTED,
-			//},
 			{
 				Destination: networkInfo.Network.String(),
 				RouteType:   types.NEXTHOP,
