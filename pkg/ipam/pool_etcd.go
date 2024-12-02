@@ -183,14 +183,19 @@ func reserveIPByCondition(client etcd.Client, ip net.IP, reservationType, mac st
 
 		now := time.Now()
 
+		ops := []clientv3.Op{
+			clientv3.OpPut(key, reservationType),
+			clientv3.OpPut(reservedAtKey(client, ip.String()), now.Format(time.RFC3339)),
+		}
+
+		if mac != "" {
+			ops = append(ops, clientv3.OpPut(macKey, mac))
+		}
+
 		for _, condition := range conditions {
 			txn := conn.Client.Txn(conn.Ctx).
 				If(condition...).
-				Then(
-					clientv3.OpPut(key, reservationType),
-					clientv3.OpPut(macKey, mac),
-					clientv3.OpPut(reservedAtKey(client, ip.String()), now.Format(time.RFC3339)),
-				).
+				Then(ops...).
 				Else()
 
 			txnResp, err := txn.Commit()
