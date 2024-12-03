@@ -44,7 +44,7 @@ func (d *flannelDriver) RequestPool(request *docker_ipam.RequestPoolRequest) (*d
 	if err != nil {
 		return nil, errors.WithMessagef(err, "failed to ensure network '%s' is operational", flannelNetworkID)
 	}
-	fmt.Printf("For pool %s got network %+v", poolID, flannelNetworkID)
+	fmt.Printf("For pool %s got network %+v\n", poolID, flannelNetworkID)
 	return &docker_ipam.RequestPoolResponse{
 		PoolID: poolID,
 		Pool:   network.GetInfo().Network.String(),
@@ -68,7 +68,7 @@ func (d *flannelDriver) RequestAddress(request *docker_ipam.RequestAddressReques
 	}
 
 	networkInfo := network.GetInfo()
-	fmt.Printf("For pool %s got network %+v", request.PoolID, networkInfo)
+	fmt.Printf("For pool %s got network %+v\n", request.PoolID, networkInfo)
 
 	requestType, exists := request.Options["RequestAddressType"]
 	if exists && requestType == "com.docker.network.gateway" {
