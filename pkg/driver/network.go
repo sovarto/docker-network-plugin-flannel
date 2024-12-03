@@ -129,11 +129,6 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 				RouteType:   types.NEXTHOP,
 				NextHop:     networkInfo.LocalGateway.String(),
 			},
-			{
-				Destination: "127.0.0.11/32",
-				RouteType:   types.NEXTHOP,
-				NextHop:     networkInfo.LocalGateway.String(),
-			},
 		},
 		DisableGatewayService: false,
 	}, nil
