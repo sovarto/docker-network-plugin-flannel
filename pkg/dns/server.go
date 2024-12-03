@@ -260,7 +260,7 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 
 	table := "nat"
 	chains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
-	targetIP := "127.0.0.11"
+	targetIP := "127.0.0.11/32"
 
 	// Iterate over each chain to delete existing rules
 	for _, chain := range chains {
@@ -272,7 +272,7 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 		}
 
 		for _, rule := range rules {
-			fmt.Printf("Found rule %s", rule)
+			fmt.Printf("Found rule %s\n", rule)
 
 			ruleArgs := strings.Fields(rule)
 
@@ -358,7 +358,7 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 	namespace := server.Namespace
 	for _, rule := range rules {
 		fmt.Printf("Applying iptables rule %+v\n", rule)
-		if err := ipt.InsertUnique(rule.Table, rule.Chain, 0, rule.RuleSpec...); err != nil {
+		if err := ipt.InsertUnique(rule.Table, rule.Chain, 1, rule.RuleSpec...); err != nil {
 			log.Printf("Error applying iptables rule in namespace%s, table %s, chain %s: %v", namespace, rule.Table, rule.Chain, err)
 			return err
 		}
