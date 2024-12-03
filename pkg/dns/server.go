@@ -272,6 +272,8 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 		}
 
 		for _, rule := range rules {
+			fmt.Printf("Found rule %s", rule)
+
 			ruleArgs := strings.Fields(rule)
 
 			shouldDelete := false
@@ -356,7 +358,7 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 	namespace := server.Namespace
 	for _, rule := range rules {
 		fmt.Printf("Applying iptables rule %+v\n", rule)
-		if err := ipt.AppendUnique(rule.Table, rule.Chain, rule.RuleSpec...); err != nil {
+		if err := ipt.InsertUnique(rule.Table, rule.Chain, 0, rule.RuleSpec...); err != nil {
 			log.Printf("Error applying iptables rule in namespace%s, table %s, chain %s: %v", namespace, rule.Table, rule.Chain, err)
 			return err
 		}
