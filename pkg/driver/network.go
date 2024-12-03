@@ -114,8 +114,6 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 		return nil, errors.WithMessagef(err, "failed to join endpoint %s to network %s", request.EndpointID, request.NetworkID)
 	}
 
-	d.dockerData.
-
 	networkInfo := flannelNetwork.GetInfo()
 	endpointInfo := endpoint.GetInfo()
 
