@@ -298,7 +298,7 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 
 			if shouldDelete {
 				// Attempt to delete the rule
-				err = ipt.Delete(table, chain, ruleArgs...)
+				err = ipt.Delete(table, chain, ruleArgs[2:]...)
 				if err != nil {
 					log.Printf("Failed to delete rule in chain %s: %v", chain, err)
 				} else {
