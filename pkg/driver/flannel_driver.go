@@ -300,6 +300,13 @@ func (d *flannelDriver) handleContainersAdded(added []etcd.ShardItem[docker.Cont
 				log.Printf("error adding backend IPs to load balancer of service %s: %v", containerInfo.ServiceID, err)
 			}
 		}
+
+		if containerInfo.SandboxKey != "" && len(containerInfo.IPs) > 0 {
+			err := d.addNameserver(containerInfo.SandboxKey)
+			if err != nil {
+				log.Printf("Failed to add nameserver for container %s: %v", containerInfo.ID, err)
+			}
+		}
 	}
 }
 

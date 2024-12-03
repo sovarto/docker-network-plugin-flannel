@@ -9,6 +9,7 @@ import (
 	"github.com/vishvananda/netns"
 	"log"
 	"net"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -40,9 +41,9 @@ func NewNameserver(networkNamespace string) Nameserver {
 }
 
 func (n *nameserver) Activate() error {
-	//if _, err := os.Stat(n.networkNamespace); os.IsNotExist(err) {
-	//	return fmt.Errorf("namespace path does not exist: %s", n.networkNamespace)
-	//}
+	if _, err := os.Stat(n.networkNamespace); os.IsNotExist(err) {
+		return fmt.Errorf("namespace path does not exist: %s", n.networkNamespace)
+	}
 
 	fmt.Printf("Starting nameserver in namespace %s\n", n.networkNamespace)
 	go listenInNamespace(n.networkNamespace)

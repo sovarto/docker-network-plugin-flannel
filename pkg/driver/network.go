@@ -7,8 +7,6 @@ import (
 	"github.com/pkg/errors"
 	"log"
 	"net"
-	"os"
-	"path/filepath"
 )
 
 func (d *flannelDriver) GetCapabilities() (*network.CapabilitiesResponse, error) {
@@ -114,27 +112,6 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 	err = endpoint.Join(request.EndpointID)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "failed to join endpoint %s to network %s", request.EndpointID, request.NetworkID)
-	}
-
-	dir := filepath.Dir(request.SandboxKey)
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, errors.WithMessage(err, "Failed to read directory")
-	}
-
-	// Print the directory contents
-	fmt.Printf("Contents of directory %s:\n", dir)
-	for _, file := range files {
-		if file.IsDir() {
-			fmt.Printf("[DIR] %s\n", file.Name())
-		} else {
-			fmt.Printf("[FILE] %s\n", file.Name())
-		}
-	}
-
-	err = d.addNameserver(request.SandboxKey)
-	if err != nil {
-		return nil, err
 	}
 
 	networkInfo := flannelNetwork.GetInfo()

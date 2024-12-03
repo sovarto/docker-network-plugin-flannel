@@ -69,6 +69,7 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 	serviceID := container.Config.Labels["com.docker.swarm.service.id"]
 	serviceName := container.Config.Labels["com.docker.swarm.service.name"]
 	containerName := strings.TrimLeft(container.Name, "/")
+	sandboxKey := container.NetworkSettings.SandboxKey
 
 	ips := make(map[string]net.IP)
 	ipamIPs := make(map[string]net.IP)
@@ -78,6 +79,7 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 		Name:        containerName,
 		ServiceID:   serviceID,
 		ServiceName: serviceName,
+		SandboxKey:  sandboxKey,
 		IPs:         ips,
 		IpamIPs:     ipamIPs,
 	}

@@ -10,6 +10,7 @@ type ContainerInfo struct {
 	Name        string            `json:"ContainerName"`
 	ServiceID   string            `json:"ServiceID"`
 	ServiceName string            `json:"ServiceName"`
+	SandboxKey  string            `json:"SandboxKey"`
 	IPs         map[string]net.IP `json:"IPs"`     // networkID -> IP
 	IpamIPs     map[string]net.IP `json:"IpamIPs"` // networkID -> IP
 }
