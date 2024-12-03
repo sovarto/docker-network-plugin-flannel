@@ -15,6 +15,15 @@
       "type": "bind"
     },
     {
+      "destination": "/var/run/docker/netns",
+      "name": "var_run_docker_netns",
+      "options": [
+        "rbind"
+      ],
+      "source": "/var/run/docker/netns",
+      "type": "bind"
+    },
+    {
       "destination": "/lib/modules",
       "name": "lib_modules",
       "options": [
