@@ -179,14 +179,20 @@ func (d *flannelDriver) handleServicesRemoved(removed []etcd.Item[docker.Service
 }
 
 func (d *flannelDriver) getNetwork(dockerNetworkID string, flannelNetworkID string) (flannel_network.Network, bool) {
-	network, exists := d.networksByDockerID[dockerNetworkID]
-	if !exists {
-		network, exists = d.networksByFlannelID[flannelNetworkID]
-		if exists && dockerNetworkID != "" {
-			d.networksByDockerID[dockerNetworkID] = network
+	var network flannel_network.Network
+	var exists bool
+	if dockerNetworkID != "" {
+		network, exists = d.networksByDockerID[dockerNetworkID]
+	}
+	if flannelNetworkID != "" {
+		if !exists {
+			network, exists = d.networksByFlannelID[flannelNetworkID]
+			if dockerNetworkID != "" && exists {
+				d.networksByDockerID[dockerNetworkID] = network
+			}
+		} else {
+			d.networksByFlannelID[flannelNetworkID] = network
 		}
-	} else if flannelNetworkID != "" {
-		d.networksByFlannelID[flannelNetworkID] = network
 	}
 
 	return network, exists
@@ -196,6 +202,10 @@ func (d *flannelDriver) getOrCreateNetwork(dockerNetworkID string, flannelNetwor
 	network, exists := d.getNetwork(dockerNetworkID, flannelNetworkID)
 	if exists {
 		return network, nil
+	}
+
+	if flannelNetworkID == "" {
+		return nil, fmt.Errorf("no flannel network ID provided when creating network")
 	}
 
 	networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(flannelNetworkID)
@@ -215,7 +225,10 @@ func (d *flannelDriver) getOrCreateNetwork(dockerNetworkID string, flannelNetwor
 		return nil, errors.WithMessagef(err, "Failed to add network '%s' to service load balancer management", flannelNetworkID)
 	}
 
-	d.networksByDockerID[dockerNetworkID] = network
+	if dockerNetworkID != "" {
+		d.networksByDockerID[dockerNetworkID] = network
+	}
+
 	d.networksByFlannelID[flannelNetworkID] = network
 
 	return network, nil

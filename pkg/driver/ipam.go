@@ -44,7 +44,7 @@ func (d *flannelDriver) RequestPool(request *docker_ipam.RequestPoolRequest) (*d
 	if err != nil {
 		return nil, errors.WithMessagef(err, "failed to ensure network '%s' is operational", flannelNetworkID)
 	}
-
+	fmt.Printf("For pool %s got network %+v", poolID, flannelNetworkID)
 	return &docker_ipam.RequestPoolResponse{
 		PoolID: poolID,
 		Pool:   network.GetInfo().Network.String(),
