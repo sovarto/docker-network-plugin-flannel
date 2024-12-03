@@ -91,6 +91,8 @@ func (d *flannelDriver) EndpointInfo(request *network.InfoRequest) (*network.Inf
 
 	value["ip_address"] = endpoint.GetInfo().IpAddress.String()
 	value["mac_address"] = endpoint.GetInfo().MacAddress
+	value["disableResolution"] = "true"
+	value["disable_resolution"] = "true"
 
 	resp := &network.InfoResponse{
 		Value: value,
