@@ -91,8 +91,6 @@ func (d *flannelDriver) EndpointInfo(request *network.InfoRequest) (*network.Inf
 
 	value["ip_address"] = endpoint.GetInfo().IpAddress.String()
 	value["mac_address"] = endpoint.GetInfo().MacAddress
-	value["disableResolution"] = "true"
-	value["disable_resolution"] = "true"
 
 	resp := &network.InfoResponse{
 		Value: value,
@@ -124,9 +122,15 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 			SrcName:   endpointInfo.VethInside,
 			DstPrefix: "eth",
 		},
+		// TODO: Check if using Gateway instead of StaticRoutes also works
 		StaticRoutes: []*network.StaticRoute{
 			{
 				Destination: networkInfo.Network.String(),
+				RouteType:   types.NEXTHOP,
+				NextHop:     networkInfo.LocalGateway.String(),
+			},
+			{
+				Destination: "127.0.0.11",
 				RouteType:   types.NEXTHOP,
 				NextHop:     networkInfo.LocalGateway.String(),
 			},

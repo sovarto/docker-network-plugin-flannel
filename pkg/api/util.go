@@ -132,5 +132,5 @@ func getFunctionName(i interface{}) string {
 	if len(parts) == 0 {
 		return "unknown"
 	}
-	return parts[len(parts)-1]
+	return strings.TrimSuffix(parts[len(parts)-1], "-fm")
 }
