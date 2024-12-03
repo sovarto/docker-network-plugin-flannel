@@ -46,7 +46,12 @@ func (n *nameserver) Activate() error {
 	}
 
 	fmt.Printf("Starting nameserver in namespace %s\n", n.networkNamespace)
-	go listenInNamespace(n.networkNamespace)
+	go func() {
+		err := listenInNamespace(n.networkNamespace)
+		if err != nil {
+			log.Printf("Error listening in namespace %s: %+v\n", n.networkNamespace, err)
+		}
+	}()
 
 	return nil
 }
@@ -180,7 +185,7 @@ func startDNSServer(handler dns.Handler, connType string, listenAddr string) (in
 }
 
 // listenInNamespace sets up DNS servers within the specified network namespace
-func listenInNamespace(nsPath string) {
+func listenInNamespace(nsPath string) error {
 	// Lock the goroutine to its current OS thread
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -188,22 +193,19 @@ func listenInNamespace(nsPath string) {
 	// Save the original network namespace to revert back later
 	origNS, err := netns.Get()
 	if err != nil {
-		log.Printf("Error getting original namespace: %v", err)
-		return
+		return errors.WithMessage(err, "Failed to get original namespace")
 	}
 	defer origNS.Close()
 
 	// Switch to the target network namespace
 	targetNS, err := setNetworkNamespace(nsPath)
 	if err != nil {
-		log.Printf("Error setting namespace for %s: %v", nsPath, err)
-		return
+		return errors.WithMessagef(err, "Failed to set namespace for %s", nsPath)
 	}
 	defer targetNS.Close()
 
 	if err := netns.Set(targetNS); err != nil {
-		log.Printf("Failed to set namespace %s: %v", nsPath, err)
-		return
+		return errors.WithMessagef(err, "Failed to set namespace %s", nsPath)
 	}
 	defer netns.Set(origNS) // Revert back to original namespace when done
 
@@ -220,14 +222,14 @@ func listenInNamespace(nsPath string) {
 	// Start TCP DNS server
 	portTCP, err := startDNSServer(handler, "tcp", address)
 	if err != nil {
-		log.Fatal(err)
+		return errors.WithMessagef(err, "Failed to start DNS server TCP in namespace %s", nsPath)
 	}
 
 	fmt.Printf("Starting DNS server UDP in namespace %s\n", nsPath)
 	// Start UDP DNS server
 	portUDP, err := startDNSServer(handler, "udp", address)
 	if err != nil {
-		log.Fatal(err)
+		return errors.WithMessagef(err, "Failed to start DNS server UDP in namespace %s", nsPath)
 	}
 
 	fmt.Printf("Both servers for %s have been started\n", nsPath)
@@ -241,13 +243,14 @@ func listenInNamespace(nsPath string) {
 
 	err = replaceDNATSNATRules(server)
 	if err != nil {
-		log.Fatal(err)
+		return errors.WithMessagef(err, "Failed to replace DNAT SNAT rules in namespace %s", nsPath)
 	}
 
 	// Send the DNS server information back to the main goroutine
 	//dnsServersChan <- server
 
 	log.Printf("Namespace %s DNS servers listening on TCP: 127.0.0.33:%d, UDP: 127.0.0.33:%d", filepath.Base(nsPath), portTCP, portUDP)
+	return nil
 }
 
 // replaceDNATSNATRules replaces existing DNAT and SNAT iptables rules with new ones
@@ -359,7 +362,7 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 	for _, rule := range rules {
 		fmt.Printf("Applying iptables rule %+v\n", rule)
 		if err := ipt.InsertUnique(rule.Table, rule.Chain, 1, rule.RuleSpec...); err != nil {
-			log.Printf("Error applying iptables rule in namespace%s, table %s, chain %s: %v", namespace, rule.Table, rule.Chain, err)
+			log.Printf("Error applying iptables rule in namespace %s, table %s, chain %s: %v", namespace, rule.Table, rule.Chain, err)
 			return err
 		}
 	}
