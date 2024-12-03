@@ -68,6 +68,7 @@ func (d *flannelDriver) RequestAddress(request *docker_ipam.RequestAddressReques
 	}
 
 	networkInfo := network.GetInfo()
+	fmt.Printf("For pool %s got network %+v", request.PoolID, networkInfo)
 
 	requestType, exists := request.Options["RequestAddressType"]
 	if exists && requestType == "com.docker.network.gateway" {
