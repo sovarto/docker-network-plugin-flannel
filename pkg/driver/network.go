@@ -119,7 +119,7 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 	dir := filepath.Dir(request.SandboxKey)
 	files, err := os.ReadDir(dir)
 	if err != nil {
-		log.Fatalf("Failed to read directory: %v", err)
+		return nil, errors.WithMessage(err, "Failed to read directory")
 	}
 
 	// Print the directory contents
