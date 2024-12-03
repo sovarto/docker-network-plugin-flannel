@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/api"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/dns"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/docker"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/flannel_network"
@@ -25,35 +26,37 @@ type FlannelDriver interface {
 }
 
 type flannelDriver struct {
-	globalAddressSpace    ipam.AddressSpace
-	etcdPrefix            string
-	etcdEndPoints         []string
-	defaultFlannelOptions []string
-	defaultHostSubnetSize int
-	networksByFlannelID   map[string]flannel_network.Network // flannel network ID -> network
-	networksByDockerID    map[string]flannel_network.Network // docker network ID -> network
-	serviceLbsManagement  service_lb.ServiceLbsManagement
-	dockerData            docker.Data
-	completeAddressSpace  []net.IPNet
-	networkSubnetSize     int
-	vniStart              int
-	isInitialized         bool
+	globalAddressSpace      ipam.AddressSpace
+	etcdPrefix              string
+	etcdEndPoints           []string
+	defaultFlannelOptions   []string
+	defaultHostSubnetSize   int
+	networksByFlannelID     map[string]flannel_network.Network // flannel network ID -> network
+	networksByDockerID      map[string]flannel_network.Network // docker network ID -> network
+	serviceLbsManagement    service_lb.ServiceLbsManagement
+	dockerData              docker.Data
+	completeAddressSpace    []net.IPNet
+	networkSubnetSize       int
+	vniStart                int
+	isInitialized           bool
+	nameserversBySandboxKey map[string]dns.Nameserver
 	sync.Mutex
 }
 
 func NewFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelOptions []string, completeSpace []net.IPNet, networkSubnetSize int, defaultHostSubnetSize int) FlannelDriver {
 
 	driver := &flannelDriver{
-		etcdPrefix:            etcdPrefix,
-		etcdEndPoints:         etcdEndPoints,
-		defaultFlannelOptions: defaultFlannelOptions,
-		defaultHostSubnetSize: defaultHostSubnetSize,
-		networksByFlannelID:   make(map[string]flannel_network.Network),
-		networksByDockerID:    make(map[string]flannel_network.Network),
-		vniStart:              6514,
-		isInitialized:         false,
-		completeAddressSpace:  completeSpace,
-		networkSubnetSize:     networkSubnetSize,
+		etcdPrefix:              etcdPrefix,
+		etcdEndPoints:           etcdEndPoints,
+		defaultFlannelOptions:   defaultFlannelOptions,
+		defaultHostSubnetSize:   defaultHostSubnetSize,
+		networksByFlannelID:     make(map[string]flannel_network.Network),
+		networksByDockerID:      make(map[string]flannel_network.Network),
+		vniStart:                6514,
+		isInitialized:           false,
+		completeAddressSpace:    completeSpace,
+		networkSubnetSize:       networkSubnetSize,
+		nameserversBySandboxKey: make(map[string]dns.Nameserver),
 	}
 
 	numNetworks := countPoolSizeSubnets(completeSpace, networkSubnetSize)
@@ -342,4 +345,19 @@ func countPoolSizeSubnets(completeSpace []net.IPNet, poolSize int) int {
 	}
 
 	return total
+}
+
+func (d *flannelDriver) addNameserver(sandboxKey string) error {
+	_, exists := d.nameserversBySandboxKey[sandboxKey]
+	if exists {
+		return nil
+	}
+	nameserver := dns.NewNameserver(sandboxKey)
+	err := nameserver.Activate()
+	if err != nil {
+		return errors.WithMessagef(err, "failed to activate nameserver in namespace %s", sandboxKey)
+	}
+
+	d.nameserversBySandboxKey[sandboxKey] = nameserver
+	return nil
 }

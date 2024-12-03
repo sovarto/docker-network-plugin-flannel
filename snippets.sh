@@ -24,7 +24,7 @@ docker plugin install sovarto/docker-network-plugin-flannel:$VERSION --alias $AL
 docker plugin set $ALIAS ETCD_PREFIX=$PREFIX && \
 docker plugin set $ALIAS ETCD_ENDPOINTS=172.16.0.2:2379,172.16.0.3:2379,172.16.0.4:2379 && \
 docker plugin set $ALIAS DEFAULT_FLANNEL_OPTIONS="-iface=enp7s0" && \
-docker plugin set $ALIAS AVAILABLE_SUBNETS="10.1.0.0/16,10.10.0.0/16,10.50.0.0/16" && \
+docker plugin set $ALIAS AVAILABLE_SUBNETS="10.1.0.0/16,10.10.0.0/16,10.50.0.0/16,10.60.0.0/16,10.70.0.0/16" && \
 docker plugin set $ALIAS NETWORK_SUBNET_SIZE=18 && \
 docker plugin set $ALIAS DEFAULT_HOST_SUBNET_SIZE=23 && \
 docker plugin enable $ALIAS && \

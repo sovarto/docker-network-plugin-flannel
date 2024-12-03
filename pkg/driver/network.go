@@ -114,6 +114,11 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 		return nil, errors.WithMessagef(err, "failed to join endpoint %s to network %s", request.EndpointID, request.NetworkID)
 	}
 
+	err = d.addNameserver(request.SandboxKey)
+	if err != nil {
+		return nil, err
+	}
+
 	networkInfo := flannelNetwork.GetInfo()
 	endpointInfo := endpoint.GetInfo()
 
