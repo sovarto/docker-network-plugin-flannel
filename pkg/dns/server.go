@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 )
 
 type Nameserver interface {
@@ -260,8 +261,14 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 		return errors.WithMessage(err, "Error initializing iptables")
 	}
 
-	//table := "nat"
-	//chains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
+	table := "nat"
+	chains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
+	err = waitForChainsWithRules(ipt, table, chains, 30*time.Second)
+	if err != nil {
+		return err
+	} else {
+		fmt.Println("Chains exist and have at least one rule")
+	}
 	//targetIP := "127.0.0.11/32"
 	//
 	//rulesToDelete := []struct {
@@ -378,4 +385,44 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 	//}
 
 	return nil
+}
+
+func waitForChainsWithRules(ipt *iptables.IPTables, table string, chains []string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+
+	for {
+		allChainsReady := true
+
+		for _, chain := range chains {
+			// Check if the chain exists
+			chainExists, err := ipt.ChainExists(table, chain)
+			if err != nil {
+				return fmt.Errorf("error checking if chain exists: %w", err)
+			}
+			if !chainExists {
+				allChainsReady = false
+				break
+			}
+
+			// Check if the chain has at least one rule
+			rules, err := ipt.List(table, chain)
+			if err != nil {
+				return fmt.Errorf("error listing rules for chain %s: %w", chain, err)
+			}
+			if len(rules) <= 1 { // The first line is usually a header
+				allChainsReady = false
+				break
+			}
+		}
+
+		if allChainsReady {
+			return nil
+		}
+
+		if time.Now().After(deadline) {
+			return errors.New("timeout waiting for chains with rules")
+		}
+
+		time.Sleep(5 * time.Millisecond) // Wait before retrying
+	}
 }
