@@ -1,7 +1,10 @@
 package driver
 
 import (
+	"context"
 	"fmt"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
 	"github.com/docker/docker/libnetwork/types"
 	"github.com/docker/go-plugins-helpers/network"
 	"github.com/pkg/errors"
@@ -112,6 +115,22 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 	err = endpoint.Join(request.EndpointID)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "failed to join endpoint %s to network %s", request.EndpointID, request.NetworkID)
+	}
+
+	dockerClient, err := client.NewClientWithOpts(
+		client.WithHost("unix:///var/run/docker.sock"),
+		client.WithAPIVersionNegotiation(),
+	)
+
+	containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{})
+
+	for _, container := range containers {
+		fmt.Printf("Container ID: %s, State: %s, Status: %s\n", container.ID, container.State, container.Status)
+		containerJson, err := dockerClient.ContainerInspect(context.Background(), container.ID)
+		if err != nil {
+			log.Printf("Failed to inspect container %s: %s", container.ID, err)
+		}
+		fmt.Printf("Container ID: %s, Sandbox key: %s", containerJson.ID, containerJson.NetworkSettings.SandboxKey)
 	}
 
 	networkInfo := flannelNetwork.GetInfo()
