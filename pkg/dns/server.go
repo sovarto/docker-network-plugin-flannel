@@ -1,53 +1,66 @@
 package dns
 
 import (
+	"context"
 	"fmt"
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
 	"github.com/vishvananda/netns"
 	"log"
 	"net"
 	"os"
-	"path/filepath"
 	"runtime"
+	"strings"
+	"sync"
 	"time"
 )
 
 type Nameserver interface {
 	Activate() error
-}
-
-// NamespaceDNS holds information about the DNS server in a namespace
-type NamespaceDNS struct {
-	Namespace string
-	PortTCP   int
-	PortUDP   int
-	ListenIP  string
-}
-
-// dnsHandler implements the dns.Handler interface
-type dnsHandler struct {
-	Namespace string
+	DeactivateAndCleanup() error
+	AddValidNetworkID(validNetworkID string)
+	RemoveValidNetworkID(validNetworkID string)
 }
 
 type nameserver struct {
 	networkNamespace string
+	resolver         Resolver
+	portTCP          int
+	portUDP          int
+	listenIP         string
+	tcpServer        *dns.Server
+	udpServer        *dns.Server
+	validNetworkIDs  []string
+	sync.Mutex
 }
 
-func NewNameserver(networkNamespace string) Nameserver {
-	return &nameserver{networkNamespace: networkNamespace}
+// TODO: Add support for dns options on containers, services, docker
+// TODO: Add support for host resolver ???
+// TODO: Check domainname config of containers whether it's relevant
+
+func NewNameserver(networkNamespace string, resolver Resolver) Nameserver {
+	return &nameserver{
+		networkNamespace: networkNamespace,
+		resolver:         resolver,
+		listenIP:         "127.0.0.33",
+		validNetworkIDs:  make([]string, 0),
+	}
 }
 
 func (n *nameserver) Activate() error {
+	n.Lock()
+	defer n.Unlock()
+
 	if _, err := os.Stat(n.networkNamespace); os.IsNotExist(err) {
 		return fmt.Errorf("namespace path does not exist: %s", n.networkNamespace)
 	}
 
 	fmt.Printf("Starting nameserver in namespace %s\n", n.networkNamespace)
 	go func() {
-		err := listenInNamespace(n.networkNamespace)
+		err := n.startDnsServersInNamespace()
 		if err != nil {
 			log.Printf("Error listening in namespace %s: %+v\n", n.networkNamespace, err)
 		}
@@ -56,78 +69,139 @@ func (n *nameserver) Activate() error {
 	return nil
 }
 
+func (n *nameserver) DeactivateAndCleanup() error {
+	n.Lock()
+	defer n.Unlock()
+
+	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
+	err := n.udpServer.ShutdownContext(ctx)
+	if err != nil {
+		return errors.WithMessagef(err, "Error shutting down UDP DNS server of namespace %s", n.networkNamespace)
+	}
+	err = n.tcpServer.ShutdownContext(ctx)
+	if err != nil {
+		return errors.WithMessagef(err, "Error shutting down TCP DNS server of namespace %s", n.networkNamespace)
+	}
+
+	return nil
+}
+
+func (n *nameserver) AddValidNetworkID(validNetworkID string) {
+	n.Lock()
+	defer n.Unlock()
+
+	n.validNetworkIDs = append(n.validNetworkIDs, validNetworkID)
+}
+
+func (n *nameserver) RemoveValidNetworkID(validNetworkID string) {
+	n.Lock()
+	defer n.Unlock()
+
+	n.validNetworkIDs = lo.Filter(n.validNetworkIDs, func(item string, index int) bool {
+		return item != validNetworkID
+	})
+}
+
 // ServeDNS handles DNS queries
-func (h *dnsHandler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
-	// Create a new response message
+func (n *nameserver) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	msg := dns.Msg{}
 	msg.SetReply(r)
 	msg.Authoritative = true
 
 	// Iterate through all questions (usually one)
 	for _, q := range r.Question {
-		switch q.Name {
-		case "foo.", "foo":
-			if q.Qtype == dns.TypeA {
-				rr, err := dns.NewRR(fmt.Sprintf("%s A 10.1.2.3", q.Name))
-				if err == nil {
-					msg.Answer = append(msg.Answer, rr)
-				}
-			}
-		case "bar.", "bar":
-			if q.Qtype == dns.TypeA {
-				rr, err := dns.NewRR(fmt.Sprintf("%s A 192.0.0.1", q.Name))
-				if err == nil {
-					msg.Answer = append(msg.Answer, rr)
-				}
-			}
-		default:
-			// Forward other queries to 8.8.4.4
+		if q.Qtype == dns.TypeA {
+			msg.Answer = append(msg.Answer, n.resolver.ResolveName(q.Name, n.validNetworkIDs)...)
+		} else if q.Qtype == dns.TypePTR {
+			msg.Answer = append(msg.Answer, n.resolver.ResolveIP(q.Name, n.validNetworkIDs)...)
+		}
+
+		if len(msg.Answer) == 0 {
+			// TODO: Use DNS servers specified in daemon and container
 			c := new(dns.Client)
-			// Attempt UDP first
 			c.Net = "udp"
 			in, _, err := c.Exchange(r, "8.8.4.4:53")
 			if err != nil {
-				// If UDP fails, try TCP
 				c.Net = "tcp"
 				in, _, err = c.Exchange(r, "8.8.4.4:53")
 				if err != nil {
-					log.Printf("Failed to forward DNS query from namespace %s: %v", h.Namespace, err)
+					log.Printf("Failed to forward DNS query from namespace %s: %v", n.networkNamespace, err)
 					msg.SetRcode(r, dns.RcodeServerFailure)
 					break
 				}
 			}
-			// Append the forwarded response
 			msg.Answer = append(msg.Answer, in.Answer...)
 			msg.Ns = append(msg.Ns, in.Ns...)
 			msg.Extra = append(msg.Extra, in.Extra...)
+			msg.Authoritative = false
 		}
 	}
 
-	// Write the response
 	err := w.WriteMsg(&msg)
 	if err != nil {
-		log.Printf("Failed to write DNS response in namespace %s: %v", h.Namespace, err)
+		log.Printf("Failed to write DNS response in namespace %s: %v", n.networkNamespace, err)
 	}
 }
 
-// setNetworkNamespace switches the current thread to the specified network namespace
-func setNetworkNamespace(nsPath string) (netns.NsHandle, error) {
-	// Open the namespace using the netns package
-	ns, err := netns.GetFromPath(nsPath)
+// startDnsServersInNamespace sets up DNS servers within the specified network namespace
+func (n *nameserver) startDnsServersInNamespace() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	origNS, err := netns.Get()
 	if err != nil {
-		return 0, fmt.Errorf("failed to open namespace %s: %v", nsPath, err)
+		return errors.WithMessage(err, "Failed to get original namespace")
 	}
-	return ns, nil
+	defer origNS.Close()
+
+	// Switch to the target network namespace
+	targetNS, err := setNetworkNamespace(n.networkNamespace)
+	if err != nil {
+		return errors.WithMessagef(err, "Failed to set namespace for %s", n.networkNamespace)
+	}
+	defer targetNS.Close()
+
+	if err := netns.Set(targetNS); err != nil {
+		return errors.WithMessagef(err, "Failed to set namespace %s", n.networkNamespace)
+	}
+	defer netns.Set(origNS)
+
+	fmt.Printf("Starting DNS server TCP in namespace %s\n", n.networkNamespace)
+	portTCP, err := n.startDNSServer("tcp")
+	if err != nil {
+		return errors.WithMessagef(err, "Failed to start DNS server TCP in namespace %s", n.networkNamespace)
+	}
+
+	fmt.Printf("Starting DNS server UDP in namespace %s\n", n.networkNamespace)
+	portUDP, err := n.startDNSServer("udp")
+	if err != nil {
+		return errors.WithMessagef(err, "Failed to start DNS server UDP in namespace %s", n.networkNamespace)
+	}
+
+	fmt.Printf("Both servers for %s have been started\n", n.networkNamespace)
+
+	err = n.replaceDNATSNATRules()
+	if err != nil {
+		return errors.WithMessagef(err, "Failed to replace DNAT SNAT rules in namespace %s", n.networkNamespace)
+	}
+
+	fmt.Printf("Namespace %s DNS servers listening on TCP: 127.0.0.33:%d, UDP: 127.0.0.33:%d\n", n.networkNamespace, portTCP, portUDP)
+	return nil
 }
 
 // startDNSServer initializes and starts the DNS server for either TCP or UDP
-func startDNSServer(handler dns.Handler, connType string, listenAddr string) (int, error) {
+func (n *nameserver) startDNSServer(connType string) (int, error) {
 
 	onStarted := func() {
-		fmt.Printf("Started DNS server %s on %s\n", connType, listenAddr)
+		fmt.Printf("Started DNS server %s on %s\n", connType, n.listenIP)
 	}
 
-	var server *dns.Server
+	listenAddr := fmt.Sprintf("%s:0", n.listenIP)
+
+	server := &dns.Server{
+		Handler:           n,
+		NotifyStartedFunc: onStarted,
+	}
 	var port int
 
 	switch connType {
@@ -145,12 +219,8 @@ func startDNSServer(handler dns.Handler, connType string, listenAddr string) (in
 		fmt.Printf("Started UDP on port %d\n", udpPort)
 
 		// Initialize DNS server with the UDP connection
-		server = &dns.Server{
-			PacketConn:        udpConn,
-			Handler:           handler,
-			NotifyStartedFunc: onStarted,
-		}
-
+		server.PacketConn = udpConn
+		n.udpServer = server
 	case "tcp":
 		// Create TCP listener
 		tcpListener, err := net.Listen("tcp", listenAddr)
@@ -165,14 +235,10 @@ func startDNSServer(handler dns.Handler, connType string, listenAddr string) (in
 		fmt.Printf("Started TCP on port %d\n", tcpPort)
 
 		// Initialize DNS server with the TCP listener
-		server = &dns.Server{
-			Listener:          tcpListener,
-			Handler:           handler,
-			NotifyStartedFunc: onStarted,
-		}
-
+		server.Listener = tcpListener
+		n.tcpServer = server
 	default:
-		return 0, fmt.Errorf("Unsupported connection type: %s", connType)
+		return 0, fmt.Errorf("unsupported connection type: %s", connType)
 	}
 
 	go func() {
@@ -184,205 +250,122 @@ func startDNSServer(handler dns.Handler, connType string, listenAddr string) (in
 	return port, nil
 }
 
-// listenInNamespace sets up DNS servers within the specified network namespace
-func listenInNamespace(nsPath string) error {
-	// Lock the goroutine to its current OS thread
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	// Save the original network namespace to revert back later
-	origNS, err := netns.Get()
-	if err != nil {
-		return errors.WithMessage(err, "Failed to get original namespace")
-	}
-	defer origNS.Close()
-
-	// Switch to the target network namespace
-	targetNS, err := setNetworkNamespace(nsPath)
-	if err != nil {
-		return errors.WithMessagef(err, "Failed to set namespace for %s", nsPath)
-	}
-	defer targetNS.Close()
-
-	if err := netns.Set(targetNS); err != nil {
-		return errors.WithMessagef(err, "Failed to set namespace %s", nsPath)
-	}
-	defer netns.Set(origNS) // Revert back to original namespace when done
-
-	listenIP := "127.0.0.33"
-	// Define the address to listen on
-	address := fmt.Sprintf("%s:0", listenIP) // Port 0 means to choose a random available port
-
-	// Create a DNS handler
-	handler := &dnsHandler{
-		Namespace: filepath.Base(nsPath),
-	}
-
-	fmt.Printf("Starting DNS server TCP in namespace %s\n", nsPath)
-	// Start TCP DNS server
-	portTCP, err := startDNSServer(handler, "tcp", address)
-	if err != nil {
-		return errors.WithMessagef(err, "Failed to start DNS server TCP in namespace %s", nsPath)
-	}
-
-	fmt.Printf("Starting DNS server UDP in namespace %s\n", nsPath)
-	// Start UDP DNS server
-	portUDP, err := startDNSServer(handler, "udp", address)
-	if err != nil {
-		return errors.WithMessagef(err, "Failed to start DNS server UDP in namespace %s", nsPath)
-	}
-
-	fmt.Printf("Both servers for %s have been started\n", nsPath)
-
-	server := NamespaceDNS{
-		Namespace: filepath.Base(nsPath),
-		PortTCP:   portTCP,
-		PortUDP:   portUDP,
-		ListenIP:  listenIP,
-	}
-
-	err = replaceDNATSNATRules(server)
-	if err != nil {
-		return errors.WithMessagef(err, "Failed to replace DNAT SNAT rules in namespace %s", nsPath)
-	}
-
-	// Send the DNS server information back to the main goroutine
-	//dnsServersChan <- server
-
-	fmt.Printf("Namespace %s DNS servers listening on TCP: 127.0.0.33:%d, UDP: 127.0.0.33:%d\n", filepath.Base(nsPath), portTCP, portUDP)
-	return nil
-}
-
 // replaceDNATSNATRules replaces existing DNAT and SNAT iptables rules with new ones
 // that route DNS traffic to the specified ports of the DNS servers.
-func replaceDNATSNATRules(server NamespaceDNS) error {
+func (n *nameserver) replaceDNATSNATRules() error {
 	ipt, err := iptables.New()
 	if err != nil {
 		return errors.WithMessage(err, "Error initializing iptables")
 	}
 
 	table := "nat"
-	chains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
-	err = waitForChainsWithRules(ipt, table, chains, 30*time.Second)
+	dockerChains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
+	err = waitForChainsWithRules(ipt, table, dockerChains, 30*time.Second)
+
 	if err != nil {
 		return err
 	} else {
 		fmt.Println("Chains exist and have at least one rule")
 	}
-	//targetIP := "127.0.0.11/32"
-	//
-	//rulesToDelete := []struct {
-	//	ruleArgs []string
-	//	chain    string
-	//}{}
-	//
-	//// Iterate over each chain to delete existing rules
-	//for _, chain := range chains {
-	//	// List all rules in the chain
-	//	rules, err := ipt.List(table, chain)
-	//	if err != nil {
-	//		log.Printf("Failed to list rules in chain %s: %v", chain, err)
-	//		continue
-	//	}
-	//
-	//	for _, rule := range rules {
-	//		fmt.Printf("Found rule %s\n", rule)
-	//
-	//		ruleArgs := strings.Fields(rule)
-	//
-	//		shouldDelete := false
-	//
-	//		if chain == "DOCKER_OUTPUT" {
-	//			// Check if '-d 127.0.0.11' is present
-	//			for i := 0; i < len(ruleArgs)-1; i++ {
-	//				if ruleArgs[i] == "-d" && ruleArgs[i+1] == targetIP {
-	//					shouldDelete = true
-	//					break
-	//				}
-	//			}
-	//		} else if chain == "DOCKER_POSTROUTING" {
-	//			// Check if '-s 127.0.0.11' is present
-	//			for i := 0; i < len(ruleArgs)-1; i++ {
-	//				if ruleArgs[i] == "-s" && ruleArgs[i+1] == targetIP {
-	//					shouldDelete = true
-	//					break
-	//				}
-	//			}
-	//		}
-	//
-	//		if shouldDelete {
-	//			rulesToDelete = append(rulesToDelete, struct {
-	//				ruleArgs []string
-	//				chain    string
-	//			}{ruleArgs: ruleArgs, chain: chain})
-	//		}
-	//	}
-	//}
 
 	rules := []networking.IptablesRule{
 		{
-			Table: "nat",
-			Chain: "DOCKER_OUTPUT",
+			Chain: "OUTPUT",
+			RuleSpec: []string{
+				"-d", "127.0.0.11",
+				"-j", "FLANNEL_DNS_OUTPUT",
+			},
+		},
+		{
+			Chain: "POSTROUTING ",
+			RuleSpec: []string{
+				"-d", "127.0.0.11",
+				"-j", "FLANNEL_DNS_POSTROUTING",
+			},
+		},
+		{
+			Chain: "FLANNEL_DNS_OUTPUT",
 			RuleSpec: []string{
 				"-j", "DNAT",
 				"-p", "tcp",
 				"-d", "127.0.0.11",
 				"--dport", "53",
-				"--to-destination", fmt.Sprintf("%s:%d", server.ListenIP, server.PortTCP),
+				"--to-destination", fmt.Sprintf("%s:%d", n.listenIP, n.portTCP),
 			},
 		},
 		{
-			Table: "nat",
-			Chain: "DOCKER_OUTPUT",
+			Chain: "FLANNEL_DNS_OUTPUT",
 			RuleSpec: []string{
 				"-j", "DNAT",
 				"-p", "udp",
 				"-d", "127.0.0.11",
 				"--dport", "53",
-				"--to-destination", fmt.Sprintf("%s:%d", server.ListenIP, server.PortUDP),
+				"--to-destination", fmt.Sprintf("%s:%d", n.listenIP, n.portUDP),
 			},
 		},
 		{
-			Table: "nat",
-			Chain: "DOCKER_POSTROUTING",
+			Chain: "FLANNEL_DNS_POSTROUTING",
 			RuleSpec: []string{
 				"-j", "SNAT",
 				"-p", "tcp",
-				"-s", server.ListenIP,
-				"--sport", fmt.Sprintf("%d", server.PortTCP),
+				"-s", n.listenIP,
+				"--sport", fmt.Sprintf("%d", n.portTCP),
 				"--to-source", "127.0.0.11:53",
 			},
 		},
 		{
-			Table: "nat",
-			Chain: "DOCKER_POSTROUTING",
+			Chain: "FLANNEL_DNS_POSTROUTING",
 			RuleSpec: []string{
 				"-j", "SNAT",
 				"-p", "udp",
-				"-s", server.ListenIP,
-				"--sport", fmt.Sprintf("%d", server.PortUDP),
+				"-s", n.listenIP,
+				"--sport", fmt.Sprintf("%d", n.portUDP),
 				"--to-source", "127.0.0.11:53",
 			},
 		},
 	}
 
-	namespace := server.Namespace
 	for _, rule := range rules {
 		fmt.Printf("Applying iptables rule %+v\n", rule)
+		if err := createChainIfNecessary(ipt, table, rule.Chain); err != nil {
+			return errors.WithMessagef(err, "Errir in namespace %s", n.networkNamespace)
+		}
 		if err := ipt.InsertUnique(rule.Table, rule.Chain, 1, rule.RuleSpec...); err != nil {
-			return errors.WithMessagef(err, "Error applying iptables rule in namespace %s, table %s, chain %s", namespace, rule.Table, rule.Chain)
+			return errors.WithMessagef(err, "Error applying iptables rule in namespace %s, table %s, chain %s", n.networkNamespace, rule.Table, rule.Chain)
 		}
 	}
 
-	//for _, rule := range rulesToDelete {
-	//	// Attempt to delete the rule
-	//	err = ipt.Delete(table, rule.chain, rule.ruleArgs[2:]...)
-	//	if err != nil {
-	//		log.Printf("Failed to delete rule in chain %s: %v", rule.chain, err)
-	//	} else {
-	//		fmt.Printf("Deleted rule in chain %s: %v", rule.chain, rule.ruleArgs)
-	//	}
-	//}
+	for _, chain := range dockerChains {
+		rules, err := ipt.List("nat", chain)
+		if err != nil {
+			log.Printf("Error listing iptables rules in namespace %s, table %s, chain %s", n.networkNamespace, table, chain)
+		}
+
+		for _, rawRule := range rules {
+			rule := strings.Fields(rawRule)[2:]
+			err = ipt.Delete(table, chain, rule...)
+			if err != nil {
+				log.Printf("Failed to delete rule in chain %s: %v", chain, err)
+			} else {
+				fmt.Printf("Deleted rule in chain %s: %v", chain, rule)
+			}
+		}
+	}
+
+	return nil
+}
+
+func createChainIfNecessary(ipt *iptables.IPTables, table, chain string) error {
+	exists, err := ipt.ChainExists(table, chain)
+	if err != nil {
+		return errors.WithMessagef(err, "Error checking if chain %s exists in table %s", chain, table)
+	}
+
+	if !exists {
+		if err := ipt.NewChain(table, chain); err != nil {
+			return errors.WithMessagef(err, "Error creating chain %s in table %s", chain, table)
+		}
+	}
 
 	return nil
 }
@@ -425,4 +408,13 @@ func waitForChainsWithRules(ipt *iptables.IPTables, table string, chains []strin
 
 		time.Sleep(5 * time.Millisecond) // Wait before retrying
 	}
+}
+
+// setNetworkNamespace switches the current thread to the specified network namespace
+func setNetworkNamespace(nsPath string) (netns.NsHandle, error) {
+	ns, err := netns.GetFromPath(nsPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open namespace %s: %v", nsPath, err)
+	}
+	return ns, nil
 }

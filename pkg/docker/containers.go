@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/pkg/errors"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"log"
 	"net"
 	"strings"
@@ -75,13 +76,15 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 	ipamIPs := make(map[string]net.IP)
 
 	containerInfo = &ContainerInfo{
-		ID:          containerID,
-		Name:        containerName,
-		ServiceID:   serviceID,
-		ServiceName: serviceName,
-		SandboxKey:  sandboxKey,
-		IPs:         ips,
-		IpamIPs:     ipamIPs,
+		ContainerInfo: common.ContainerInfo{
+			ID:          containerID,
+			Name:        containerName,
+			ServiceID:   serviceID,
+			ServiceName: serviceName,
+			SandboxKey:  sandboxKey,
+			IPs:         ips,
+		},
+		IpamIPs: ipamIPs,
 	}
 
 	for networkName, networkData := range container.NetworkSettings.Networks {

@@ -29,6 +29,8 @@ func main() {
 	availableSubnetsStrings := strings.Split(os.Getenv("AVAILABLE_SUBNETS"), ",")
 	networkSubnetSize := getEnvAsInt("NETWORK_SUBNET_SIZE", 20)
 	defaultHostSubnetSize := getEnvAsInt("DEFAULT_HOST_SUBNET_SIZE", 25)
+	vniStart := getEnvAsInt("VNI_START", 6514)
+	dnsDockerCompatibilityMode := strings.ToLower(os.Getenv("DNS_DOCKER_COMPATIBILITY_MODE")) == "true"
 
 	availableSubnets := []net.IPNet{}
 	for _, subnet := range availableSubnetsStrings {
@@ -40,7 +42,9 @@ func main() {
 		availableSubnets = append(availableSubnets, *parsed)
 	}
 
-	flannelDriver := driver.NewFlannelDriver(etcdEndPoints, etcdPrefix, defaultFlannelOptions, availableSubnets, networkSubnetSize, defaultHostSubnetSize)
+	flannelDriver := driver.NewFlannelDriver(
+		etcdEndPoints, etcdPrefix, defaultFlannelOptions, availableSubnets, networkSubnetSize,
+		defaultHostSubnetSize, vniStart, dnsDockerCompatibilityMode)
 
 	// In a go-routine because it may take a while and docker marks us as disabled if our startup takes too long
 	go func() {

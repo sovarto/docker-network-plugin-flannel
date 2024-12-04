@@ -5,12 +5,21 @@ import (
 	"strings"
 )
 
-type NetworkInfo struct {
+type FlannelNetworkID string
+type DockerNetworkID string
+
+type FlannelNetworkInfo struct {
 	FlannelID    string
 	MTU          int
 	Network      *net.IPNet
 	HostSubnet   *net.IPNet
 	LocalGateway net.IP
+}
+
+type NetworkInfo struct {
+	DockerID  string `json:"DockerID"`
+	FlannelID string `json:"FlannelID"`
+	Name      string `json:"Name"`
 }
 
 func SubnetToKey(subnet string) string {
@@ -57,4 +66,16 @@ func Max[T Ordered](a, b T) T {
 		return a
 	}
 	return b
+}
+
+func (c NetworkInfo) Equals(other Equaler) bool {
+	o, ok := other.(NetworkInfo)
+	if !ok {
+		return false
+	}
+	if c.FlannelID != o.FlannelID || c.Name != o.Name {
+		return false
+	}
+
+	return true
 }

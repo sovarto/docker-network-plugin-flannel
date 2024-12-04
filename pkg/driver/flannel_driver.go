@@ -34,16 +34,21 @@ type flannelDriver struct {
 	networksByFlannelID     map[string]flannel_network.Network // flannel network ID -> network
 	networksByDockerID      map[string]flannel_network.Network // docker network ID -> network
 	serviceLbsManagement    service_lb.ServiceLbsManagement
+	services                map[string]common.Service // service ID -> service
 	dockerData              docker.Data
 	completeAddressSpace    []net.IPNet
 	networkSubnetSize       int
 	vniStart                int
 	isInitialized           bool
 	nameserversBySandboxKey map[string]dns.Nameserver
+	nameserversByEndpointID map[string]dns.Nameserver
+	dnsResolver             dns.Resolver
 	sync.Mutex
 }
 
-func NewFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelOptions []string, completeSpace []net.IPNet, networkSubnetSize int, defaultHostSubnetSize int) FlannelDriver {
+func NewFlannelDriver(
+	etcdEndPoints []string, etcdPrefix string, defaultFlannelOptions []string, completeSpace []net.IPNet,
+	networkSubnetSize int, defaultHostSubnetSize int, vniStart int, dnsDockerCompatibilityMode bool) FlannelDriver {
 
 	driver := &flannelDriver{
 		etcdPrefix:              etcdPrefix,
@@ -52,11 +57,14 @@ func NewFlannelDriver(etcdEndPoints []string, etcdPrefix string, defaultFlannelO
 		defaultHostSubnetSize:   defaultHostSubnetSize,
 		networksByFlannelID:     make(map[string]flannel_network.Network),
 		networksByDockerID:      make(map[string]flannel_network.Network),
-		vniStart:                6514,
+		services:                make(map[string]common.Service),
+		vniStart:                vniStart,
 		isInitialized:           false,
 		completeAddressSpace:    completeSpace,
 		networkSubnetSize:       networkSubnetSize,
 		nameserversBySandboxKey: make(map[string]dns.Nameserver),
+		nameserversByEndpointID: make(map[string]dns.Nameserver),
+		dnsResolver:             dns.NewResolver(dnsDockerCompatibilityMode),
 	}
 
 	numNetworks := countPoolSizeSubnets(completeSpace, networkSubnetSize)
@@ -105,7 +113,7 @@ func (d *flannelDriver) Init() error {
 		OnRemoved: d.handleServicesRemoved,
 	}
 
-	networkCallbacks := etcd.ItemsHandlers[docker.NetworkInfo]{
+	networkCallbacks := etcd.ItemsHandlers[common.NetworkInfo]{
 		OnAdded:   d.handleNetworksAdded,
 		OnChanged: d.handleNetworksChanged,
 		OnRemoved: d.handleNetworksRemoved,
@@ -156,27 +164,41 @@ func (d *flannelDriver) getEndpoint(dockerNetworkID, endpointID string) (flannel
 
 func (d *flannelDriver) handleServicesAdded(added []etcd.Item[docker.ServiceInfo]) {
 	for _, addedItem := range added {
-		err := d.serviceLbsManagement.EnsureLoadBalancer(addedItem.Value)
-		if err != nil {
-			log.Printf("Failed to create load balancer for service %s: %v", addedItem.Value.ID, err)
-		}
+		serviceInfo := addedItem.Value
+		service := d.createService(serviceInfo.ID, serviceInfo.Name)
+		service.SetEndpointMode(serviceInfo.EndpointMode)
+		service.SetNetworks(serviceInfo.Networks, serviceInfo.IpamVIPs)
 	}
 }
 
 func (d *flannelDriver) handleServicesChanged(changed []etcd.ItemChange[docker.ServiceInfo]) {
 	for _, changedItem := range changed {
-		err := d.serviceLbsManagement.EnsureLoadBalancer(changedItem.Current)
-		if err != nil {
-			log.Printf("Failed to create load balancer for service %s: %v", changedItem.Current.ID, err)
+		serviceInfo := changedItem.Current
+		service, exists := d.services[serviceInfo.ID]
+		if !exists {
+			log.Printf("Received a change event for unknown service %s\n", serviceInfo.ID)
+			service = d.createService(serviceInfo.ID, serviceInfo.Name)
 		}
+		service.SetEndpointMode(serviceInfo.EndpointMode)
+		service.SetNetworks(serviceInfo.Networks, serviceInfo.IpamVIPs)
 	}
 }
 
 func (d *flannelDriver) handleServicesRemoved(removed []etcd.Item[docker.ServiceInfo]) {
 	for _, removedItem := range removed {
-		err := d.serviceLbsManagement.DeleteLoadBalancer(removedItem.ID)
-		if err != nil {
-			log.Printf("Failed to remove load balancer for service %s: %+v\n", removedItem.ID, err)
+		serviceInfo := removedItem.Value
+		service, exists := d.services[serviceInfo.ID]
+		if !exists {
+			log.Printf("Received a remove event for unknown service %s\n", serviceInfo.ID)
+		} else {
+			if serviceInfo.EndpointMode == common.ServiceEndpointModeVip {
+				err := d.serviceLbsManagement.DeleteLoadBalancer(serviceInfo.ID)
+				if err != nil {
+					log.Printf("Failed to remove load balancer for service %s: %+v\n", serviceInfo.ID, err)
+				}
+			}
+			d.dnsResolver.RemoveService(service)
+			delete(d.services, serviceInfo.ID)
 		}
 	}
 }
@@ -237,27 +259,27 @@ func (d *flannelDriver) getOrCreateNetwork(dockerNetworkID string, flannelNetwor
 	return network, nil
 }
 
-func (d *flannelDriver) handleNetworksAdded(added []etcd.Item[docker.NetworkInfo]) {
+func (d *flannelDriver) handleNetworksAdded(added []etcd.Item[common.NetworkInfo]) {
 	for _, addedItem := range added {
 		networkInfo := addedItem.Value
 		_, err := d.getOrCreateNetwork(networkInfo.DockerID, networkInfo.FlannelID)
 		if err != nil {
-			log.Printf("Failed to handle added or changed network %s / %s: %s", networkInfo.DockerID, networkInfo.FlannelID, err)
+			log.Printf("Failed to handle added or changed network %s / %s: %s\n", networkInfo.DockerID, networkInfo.FlannelID, err)
 		}
 	}
 }
 
-func (d *flannelDriver) handleNetworksChanged(changed []etcd.ItemChange[docker.NetworkInfo]) {
+func (d *flannelDriver) handleNetworksChanged(changed []etcd.ItemChange[common.NetworkInfo]) {
 	for _, changedItem := range changed {
 		networkInfo := changedItem.Current
 		_, err := d.getOrCreateNetwork(networkInfo.DockerID, networkInfo.FlannelID)
 		if err != nil {
-			log.Printf("Failed to handle added or changed network %s / %s: %s", networkInfo.DockerID, networkInfo.FlannelID, err)
+			log.Printf("Failed to handle added or changed network %s / %s: %s\n", networkInfo.DockerID, networkInfo.FlannelID, err)
 		}
 	}
 }
 
-func (d *flannelDriver) handleNetworksRemoved(removed []etcd.Item[docker.NetworkInfo]) {
+func (d *flannelDriver) handleNetworksRemoved(removed []etcd.Item[common.NetworkInfo]) {
 	for _, removedItem := range removed {
 		networkInfo := removedItem.Value
 		network, exists := d.getNetwork(networkInfo.DockerID, networkInfo.FlannelID)
@@ -295,29 +317,35 @@ func (d *flannelDriver) handleContainersAdded(added []etcd.ShardItem[docker.Cont
 		}
 
 		if containerInfo.ServiceID != "" {
-			err := d.serviceLbsManagement.AddBackendIPsToLoadBalancer(containerInfo.ServiceID, containerInfo.IPs)
-			if err != nil {
-				log.Printf("error adding backend IPs to load balancer of service %s: %v", containerInfo.ServiceID, err)
+			service, exists := d.services[containerInfo.ServiceID]
+			if !exists {
+
 			}
+			service.AddContainer(containerInfo.ContainerInfo)
 		}
 	}
 }
 
 func (d *flannelDriver) handleContainersChanged(changed []etcd.ShardItemChange[docker.ContainerInfo]) {
 	for _, changedItem := range changed {
-		log.Printf("Received container changed info for container %s on host %s. Previous: %+v, Current: %+v\n", changedItem.ID, changedItem.ShardKey, changedItem.Previous, changedItem.Current)
+		log.Printf("Received container changed info for container %s on host %s. Currently not handling it. Previous: %+v, Current: %+v\n", changedItem.ID, changedItem.ShardKey, changedItem.Previous, changedItem.Current)
 	}
 }
 
 func (d *flannelDriver) handleContainersRemoved(removed []etcd.ShardItem[docker.ContainerInfo]) {
 	for _, removedItem := range removed {
 		containerInfo := removedItem.Value
-
-		if containerInfo.ServiceID != "" {
-			err := d.serviceLbsManagement.RemoveBackendIPsFromLoadBalancer(containerInfo.ServiceID, containerInfo.IPs)
+		service, exists := d.services[containerInfo.ID]
+		if exists {
+			service.RemoveContainer(containerInfo.ID)
+		}
+		nameserver, exists := d.nameserversBySandboxKey[containerInfo.SandboxKey]
+		if exists {
+			err := nameserver.DeactivateAndCleanup()
 			if err != nil {
-				log.Printf("Error removing backend IPs from load balancer of service %s: %v\n", containerInfo.ServiceID, err)
+				log.Printf("Error deactivating nameserver for container %s: %v\n", containerInfo.ID, err)
 			}
+			delete(d.nameserversBySandboxKey, containerInfo.SandboxKey)
 		}
 	}
 }
@@ -347,17 +375,37 @@ func countPoolSizeSubnets(completeSpace []net.IPNet, poolSize int) int {
 	return total
 }
 
-func (d *flannelDriver) addNameserver(sandboxKey string) error {
-	_, exists := d.nameserversBySandboxKey[sandboxKey]
+func (d *flannelDriver) getOrAddNameserver(sandboxKey string) (dns.Nameserver, error) {
+	nameserver, exists := d.nameserversBySandboxKey[sandboxKey]
 	if exists {
-		return nil
+		return nameserver, nil
 	}
-	nameserver := dns.NewNameserver(sandboxKey)
+	nameserver = dns.NewNameserver(sandboxKey, d.dnsResolver)
 	err := nameserver.Activate()
 	if err != nil {
-		return errors.WithMessagef(err, "failed to activate nameserver in namespace %s", sandboxKey)
+		return nil, errors.WithMessagef(err, "failed to activate nameserver in namespace %s", sandboxKey)
 	}
 
 	d.nameserversBySandboxKey[sandboxKey] = nameserver
-	return nil
+	return nameserver, nil
+}
+
+func (d *flannelDriver) createService(id, name string) common.Service {
+	service := common.NewService(id, name)
+
+	// TODO: Store unsubscribe functions and use them upon service deletion
+	// or not? because when the service is being deleted, it is gone, no events will be raised anyway
+	service.Events().OnInitialized.Subscribe(func(s common.Service) {
+		if s.GetInfo().EndpointMode == common.ServiceEndpointModeVip {
+			err := d.serviceLbsManagement.CreateLoadBalancer(s)
+			if err != nil {
+				log.Printf("Failed to create load balancer of service %s: %v\n", name, err)
+			}
+		}
+		d.dnsResolver.AddService(s)
+	})
+
+	d.services[id] = service
+
+	return service
 }

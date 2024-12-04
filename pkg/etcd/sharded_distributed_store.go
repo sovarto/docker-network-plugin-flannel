@@ -33,6 +33,8 @@ type ShardItemsHandlers[T any] struct {
 	OnRemoved func(removed []ShardItem[T])
 }
 
+// TODO: Make use of ReadOnlyStore and WriteOnlyStore internally for the shards, instead of re-implementing all that logic
+
 // ShardedDistributedStore Notes:
 // - Even though items are placed below the shard keys, itemIDs need to be unique across all shards
 // - Because this performs a two-way sync, the handlers will be called even for items we add, update, delete or sync

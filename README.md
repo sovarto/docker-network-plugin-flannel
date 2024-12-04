@@ -53,3 +53,13 @@ Container:
 
 
 Services
+
+
+# Restore at startup
+
+1. Resync docker info to etcd
+2. Release IPs for endpoints that are no longer running
+3. Release pools and IPs for networks that no longer exist
+4. Delete Flannel config - in etcd and flannel.env on disk - for networks that no longer exist
+5. Start Flannel for existing networks
+6. Re-patch DNS into all running containers that are connected to our networks

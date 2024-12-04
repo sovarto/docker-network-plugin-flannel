@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	"os"
 	"sync"
@@ -13,7 +14,7 @@ type Data interface {
 	Init() error
 	GetContainers() etcd.ShardedDistributedStore[ContainerInfo]
 	GetServices() etcd.Store[ServiceInfo]
-	GetNetworks() etcd.Store[NetworkInfo]
+	GetNetworks() etcd.Store[common.NetworkInfo]
 }
 
 type data struct {
@@ -22,7 +23,7 @@ type data struct {
 	hostname      string
 	containers    etcd.ShardedDistributedStore[ContainerInfo]
 	services      etcd.Store[ServiceInfo]
-	networks      etcd.Store[NetworkInfo]
+	networks      etcd.Store[common.NetworkInfo]
 	isManagerNode bool
 	sync.Mutex
 }
@@ -30,7 +31,7 @@ type data struct {
 func NewData(etcdClient etcd.Client,
 	containerHandlers etcd.ShardItemsHandlers[ContainerInfo],
 	serviceHandlers etcd.ItemsHandlers[ServiceInfo],
-	networkHandlers etcd.ItemsHandlers[NetworkInfo]) (Data, error) {
+	networkHandlers etcd.ItemsHandlers[common.NetworkInfo]) (Data, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, errors.WithMessage(err, "error getting hostname")
@@ -53,7 +54,7 @@ func NewData(etcdClient etcd.Client,
 
 	containers := etcd.NewShardedDistributedStore(etcdClient.CreateSubClient("containers"), hostname, containerHandlers)
 	var services etcd.Store[ServiceInfo]
-	var networks etcd.Store[NetworkInfo]
+	var networks etcd.Store[common.NetworkInfo]
 	servicesEtcdClient := etcdClient.CreateSubClient("services", "ipam-vips")
 	networksEtcdClient := etcdClient.CreateSubClient("networks")
 	if isManagerNode {
@@ -79,7 +80,7 @@ func NewData(etcdClient etcd.Client,
 
 func (d *data) GetContainers() etcd.ShardedDistributedStore[ContainerInfo] { return d.containers }
 func (d *data) GetServices() etcd.Store[ServiceInfo]                       { return d.services }
-func (d *data) GetNetworks() etcd.Store[NetworkInfo]                       { return d.networks }
+func (d *data) GetNetworks() etcd.Store[common.NetworkInfo]                { return d.networks }
 
 func (d *data) Init() error {
 	err := d.initNetworks()

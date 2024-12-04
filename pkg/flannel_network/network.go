@@ -24,7 +24,7 @@ import (
 
 type Network interface {
 	Ensure() error
-	GetInfo() common.NetworkInfo
+	GetInfo() common.FlannelNetworkInfo
 	Delete() error
 	GetPool() ipam.AddressPool
 	AddEndpoint(id string, ip net.IP, mac string) (Endpoint, error)
@@ -68,8 +68,8 @@ func NewNetwork(etcdClient etcd.Client, flannelID string, networkSubnet net.IPNe
 	return result, nil
 }
 
-func (n *network) GetInfo() common.NetworkInfo {
-	return common.NetworkInfo{
+func (n *network) GetInfo() common.FlannelNetworkInfo {
+	return common.FlannelNetworkInfo{
 		FlannelID:    n.flannelID,
 		MTU:          n.mtu,
 		Network:      &n.networkSubnet,

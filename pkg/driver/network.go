@@ -100,14 +100,14 @@ func (d *flannelDriver) EndpointInfo(request *network.InfoRequest) (*network.Inf
 
 	return resp, nil
 }
-func WaitForSandboxAndConfigure(sandboxKey string, timeout time.Duration, configure func(string) error) error {
+func WaitForSandboxAndConfigure(sandboxKey string, timeout time.Duration, configure func() error) error {
 	start := time.Now()
 
 	for {
 		// Check if the sandbox key file exists
 		if _, err := os.Stat(sandboxKey); err == nil {
 			// File exists, apply the configuration
-			if configureErr := configure(sandboxKey); configureErr != nil {
+			if configureErr := configure(); configureErr != nil {
 				return fmt.Errorf("failed to configure namespace: %w", configureErr)
 			}
 			fmt.Println("Sandbox configured successfully")
@@ -141,16 +141,24 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 	endpointInfo := endpoint.GetInfo()
 
 	go func() {
-		err := WaitForSandboxAndConfigure(request.SandboxKey, 10*time.Second, func(sandboxKey string) error {
+		err := WaitForSandboxAndConfigure(request.SandboxKey, 10*time.Second, func() error {
 			start := time.Now()
 			defer func() {
 				elapsed := time.Since(start)
 				fmt.Printf("Execution time: %s\n", elapsed)
 			}()
-			return d.addNameserver(sandboxKey)
+			nameserver, err := d.getOrAddNameserver(request.SandboxKey)
+			if err != nil {
+				return err
+			}
+
+			d.nameserversByEndpointID[request.EndpointID] = nameserver
+			nameserver.AddValidNetworkID(request.NetworkID)
+
+			return nil
 		})
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			log.Printf("Error patching DNS server in sandbox %s: %v\n", request.SandboxKey, err)
 		}
 	}()
 
@@ -178,10 +186,21 @@ func (d *flannelDriver) Leave(request *network.LeaveRequest) error {
 	_, endpoint, err := d.getEndpoint(request.NetworkID, request.EndpointID)
 
 	if err != nil {
-		return err
+		return errors.WithMessagef(err, "failed to get endpoint %s", request.EndpointID)
 	}
 
-	return endpoint.Leave()
+	err = endpoint.Leave()
+	if err != nil {
+		return errors.WithMessagef(err, "failed to leave endpoint %s", request.EndpointID)
+	}
+
+	nameserver, exists := d.nameserversByEndpointID[request.EndpointID]
+	if exists {
+		nameserver.RemoveValidNetworkID(request.NetworkID)
+		delete(d.nameserversByEndpointID, request.EndpointID)
+	}
+
+	return nil
 }
 
 func (d *flannelDriver) DiscoverNew(notification *network.DiscoveryNotification) error {

@@ -16,18 +16,18 @@ import (
 type BridgeInterface interface {
 	Ensure() error
 	Delete() error
-	GetNetworkInfo() common.NetworkInfo
+	GetNetworkInfo() common.FlannelNetworkInfo
 	CreateAttachedVethPair(mac string) (VethPair, error)
 }
 
 type bridgeInterface struct {
 	interfaceName string
 	iptablesRules []networking.IptablesRule
-	network       common.NetworkInfo
+	network       common.FlannelNetworkInfo
 	route         netlink.Route
 }
 
-func NewBridgeInterface(network common.NetworkInfo) (BridgeInterface, error) {
+func NewBridgeInterface(network common.FlannelNetworkInfo) (BridgeInterface, error) {
 	interfaceName := networking.GetInterfaceName("fl", "-", network.FlannelID)
 	result := &bridgeInterface{
 		interfaceName: interfaceName,
@@ -44,7 +44,7 @@ func NewBridgeInterface(network common.NetworkInfo) (BridgeInterface, error) {
 	return result, nil
 }
 
-func (b *bridgeInterface) GetNetworkInfo() common.NetworkInfo {
+func (b *bridgeInterface) GetNetworkInfo() common.FlannelNetworkInfo {
 	return b.network
 }
 

@@ -74,7 +74,21 @@
       "settable": [
         "value"
       ],
-      "value": "24"
+      "value": "25"
+    },
+    {
+      "name": "VNI_START",
+      "settable": [
+        "value"
+      ],
+      "value": "6514"
+    },
+    {
+      "name": "DNS_DOCKER_COMPATIBILITY_MODE",
+      "settable": [
+        "value"
+      ],
+      "value": "true"
     }
   ],
   "network": {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/docker/docker/api/types/network"
 	"github.com/pkg/errors"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	"log"
 )
@@ -16,12 +17,12 @@ func (d *data) initNetworks() error {
 	if d.isManagerNode {
 		networksInfos, err := d.getNetworksInfosFromDocker()
 
-		err = d.networks.(etcd.WriteOnlyStore[NetworkInfo]).Init(networksInfos)
+		err = d.networks.(etcd.WriteOnlyStore[common.NetworkInfo]).Init(networksInfos)
 		if err != nil {
 			return errors.WithMessage(err, "Error initializing networks")
 		}
 	} else {
-		err := d.networks.(etcd.ReadOnlyStore[NetworkInfo]).Init()
+		err := d.networks.(etcd.ReadOnlyStore[common.NetworkInfo]).Init()
 		if err != nil {
 			return errors.WithMessage(err, "Error initializing networks")
 		}
@@ -39,12 +40,12 @@ func (d *data) syncNetworks() error {
 	if d.isManagerNode {
 		networksInfos, err := d.getNetworksInfosFromDocker()
 
-		err = d.networks.(etcd.WriteOnlyStore[NetworkInfo]).Sync(networksInfos)
+		err = d.networks.(etcd.WriteOnlyStore[common.NetworkInfo]).Sync(networksInfos)
 		if err != nil {
 			return errors.WithMessage(err, "Error syncing networks")
 		}
 	} else {
-		err := d.networks.(etcd.ReadOnlyStore[NetworkInfo]).Sync()
+		err := d.networks.(etcd.ReadOnlyStore[common.NetworkInfo]).Sync()
 		if err != nil {
 			return errors.WithMessage(err, "Error syncing networks")
 		}
@@ -53,13 +54,13 @@ func (d *data) syncNetworks() error {
 	return nil
 }
 
-func (d *data) getNetworksInfosFromDocker() (networkInfos map[string]NetworkInfo, err error) {
+func (d *data) getNetworksInfosFromDocker() (networkInfos map[string]common.NetworkInfo, err error) {
 	rawNetworks, err := d.dockerClient.NetworkList(context.Background(), network.ListOptions{})
 	if err != nil {
 		return nil, errors.WithMessage(err, "Error listing docker services")
 	}
 
-	networkInfos = map[string]NetworkInfo{}
+	networkInfos = map[string]common.NetworkInfo{}
 
 	for _, network := range rawNetworks {
 		networkInfo, ignored, err := d.getNetworkInfoFromDocker(network.ID)
@@ -76,7 +77,7 @@ func (d *data) getNetworksInfosFromDocker() (networkInfos map[string]NetworkInfo
 	return
 }
 
-func (d *data) getNetworkInfoFromDocker(dockerNetworkID string) (networkInfo *NetworkInfo, ignored bool, err error) {
+func (d *data) getNetworkInfoFromDocker(dockerNetworkID string) (networkInfo *common.NetworkInfo, ignored bool, err error) {
 	network, err := d.dockerClient.NetworkInspect(context.Background(), dockerNetworkID, network.InspectOptions{})
 	if err != nil {
 		return nil, false, errors.WithMessagef(err, "Error inspecting docker network %s", dockerNetworkID)
@@ -88,7 +89,7 @@ func (d *data) getNetworkInfoFromDocker(dockerNetworkID string) (networkInfo *Ne
 		return nil, true, nil
 	}
 
-	return &NetworkInfo{
+	return &common.NetworkInfo{
 		DockerID:  dockerNetworkID,
 		FlannelID: flannelNetworkID,
 		Name:      network.Name,
@@ -105,7 +106,7 @@ func (d *data) handleNetwork(dockerNetworkID string) error {
 	if ignored {
 		return nil
 	}
-	err = d.networks.(etcd.WriteOnlyStore[NetworkInfo]).AddOrUpdateItem(dockerNetworkID, *networkInfo)
+	err = d.networks.(etcd.WriteOnlyStore[common.NetworkInfo]).AddOrUpdateItem(dockerNetworkID, *networkInfo)
 	if err != nil {
 		return errors.WithMessagef(err, "Error adding or updating network info %s", dockerNetworkID)
 	}
@@ -114,5 +115,5 @@ func (d *data) handleNetwork(dockerNetworkID string) error {
 
 func (d *data) handleDeletedNetwork(dockerNetworkID string) error {
 	fmt.Printf("Deleting network %s\n", dockerNetworkID)
-	return d.networks.(etcd.WriteOnlyStore[NetworkInfo]).DeleteItem(dockerNetworkID)
+	return d.networks.(etcd.WriteOnlyStore[common.NetworkInfo]).DeleteItem(dockerNetworkID)
 }

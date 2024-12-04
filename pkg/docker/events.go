@@ -47,6 +47,7 @@ func (d *data) handleEvent(event events.Message) error {
 		case events.ActionCreate:
 		case events.ActionStart:
 		case events.ActionKill:
+			// TODO: Implement connection draining on service LB
 		}
 	case events.ServiceEventType:
 		switch event.Action {
