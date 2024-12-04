@@ -249,7 +249,7 @@ func listenInNamespace(nsPath string) error {
 	// Send the DNS server information back to the main goroutine
 	//dnsServersChan <- server
 
-	log.Printf("Namespace %s DNS servers listening on TCP: 127.0.0.33:%d, UDP: 127.0.0.33:%d", filepath.Base(nsPath), portTCP, portUDP)
+	fmt.Printf("Namespace %s DNS servers listening on TCP: 127.0.0.33:%d, UDP: 127.0.0.33:%d", filepath.Base(nsPath), portTCP, portUDP)
 	return nil
 }
 
@@ -264,6 +264,11 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 	table := "nat"
 	chains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
 	targetIP := "127.0.0.11/32"
+
+	rulesToDelete := []struct {
+		ruleArgs []string
+		chain    string
+	}{}
 
 	// Iterate over each chain to delete existing rules
 	for _, chain := range chains {
@@ -300,13 +305,10 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 			}
 
 			if shouldDelete {
-				// Attempt to delete the rule
-				err = ipt.Delete(table, chain, ruleArgs[2:]...)
-				if err != nil {
-					log.Printf("Failed to delete rule in chain %s: %v", chain, err)
-				} else {
-					log.Printf("Deleted rule in chain %s: %v", chain, ruleArgs)
-				}
+				rulesToDelete = append(rulesToDelete, struct {
+					ruleArgs []string
+					chain    string
+				}{ruleArgs: ruleArgs, chain: chain})
 			}
 		}
 	}
@@ -362,8 +364,17 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 	for _, rule := range rules {
 		fmt.Printf("Applying iptables rule %+v\n", rule)
 		if err := ipt.InsertUnique(rule.Table, rule.Chain, 1, rule.RuleSpec...); err != nil {
-			log.Printf("Error applying iptables rule in namespace %s, table %s, chain %s: %v", namespace, rule.Table, rule.Chain, err)
-			return err
+			return errors.WithMessagef(err, "Error applying iptables rule in namespace %s, table %s, chain %s", namespace, rule.Table, rule.Chain)
+		}
+	}
+
+	for _, rule := range rulesToDelete {
+		// Attempt to delete the rule
+		err = ipt.Delete(table, rule.chain, rule.ruleArgs[2:]...)
+		if err != nil {
+			log.Printf("Failed to delete rule in chain %s: %v", rule.chain, err)
+		} else {
+			fmt.Printf("Deleted rule in chain %s: %v", rule.chain, rule.ruleArgs)
 		}
 	}
 
