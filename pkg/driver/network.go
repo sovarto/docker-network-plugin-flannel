@@ -120,7 +120,7 @@ func WaitForSandboxAndConfigure(sandboxKey string, timeout time.Duration, config
 		}
 
 		// Sleep briefly before retrying
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinResponse, error) {
