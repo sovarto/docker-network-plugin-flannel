@@ -38,11 +38,6 @@ func (d *data) handleEvent(event events.Message) error {
 		case events.ActionRemove:
 			return d.handleDeletedNetwork(event.Actor.ID)
 		case events.ActionConnect:
-			containerID := event.Actor.Attributes["container"]
-			err := d.dockerClient.ContainerPause(context.Background(), containerID)
-			if err != nil {
-				log.Printf("Error pausing docker container %s: %+v\n", containerID, err)
-			}
 			return d.handleContainer(event.Actor.Attributes["container"])
 		case events.ActionDisconnect:
 			return d.handleDeletedContainer(event.Actor.Attributes["container"])
@@ -50,17 +45,7 @@ func (d *data) handleEvent(event events.Message) error {
 	case events.ContainerEventType:
 		switch event.Action {
 		case events.ActionCreate:
-			containerID := event.Actor.ID
-			err := d.dockerClient.ContainerPause(context.Background(), containerID)
-			if err != nil {
-				log.Printf("Error pausing docker container %s: %+v\n", containerID, err)
-			}
 		case events.ActionStart:
-			containerID := event.Actor.ID
-			err := d.dockerClient.ContainerPause(context.Background(), containerID)
-			if err != nil {
-				log.Printf("Error pausing docker container %s: %+v\n", containerID, err)
-			}
 		case events.ActionKill:
 		}
 	case events.ServiceEventType:

@@ -1,15 +1,14 @@
 package driver
 
 import (
-	"context"
 	"fmt"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"github.com/docker/docker/libnetwork/types"
 	"github.com/docker/go-plugins-helpers/network"
 	"github.com/pkg/errors"
 	"log"
 	"net"
+	"os"
+	"time"
 )
 
 func (d *flannelDriver) GetCapabilities() (*network.CapabilitiesResponse, error) {
@@ -101,7 +100,29 @@ func (d *flannelDriver) EndpointInfo(request *network.InfoRequest) (*network.Inf
 
 	return resp, nil
 }
+func WaitForSandboxAndConfigure(sandboxKey string, timeout time.Duration, configure func(string) error) error {
+	start := time.Now()
 
+	for {
+		// Check if the sandbox key file exists
+		if _, err := os.Stat(sandboxKey); err == nil {
+			// File exists, apply the configuration
+			if configureErr := configure(sandboxKey); configureErr != nil {
+				return fmt.Errorf("failed to configure namespace: %w", configureErr)
+			}
+			fmt.Println("Sandbox configured successfully")
+			return nil
+		}
+
+		// Check if timeout has been reached
+		if time.Since(start) > timeout {
+			return fmt.Errorf("timeout reached while waiting for sandbox key: %s", sandboxKey)
+		}
+
+		// Sleep briefly before retrying
+		time.Sleep(50 * time.Millisecond)
+	}
+}
 func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinResponse, error) {
 	d.Lock()
 	defer d.Unlock()
@@ -116,25 +137,17 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 	if err != nil {
 		return nil, errors.WithMessagef(err, "failed to join endpoint %s to network %s", request.EndpointID, request.NetworkID)
 	}
-
-	dockerClient, err := client.NewClientWithOpts(
-		client.WithHost("unix:///var/run/docker.sock"),
-		client.WithAPIVersionNegotiation(),
-	)
-
-	containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{})
-
-	for _, container := range containers {
-		fmt.Printf("Container ID: %s, State: %s, Status: %s\n", container.ID, container.State, container.Status)
-		containerJson, err := dockerClient.ContainerInspect(context.Background(), container.ID)
-		if err != nil {
-			log.Printf("Failed to inspect container %s: %s", container.ID, err)
-		}
-		fmt.Printf("Container ID: %s, Sandbox key: %s\n", containerJson.ID, containerJson.NetworkSettings.SandboxKey)
-	}
-
 	networkInfo := flannelNetwork.GetInfo()
 	endpointInfo := endpoint.GetInfo()
+
+	go func() {
+		err := WaitForSandboxAndConfigure(request.SandboxKey, 10*time.Second, func(sandboxKey string) error {
+			return d.addNameserver(sandboxKey)
+		})
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+		}
+	}()
 
 	return &network.JoinResponse{
 		InterfaceName: network.InterfaceName{

@@ -105,8 +105,6 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 		}
 	}
 
-	err = d.dockerClient.ContainerPause(context.Background(), containerID)
-
 	return
 }
 
