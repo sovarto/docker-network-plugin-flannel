@@ -277,7 +277,7 @@ func (n *nameserver) replaceDNATSNATRules() error {
 			},
 		},
 		{
-			Chain: "POSTROUTING ",
+			Chain: "POSTROUTING",
 			RuleSpec: []string{
 				"-d", "127.0.0.11",
 				"-j", "FLANNEL_DNS_POSTROUTING",
@@ -330,7 +330,7 @@ func (n *nameserver) replaceDNATSNATRules() error {
 		if err := createChainIfNecessary(ipt, table, rule.Chain); err != nil {
 			return errors.WithMessagef(err, "Errir in namespace %s", n.networkNamespace)
 		}
-		if err := ipt.InsertUnique(rule.Table, rule.Chain, 1, rule.RuleSpec...); err != nil {
+		if err := ipt.InsertUnique(table, rule.Chain, 1, rule.RuleSpec...); err != nil {
 			return errors.WithMessagef(err, "Error applying iptables rule in namespace %s, table %s, chain %s", n.networkNamespace, rule.Table, rule.Chain)
 		}
 	}
