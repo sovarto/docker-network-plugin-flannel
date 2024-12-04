@@ -130,7 +130,7 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 		if err != nil {
 			log.Printf("Failed to inspect container %s: %s", container.ID, err)
 		}
-		fmt.Printf("Container ID: %s, Sandbox key: %s", containerJson.ID, containerJson.NetworkSettings.SandboxKey)
+		fmt.Printf("Container ID: %s, Sandbox key: %s\n", containerJson.ID, containerJson.NetworkSettings.SandboxKey)
 	}
 
 	networkInfo := flannelNetwork.GetInfo()

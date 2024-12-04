@@ -91,10 +91,12 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 		networkID := networkData.NetworkID
 		if networkData.IPAddress == "" {
 			log.Printf("Found network %s without IP", networkID)
+			continue
 		}
 		ip := net.ParseIP(networkData.IPAddress)
 		if ip == nil {
 			log.Printf("Found network %s with invalid IP %s", networkID, networkData.IPAddress)
+			continue
 		}
 		ips[networkID] = ip
 		if networkData.IPAMConfig != nil && networkData.IPAMConfig.IPv4Address != "" {
@@ -102,6 +104,8 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 			ipamIPs[networkID] = ipamIP
 		}
 	}
+
+	err = d.dockerClient.ContainerPause(context.Background(), containerID)
 
 	return
 }
