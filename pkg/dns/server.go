@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
 type Nameserver interface {
@@ -249,7 +248,7 @@ func listenInNamespace(nsPath string) error {
 	// Send the DNS server information back to the main goroutine
 	//dnsServersChan <- server
 
-	fmt.Printf("Namespace %s DNS servers listening on TCP: 127.0.0.33:%d, UDP: 127.0.0.33:%d", filepath.Base(nsPath), portTCP, portUDP)
+	fmt.Printf("Namespace %s DNS servers listening on TCP: 127.0.0.33:%d, UDP: 127.0.0.33:%d\n", filepath.Base(nsPath), portTCP, portUDP)
 	return nil
 }
 
@@ -261,57 +260,57 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 		return errors.WithMessage(err, "Error initializing iptables")
 	}
 
-	table := "nat"
-	chains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
-	targetIP := "127.0.0.11/32"
-
-	rulesToDelete := []struct {
-		ruleArgs []string
-		chain    string
-	}{}
-
-	// Iterate over each chain to delete existing rules
-	for _, chain := range chains {
-		// List all rules in the chain
-		rules, err := ipt.List(table, chain)
-		if err != nil {
-			log.Printf("Failed to list rules in chain %s: %v", chain, err)
-			continue
-		}
-
-		for _, rule := range rules {
-			fmt.Printf("Found rule %s\n", rule)
-
-			ruleArgs := strings.Fields(rule)
-
-			shouldDelete := false
-
-			if chain == "DOCKER_OUTPUT" {
-				// Check if '-d 127.0.0.11' is present
-				for i := 0; i < len(ruleArgs)-1; i++ {
-					if ruleArgs[i] == "-d" && ruleArgs[i+1] == targetIP {
-						shouldDelete = true
-						break
-					}
-				}
-			} else if chain == "DOCKER_POSTROUTING" {
-				// Check if '-s 127.0.0.11' is present
-				for i := 0; i < len(ruleArgs)-1; i++ {
-					if ruleArgs[i] == "-s" && ruleArgs[i+1] == targetIP {
-						shouldDelete = true
-						break
-					}
-				}
-			}
-
-			if shouldDelete {
-				rulesToDelete = append(rulesToDelete, struct {
-					ruleArgs []string
-					chain    string
-				}{ruleArgs: ruleArgs, chain: chain})
-			}
-		}
-	}
+	//table := "nat"
+	//chains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
+	//targetIP := "127.0.0.11/32"
+	//
+	//rulesToDelete := []struct {
+	//	ruleArgs []string
+	//	chain    string
+	//}{}
+	//
+	//// Iterate over each chain to delete existing rules
+	//for _, chain := range chains {
+	//	// List all rules in the chain
+	//	rules, err := ipt.List(table, chain)
+	//	if err != nil {
+	//		log.Printf("Failed to list rules in chain %s: %v", chain, err)
+	//		continue
+	//	}
+	//
+	//	for _, rule := range rules {
+	//		fmt.Printf("Found rule %s\n", rule)
+	//
+	//		ruleArgs := strings.Fields(rule)
+	//
+	//		shouldDelete := false
+	//
+	//		if chain == "DOCKER_OUTPUT" {
+	//			// Check if '-d 127.0.0.11' is present
+	//			for i := 0; i < len(ruleArgs)-1; i++ {
+	//				if ruleArgs[i] == "-d" && ruleArgs[i+1] == targetIP {
+	//					shouldDelete = true
+	//					break
+	//				}
+	//			}
+	//		} else if chain == "DOCKER_POSTROUTING" {
+	//			// Check if '-s 127.0.0.11' is present
+	//			for i := 0; i < len(ruleArgs)-1; i++ {
+	//				if ruleArgs[i] == "-s" && ruleArgs[i+1] == targetIP {
+	//					shouldDelete = true
+	//					break
+	//				}
+	//			}
+	//		}
+	//
+	//		if shouldDelete {
+	//			rulesToDelete = append(rulesToDelete, struct {
+	//				ruleArgs []string
+	//				chain    string
+	//			}{ruleArgs: ruleArgs, chain: chain})
+	//		}
+	//	}
+	//}
 
 	rules := []networking.IptablesRule{
 		{
@@ -368,15 +367,15 @@ func replaceDNATSNATRules(server NamespaceDNS) error {
 		}
 	}
 
-	for _, rule := range rulesToDelete {
-		// Attempt to delete the rule
-		err = ipt.Delete(table, rule.chain, rule.ruleArgs[2:]...)
-		if err != nil {
-			log.Printf("Failed to delete rule in chain %s: %v", rule.chain, err)
-		} else {
-			fmt.Printf("Deleted rule in chain %s: %v", rule.chain, rule.ruleArgs)
-		}
-	}
+	//for _, rule := range rulesToDelete {
+	//	// Attempt to delete the rule
+	//	err = ipt.Delete(table, rule.chain, rule.ruleArgs[2:]...)
+	//	if err != nil {
+	//		log.Printf("Failed to delete rule in chain %s: %v", rule.chain, err)
+	//	} else {
+	//		fmt.Printf("Deleted rule in chain %s: %v", rule.chain, rule.ruleArgs)
+	//	}
+	//}
 
 	return nil
 }
