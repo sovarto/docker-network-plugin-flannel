@@ -1,3 +1,15 @@
+docker plugin disable --force flannel:dev || true && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev
+
+journalctl -u docker.service --since "5m ago" | grep plugin= | sed -E -e 's/^[a-zA-Z]* [0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} [^ ]+ dockerd\[[^]]*\]: time="([0-9-]*)T([0-9:Z]*)" ((level=(info) msg="?)|(level=(error) msg="?[0-9/: ]*))/\7\1 \2  /' -E -e 's/"? plugin=[a-z0-9]*$//' -E -e 's/\\t/\t/' | awk '{ if (/^error/) { gsub(/^error/, ""); print "\033[31m" $0 "\033[0m";} else {print; } }'  | rg --passthru -p 8a99
+
+docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl get /flannel --prefix --keys-only
+docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl del /flannel --prefix
+
+docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=flannel-id=$(uuidgen) f3
+docker service create --name s10_1 --network f10 --mode global traefik/whoami
+
+
+
 wget https://github.com/flannel-io/flannel/releases/latest/download/flanneld-amd64 && chmod +x flanneld-amd64
 docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl --endpoints=http://172.16.0.2:2379,http://172.16.0.3:2379,http://172.16.0.4:2379 put /manual-flannel/config '{ "Network": "10.200.0.0/16", "SubnetLen": 24, "Backend": {"Type": "vxlan"}}'
 ./flanneld-amd64 -iface=enp7s0 -etcd-endpoints=http://172.16.0.2:2379,http://172.16.0.3:2379,http://172.16.0.4:2379 -etcd-prefix=/manual-flannel &
@@ -30,11 +42,8 @@ docker plugin set $ALIAS DEFAULT_HOST_SUBNET_SIZE=23 && \
 docker plugin enable $ALIAS && \
 docker plugin inspect $ALIAS --format "{{.ID}}"
 
-docker plugin disable --force flannel:dev || true && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev
 
 docker network rm fweb
-docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=flannel-id=$(uuidgen) f3
-docker service create --name s10_1 --network f10 --mode global traefik/whoami
 
 docker service update --network-rm fweb whoami
 docker service update --network-add fweb whoami
@@ -42,12 +51,7 @@ docker service update --network-add fweb whoami
 journalctl -u docker.service --since "5m ago" | grep plugin=
 journalctl -u docker.service | grep plugin=
 journalctl -u docker.service --since "5m ago" | grep plugin= | sed -E -e 's/^[a-zA-Z]* [0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} [^ ]+ dockerd\[[^]]*\]: time="([0-9-]*)T([0-9:Z]*)" ((level=(info) msg="?)|(level=(error) msg="?[0-9/: ]*))/\7\1 \2  /' -E -e 's/"? plugin=[a-z0-9]*$//' -E -e 's/\\t/\t/' | awk '{ if (/^error/) { gsub(/^error/, ""); print "\033[31m" $0 "\033[0m";} else {print; } }'
-# with highlight (at the end):
-journalctl -u docker.service --since "5m ago" | grep plugin= | sed -E -e 's/^[a-zA-Z]* [0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} [^ ]+ dockerd\[[^]]*\]: time="([0-9-]*)T([0-9:Z]*)" ((level=(info) msg="?)|(level=(error) msg="?[0-9/: ]*))/\7\1 \2  /' -E -e 's/"? plugin=[a-z0-9]*$//' -E -e 's/\\t/\t/' | awk '{ if (/^error/) { gsub(/^error/, ""); print "\033[31m" $0 "\033[0m";} else {print; } }'  | rg --passthru -p 8a99
-
-docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl get /flannel --prefix --keys-only
 docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl --endpoints=http://172.16.0.2:2379,http://172.16.0.3:2379,http://172.16.0.4:2379 get /flannel --prefix --keys-only
-docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl del /flannel --prefix
 
 curl --unix-socket /var/run/docker/plugins/$(docker plugin inspect flannel:dev --format "{{.ID}}")/flannel-np.sock http://x/Plugin.Activate
 
