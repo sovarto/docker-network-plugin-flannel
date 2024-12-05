@@ -329,7 +329,7 @@ func (s *shardedDistributedStore[T]) parseItem(kv *mvccpb.KeyValue, prefix strin
 	key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
 	parts := strings.Split(key, "/")
 	if len(parts) != 2 {
-		fmt.Printf("Found unexpected key %s under prefix %s. Ignoring...", key, prefix)
+		fmt.Printf("Found unexpected key %s under prefix %s. Ignoring...\n", key, prefix)
 		ignored = true
 		return
 	}

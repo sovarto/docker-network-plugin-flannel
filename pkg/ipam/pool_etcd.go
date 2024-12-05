@@ -79,7 +79,7 @@ func releaseReservation(client etcd.Client, r reservation) (IPLeaseResult, error
 		reservedAtStr := string(resp.Responses[1].GetResponseRange().Kvs[0].Value)
 		reservedAt, err := time.Parse(time.RFC3339, reservedAtStr)
 		if err != nil {
-			fmt.Printf("Couldn't parse reserved at value '%s' for '%s'. Ignoring...", reservedAtStr, key)
+			fmt.Printf("Couldn't parse reserved at value '%s' for '%s'. Ignoring...\n", reservedAtStr, key)
 		}
 
 		var mac string
