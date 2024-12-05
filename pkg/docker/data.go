@@ -55,7 +55,7 @@ func NewData(etcdClient etcd.Client,
 	containers := etcd.NewShardedDistributedStore(etcdClient.CreateSubClient("containers"), hostname, containerHandlers)
 	var services etcd.Store[ServiceInfo]
 	var networks etcd.Store[common.NetworkInfo]
-	servicesEtcdClient := etcdClient.CreateSubClient("services", "ipam-vips")
+	servicesEtcdClient := etcdClient.CreateSubClient("services")
 	networksEtcdClient := etcdClient.CreateSubClient("networks")
 	if isManagerNode {
 		services = etcd.NewWriteOnlyStore(servicesEtcdClient, serviceHandlers)

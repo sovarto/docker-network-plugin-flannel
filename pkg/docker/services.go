@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/swarm"
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	"log"
 	"net"
@@ -85,10 +87,16 @@ func (d *data) getServiceInfoFromDocker(serviceID string) (serviceInfo *ServiceI
 
 	ipamVIPs := make(map[string]net.IP)
 
+	networks := lo.Map(
+		service.Spec.TaskTemplate.Networks,
+		func(item swarm.NetworkAttachmentConfig, index int) string { return item.Target })
+
 	serviceInfo = &ServiceInfo{
-		ID:       serviceID,
-		Name:     service.Spec.Name,
-		IpamVIPs: ipamVIPs,
+		ID:           serviceID,
+		Name:         service.Spec.Name,
+		EndpointMode: string(service.Endpoint.Spec.Mode),
+		Networks:     networks,
+		IpamVIPs:     ipamVIPs,
 	}
 
 	for _, endpoint := range service.Endpoint.VirtualIPs {

@@ -328,7 +328,7 @@ func (n *nameserver) replaceDNATSNATRules() error {
 	for _, rule := range rules {
 		fmt.Printf("Applying iptables rule %+v\n", rule)
 		if err := createChainIfNecessary(ipt, table, rule.Chain); err != nil {
-			return errors.WithMessagef(err, "Errir in namespace %s", n.networkNamespace)
+			return errors.WithMessagef(err, "Error in namespace %s", n.networkNamespace)
 		}
 		if err := ipt.InsertUnique(table, rule.Chain, 1, rule.RuleSpec...); err != nil {
 			return errors.WithMessagef(err, "Error applying iptables rule in namespace %s, table %s, chain %s", n.networkNamespace, rule.Table, rule.Chain)
