@@ -33,7 +33,7 @@ func NewReadOnlyStore[T common.Equaler](client Client, handlers ItemsHandlers[T]
 
 // Init initializes the ReadOnlyStore by loading data from etcd and starting the watcher
 func (s *readOnlyStore[T]) Init() error {
-	err := s.Sync()
+	err := s.sync(false)
 	if err != nil {
 		return errors.WithMessage(err, "Error performing initial sync")
 	}
@@ -47,6 +47,10 @@ func (s *readOnlyStore[T]) Init() error {
 
 // Sync synchronizes the internal state with etcd (etcd is the source of truth)
 func (s *readOnlyStore[T]) Sync() error {
+	return s.sync(true)
+}
+
+func (s *readOnlyStore[T]) sync(callHandlers bool) error {
 	s.Lock()
 
 	etcdData, err := WithConnection(s.client, func(connection *Connection) (map[string]T, error) {
@@ -62,14 +66,17 @@ func (s *readOnlyStore[T]) Sync() error {
 
 	// Invoke handlers outside the lock to prevent potential deadlocks
 	s.Unlock()
-	if len(added) > 0 && s.handlers.OnAdded != nil {
-		s.handlers.OnAdded(added)
-	}
-	if len(changes) > 0 && s.handlers.OnChanged != nil {
-		s.handlers.OnChanged(changes)
-	}
-	if len(removed) > 0 && s.handlers.OnRemoved != nil {
-		s.handlers.OnRemoved(removed)
+
+	if callHandlers {
+		if len(added) > 0 && s.handlers.OnAdded != nil {
+			s.handlers.OnAdded(added)
+		}
+		if len(changes) > 0 && s.handlers.OnChanged != nil {
+			s.handlers.OnChanged(changes)
+		}
+		if len(removed) > 0 && s.handlers.OnRemoved != nil {
+			s.handlers.OnRemoved(removed)
+		}
 	}
 
 	return nil
