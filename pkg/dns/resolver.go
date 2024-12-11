@@ -113,8 +113,8 @@ func (r *resolver) AddService(service common.Service) {
 	r.Lock()
 	defer r.Unlock()
 
-	fmt.Printf("Adding service %s\n", service.GetInfo().Name)
 	serviceInfo := service.GetInfo()
+	fmt.Printf("Adding service to resolver %+v\n", serviceInfo)
 	r.serviceData.byName[serviceInfo.Name] = service
 	r.serviceData.byID[serviceInfo.ID] = service
 }
@@ -124,6 +124,7 @@ func (r *resolver) RemoveService(service common.Service) {
 	defer r.Unlock()
 
 	serviceInfo := service.GetInfo()
+	fmt.Printf("Adding service from resolver %+v\n", serviceInfo)
 	delete(r.serviceData.byName, serviceInfo.Name)
 	delete(r.serviceData.byID, serviceInfo.ID)
 }
@@ -132,6 +133,7 @@ func (r *resolver) AddNetwork(network common.NetworkInfo) {
 	r.Lock()
 	defer r.Unlock()
 
+	fmt.Printf("Adding network to resolver %+v\n", network)
 	r.networkNameToID[network.Name] = network.DockerID
 	r.networkIDToName[network.DockerID] = network.Name
 }
@@ -140,6 +142,7 @@ func (r *resolver) RemoveNetwork(network common.NetworkInfo) {
 	r.Lock()
 	defer r.Unlock()
 
+	fmt.Printf("Removing network from resolver %+v\n", network)
 	delete(r.networkNameToID, network.DockerID)
 	delete(r.networkIDToName, network.Name)
 }
@@ -148,6 +151,7 @@ func (r *resolver) AddContainer(container common.ContainerInfo) {
 	r.Lock()
 	defer r.Unlock()
 
+	fmt.Printf("Adding container to resolver %+v\n", container)
 	r.containerData.byID[container.ID] = container
 	add(r.containerData.byName, container.Name, container)
 	for networkID, alias := range container.Aliases {
@@ -163,6 +167,7 @@ func (r *resolver) RemoveContainer(container common.ContainerInfo) {
 	r.Lock()
 	defer r.Unlock()
 
+	fmt.Printf("Removing container from resolver %+v\n", container)
 	delete(r.containerData.byID, container.ID)
 	for _, alias := range container.Aliases {
 		remove(r.containerData.byAlias, alias, func(item containerAliasData) bool {
