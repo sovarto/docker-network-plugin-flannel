@@ -221,6 +221,7 @@ func (n *nameserver) startDNSServer(connType string) (int, error) {
 		// Initialize DNS server with the UDP connection
 		server.PacketConn = udpConn
 		n.udpServer = server
+		n.portUDP = port
 	case "tcp":
 		// Create TCP listener
 		tcpListener, err := net.Listen("tcp", listenAddr)
@@ -237,6 +238,7 @@ func (n *nameserver) startDNSServer(connType string) (int, error) {
 		// Initialize DNS server with the TCP listener
 		server.Listener = tcpListener
 		n.tcpServer = server
+		n.portTCP = port
 	default:
 		return 0, fmt.Errorf("unsupported connection type: %s", connType)
 	}
@@ -272,41 +274,45 @@ func (n *nameserver) replaceDNATSNATRules() error {
 		{
 			Chain: "FLANNEL_DNS_OUTPUT",
 			RuleSpec: []string{
-				"-j", "DNAT",
+				"-d", "127.0.0.11/32",
 				"-p", "tcp",
-				"-d", "127.0.0.11",
+				"-m", "tcp",
 				"--dport", "53",
+				"-j", "DNAT",
 				"--to-destination", fmt.Sprintf("%s:%d", n.listenIP, n.portTCP),
 			},
 		},
 		{
 			Chain: "FLANNEL_DNS_OUTPUT",
 			RuleSpec: []string{
-				"-j", "DNAT",
+				"-d", "127.0.0.11/32",
 				"-p", "udp",
-				"-d", "127.0.0.11",
+				"-m", "udp",
 				"--dport", "53",
+				"-j", "DNAT",
 				"--to-destination", fmt.Sprintf("%s:%d", n.listenIP, n.portUDP),
 			},
 		},
 		{
 			Chain: "FLANNEL_DNS_POSTROUTING",
 			RuleSpec: []string{
-				"-j", "SNAT",
+				"-s", fmt.Sprintf("%s/32", n.listenIP),
 				"-p", "tcp",
-				"-s", n.listenIP,
+				"-m", "tcp",
 				"--sport", fmt.Sprintf("%d", n.portTCP),
-				"--to-source", "127.0.0.11:53",
+				"-j", "SNAT",
+				"--to-source", ":53",
 			},
 		},
 		{
 			Chain: "FLANNEL_DNS_POSTROUTING",
 			RuleSpec: []string{
-				"-j", "SNAT",
+				"-s", fmt.Sprintf("%s/32", n.listenIP),
 				"-p", "udp",
-				"-s", n.listenIP,
+				"-m", "udp",
 				"--sport", fmt.Sprintf("%d", n.portUDP),
-				"--to-source", "127.0.0.11:53",
+				"-j", "SNAT",
+				"--to-source", ":53",
 			},
 		},
 		{

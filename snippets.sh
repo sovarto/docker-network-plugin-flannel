@@ -99,4 +99,6 @@ ip addr add $VIP/32 dev $IFACE
 ip link set $IFACE up
 ip link set $IFACE mtu 1450
 
+nsenter --net=/var/run/docker/netns/0db87c43d694 netstat -tulpn
+
 git add . || true  && git commit -m "x" || true && git tag v0.0.$i && git push && git push origin refs/tags/v0.0.$i && sleep 5 && run_id=$(gh run list --json databaseId,headBranch --jq '.[] | select(.headBranch=="'"v0.0.$i"'") | .databaseId') && gh run watch $run_id && i=$((i+1))
