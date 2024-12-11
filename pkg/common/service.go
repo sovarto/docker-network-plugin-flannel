@@ -134,19 +134,21 @@ func (s *service) GetInfo() ServiceInfo {
 }
 
 func (s *service) SetVIPs(vips map[string]net.IP) {
-	defer s.withLock()()
-
+	s.Lock()
 	vipsChanged := CompareIPMaps(s.vips, vips)
 	s.vips = maps.Clone(vips)
+	s.Unlock()
+
 	if s.IsInitialized() && vipsChanged {
 		s.events.onVIPsChanged.Raise(s)
 	}
 }
 
 func (s *service) AddContainer(container ContainerInfo) {
-	defer s.withLock()()
-
+	s.Lock()
 	s.containers[container.ID] = container
+	s.Unlock()
+
 	if s.IsInitialized() {
 		s.events.onContainerAdded.Raise(OnContainerData{
 			Service:   s,
@@ -156,22 +158,25 @@ func (s *service) AddContainer(container ContainerInfo) {
 }
 
 func (s *service) RemoveContainer(containerID string) {
-	defer s.withLock()()
+	s.Lock()
 
 	container, exists := s.containers[containerID]
 	if exists {
 		delete(s.containers, container.ID)
+		s.Unlock()
 		if s.IsInitialized() {
 			s.events.onContainerRemoved.Raise(OnContainerData{
 				Service:   s,
 				Container: container,
 			})
 		}
+	} else {
+		s.Unlock()
 	}
 }
 
 func (s *service) SetNetworks(networks []string, ipamVIPs map[string]net.IP) {
-	defer s.withLock()()
+	s.Lock()
 
 	fmt.Printf("For service %s, setting networks to %v, ipamVIPs to %v\n", s.id, networks, ipamVIPs)
 
@@ -184,6 +189,8 @@ func (s *service) SetNetworks(networks []string, ipamVIPs map[string]net.IP) {
 	copy(s.networks, networks)
 	s.ipamVIPs = maps.Clone(ipamVIPs)
 
+	s.Unlock()
+
 	if s.IsInitialized() {
 		if !wasInitialized {
 			s.events.onInitialized.Raise(s)
@@ -194,11 +201,12 @@ func (s *service) SetNetworks(networks []string, ipamVIPs map[string]net.IP) {
 }
 
 func (s *service) SetEndpointMode(endpointMode string) {
-	defer s.withLock()()
+	s.Lock()
 	wasInitialized := s.IsInitialized()
 
 	endpointModeChanged := endpointMode != s.endpointMode
 	s.endpointMode = endpointMode
+	s.Unlock()
 
 	if s.IsInitialized() {
 		if !wasInitialized {
@@ -206,12 +214,5 @@ func (s *service) SetEndpointMode(endpointMode string) {
 		} else if endpointModeChanged {
 			s.events.onEndpointModeChanged.Raise(s)
 		}
-	}
-}
-
-func (s *service) withLock() func() {
-	s.Lock()
-	return func() {
-		s.Unlock()
 	}
 }
