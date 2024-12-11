@@ -294,8 +294,8 @@ func (r *resolver) resolveServiceName(requestedName string, validNetworkID strin
 
 	service, exists := r.serviceData.byName[requestedName]
 	if exists {
-		fmt.Printf("service exists: %+v\n", requestedName)
 		serviceInfo := service.GetInfo()
+		fmt.Printf("service exists: %+v\n", serviceInfo)
 		if serviceInfo.EndpointMode == common.ServiceEndpointModeVip {
 			result = append(result, filterIPsByNetwork(serviceInfo.VIPs, validNetworkID)...)
 		} else if serviceInfo.EndpointMode == common.ServiceEndpointModeDnsrr {
