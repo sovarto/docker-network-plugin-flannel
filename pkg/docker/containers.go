@@ -15,6 +15,7 @@ func (d *data) initContainers() error {
 	d.Lock()
 	defer d.Unlock()
 
+	fmt.Println("Initializing containers...")
 	containerInfos, err := d.getContainersInfosFromDocker()
 
 	err = d.containers.Init(containerInfos)
@@ -22,6 +23,7 @@ func (d *data) initContainers() error {
 		return errors.WithMessage(err, "Error initializing containers")
 	}
 
+	fmt.Println("Containers initialized")
 	return nil
 }
 

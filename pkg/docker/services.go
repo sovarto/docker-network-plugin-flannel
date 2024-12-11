@@ -17,6 +17,7 @@ func (d *data) initServices() error {
 	defer d.Unlock()
 
 	if d.isManagerNode {
+		fmt.Println("Initializing services on manager node...")
 		servicesInfos, err := d.getServicesInfosFromDocker()
 
 		err = d.services.(etcd.WriteOnlyStore[ServiceInfo]).Init(servicesInfos)
@@ -24,11 +25,14 @@ func (d *data) initServices() error {
 			return errors.WithMessage(err, "Error initializing services")
 		}
 	} else {
+		fmt.Println("Initializing services on worker node...")
 		err := d.services.(etcd.ReadOnlyStore[ServiceInfo]).Init()
 		if err != nil {
 			return errors.WithMessage(err, "Error initializing services")
 		}
 	}
+
+	fmt.Println("Services initialized")
 
 	return nil
 }

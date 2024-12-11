@@ -15,6 +15,7 @@ func (d *data) initNetworks() error {
 	defer d.Unlock()
 
 	if d.isManagerNode {
+		fmt.Println("Initializing networks on manager node...")
 		networksInfos, err := d.getNetworksInfosFromDocker()
 
 		err = d.networks.(etcd.WriteOnlyStore[common.NetworkInfo]).Init(networksInfos)
@@ -22,12 +23,14 @@ func (d *data) initNetworks() error {
 			return errors.WithMessage(err, "Error initializing networks")
 		}
 	} else {
+		fmt.Println("Initializing networks on worker node...")
 		err := d.networks.(etcd.ReadOnlyStore[common.NetworkInfo]).Init()
 		if err != nil {
 			return errors.WithMessage(err, "Error initializing networks")
 		}
 	}
 
+	fmt.Println("Networks initialized")
 	return nil
 }
 
