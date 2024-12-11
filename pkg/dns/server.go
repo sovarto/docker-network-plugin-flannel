@@ -270,20 +270,6 @@ func (n *nameserver) replaceDNATSNATRules() error {
 
 	rules := []networking.IptablesRule{
 		{
-			Chain: "OUTPUT",
-			RuleSpec: []string{
-				"-d", "127.0.0.11",
-				"-j", "FLANNEL_DNS_OUTPUT",
-			},
-		},
-		{
-			Chain: "POSTROUTING",
-			RuleSpec: []string{
-				"-d", "127.0.0.11",
-				"-j", "FLANNEL_DNS_POSTROUTING",
-			},
-		},
-		{
 			Chain: "FLANNEL_DNS_OUTPUT",
 			RuleSpec: []string{
 				"-j", "DNAT",
@@ -321,6 +307,20 @@ func (n *nameserver) replaceDNATSNATRules() error {
 				"-s", n.listenIP,
 				"--sport", fmt.Sprintf("%d", n.portUDP),
 				"--to-source", "127.0.0.11:53",
+			},
+		},
+		{
+			Chain: "OUTPUT",
+			RuleSpec: []string{
+				"-d", "127.0.0.11",
+				"-j", "FLANNEL_DNS_OUTPUT",
+			},
+		},
+		{
+			Chain: "POSTROUTING",
+			RuleSpec: []string{
+				"-d", "127.0.0.11",
+				"-j", "FLANNEL_DNS_POSTROUTING",
 			},
 		},
 	}
