@@ -141,13 +141,16 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 	endpointInfo := endpoint.GetInfo()
 
 	go func() {
-		err := WaitForSandboxAndConfigure(request.SandboxKey, 10*time.Second, func() error {
+		// The node path /var/run/docker is mounted to /hostfs/var/run/docker and the sandbox keys
+		// are of form /var/run/docker/netns/<key>
+		sandboxKey := "/hostfs" + request.SandboxKey
+		err := WaitForSandboxAndConfigure(sandboxKey, 10*time.Second, func() error {
 			start := time.Now()
 			defer func() {
 				elapsed := time.Since(start)
 				fmt.Printf("Execution time: %s\n", elapsed)
 			}()
-			nameserver, err := d.getOrAddNameserver(request.SandboxKey)
+			nameserver, err := d.getOrAddNameserver(sandboxKey)
 			if err != nil {
 				return err
 			}
@@ -158,7 +161,7 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 			return nil
 		})
 		if err != nil {
-			log.Printf("Error patching DNS server in sandbox %s: %v\n", request.SandboxKey, err)
+			log.Printf("Error patching DNS server in sandbox %s: %v\n", sandboxKey, err)
 		}
 	}()
 
