@@ -21,7 +21,7 @@ import (
 // ServiceLbsManagement: global, across networks and services
 
 type ServiceLbsManagement interface {
-	AddNetwork(dockerNetworkID string, network flannel_network.Network) error
+	SetNetwork(dockerNetworkID string, network flannel_network.Network) error
 	DeleteNetwork(dockerNetworkID string) error
 	CreateLoadBalancer(service common.Service) error
 	DeleteLoadBalancer(serviceID string) error
@@ -71,7 +71,7 @@ func NewServiceLbManagement(etcdClient etcd.Client) (ServiceLbsManagement, error
 	}, nil
 }
 
-func (m *serviceLbManagement) AddNetwork(dockerNetworkID string, network flannel_network.Network) error {
+func (m *serviceLbManagement) SetNetwork(dockerNetworkID string, network flannel_network.Network) error {
 	if dockerNetworkID == "" {
 		return fmt.Errorf("error adding network: docker network id is empty for network %s", network.GetInfo().FlannelID)
 	}

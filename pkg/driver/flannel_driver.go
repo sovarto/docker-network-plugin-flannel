@@ -225,32 +225,30 @@ func (d *flannelDriver) getNetwork(dockerNetworkID string, flannelNetworkID stri
 
 func (d *flannelDriver) getOrCreateNetwork(dockerNetworkID string, flannelNetworkID string) (flannel_network.Network, error) {
 	network, exists := d.getNetwork(dockerNetworkID, flannelNetworkID)
-	if exists {
-		return network, nil
-	}
+	if !exists {
+		if flannelNetworkID == "" {
+			return nil, fmt.Errorf("no flannel network ID provided when creating network")
+		}
 
-	if flannelNetworkID == "" {
-		return nil, fmt.Errorf("no flannel network ID provided when creating network")
-	}
+		networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(flannelNetworkID)
+		if err != nil {
+			return nil, errors.WithMessagef(err, "failed to get network subnet pool for network '%s'", flannelNetworkID)
+		}
 
-	networkSubnet, err := d.globalAddressSpace.GetNewOrExistingPool(flannelNetworkID)
-	if err != nil {
-		return nil, errors.WithMessagef(err, "failed to get network subnet pool for network '%s'", flannelNetworkID)
-	}
+		vni := d.vniStart + common.Max(len(d.networksByFlannelID), len(d.networksByDockerID)) + 1
+		network, err = flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), flannelNetworkID, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions, vni)
 
-	vni := d.vniStart + common.Max(len(d.networksByFlannelID), len(d.networksByDockerID)) + 1
-	network, err = flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), flannelNetworkID, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions, vni)
-
-	if err != nil {
-		return nil, errors.WithMessagef(err, "failed to ensure network '%s' is operational", flannelNetworkID)
-	}
-
-	err = d.serviceLbsManagement.AddNetwork(dockerNetworkID, network)
-	if err != nil {
-		return nil, errors.WithMessagef(err, "Failed to add network '%s' to service load balancer management", flannelNetworkID)
+		if err != nil {
+			return nil, errors.WithMessagef(err, "failed to ensure network '%s' is operational", flannelNetworkID)
+		}
 	}
 
 	if dockerNetworkID != "" {
+		err := d.serviceLbsManagement.SetNetwork(dockerNetworkID, network)
+		if err != nil {
+			return nil, errors.WithMessagef(err, "Failed to add network '%s' to service load balancer management", flannelNetworkID)
+		}
+
 		d.networksByDockerID[dockerNetworkID] = network
 	}
 
