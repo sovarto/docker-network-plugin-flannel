@@ -128,6 +128,7 @@ func (s *service) GetInfo() ServiceInfo {
 		EndpointMode: s.endpointMode,
 		Networks:     s.networks,
 		VIPs:         s.vips,
+		IpamVIPs:     s.ipamVIPs,
 		Containers:   s.containers,
 	}
 }
