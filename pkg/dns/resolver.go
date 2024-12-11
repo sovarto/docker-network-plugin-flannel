@@ -1,6 +1,7 @@
 package dns
 
 import (
+	"fmt"
 	"github.com/miekg/dns"
 	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
@@ -174,6 +175,8 @@ func (r *resolver) RemoveContainer(container common.ContainerInfo) {
 func (r *resolver) ResolveName(query string, validNetworkIDs []string) []dns.RR {
 	r.Lock()
 	defer r.Unlock()
+
+	fmt.Printf("Received request to resolve %s in networks %v\n", query, validNetworkIDs)
 
 	queryParts := strings.Split(query, ".")
 	namePartsCount := len(queryParts)
