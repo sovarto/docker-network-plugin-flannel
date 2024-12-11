@@ -320,7 +320,7 @@ func (d *flannelDriver) handleContainersAdded(added []etcd.ShardItem[docker.Cont
 		if containerInfo.ServiceID != "" {
 			service, exists := d.services[containerInfo.ServiceID]
 			if !exists {
-
+				service = d.createService(containerInfo.ServiceID, containerInfo.ServiceName)
 			}
 			service.AddContainer(containerInfo.ContainerInfo)
 		}
