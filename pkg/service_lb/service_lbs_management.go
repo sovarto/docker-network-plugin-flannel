@@ -317,6 +317,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 		return errors.WithMessagef(err, "error adding load balancer data for service %s", serviceInfo.ID)
 	}
 
+	fmt.Printf("Setting VIPs of service %s to %v", serviceInfo.ID, data.frontendIPs)
 	service.SetVIPs(data.frontendIPs)
 
 	return nil
