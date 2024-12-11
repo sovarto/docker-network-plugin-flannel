@@ -414,8 +414,10 @@ func waitForChainsWithRules(ipt *iptables.IPTables, table string, chains []strin
 }
 
 // setNetworkNamespace switches the current thread to the specified network namespace
+// Appends /hostfs to the front of the nsPath, assuming it is a container sandbox key
+// TODO: Revisit
 func setNetworkNamespace(nsPath string) (netns.NsHandle, error) {
-	ns, err := netns.GetFromPath(nsPath)
+	ns, err := netns.GetFromPath("/hostfs" + nsPath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open namespace %s: %v", nsPath, err)
 	}
