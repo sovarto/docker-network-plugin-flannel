@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"github.com/samber/lo"
 	"net"
 	"sync"
@@ -169,6 +170,8 @@ func (s *service) RemoveContainer(containerID string) {
 
 func (s *service) SetNetworks(networks []string, ipamVIPs map[string]net.IP) {
 	defer s.withLock()()
+
+	fmt.Printf("For service %s, setting networks to %v, ipamVIPs to %v\n", s.id, networks, ipamVIPs)
 
 	wasInitialized := s.IsInitialized()
 
