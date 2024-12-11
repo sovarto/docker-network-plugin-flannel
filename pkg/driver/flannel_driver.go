@@ -262,6 +262,7 @@ func (d *flannelDriver) getOrCreateNetwork(dockerNetworkID string, flannelNetwor
 func (d *flannelDriver) handleNetworksAdded(added []etcd.Item[common.NetworkInfo]) {
 	for _, addedItem := range added {
 		networkInfo := addedItem.Value
+		d.dnsResolver.AddNetwork(networkInfo)
 		_, err := d.getOrCreateNetwork(networkInfo.DockerID, networkInfo.FlannelID)
 		if err != nil {
 			log.Printf("Failed to handle added or changed network %s / %s: %s\n", networkInfo.DockerID, networkInfo.FlannelID, err)
@@ -282,6 +283,7 @@ func (d *flannelDriver) handleNetworksChanged(changed []etcd.ItemChange[common.N
 func (d *flannelDriver) handleNetworksRemoved(removed []etcd.Item[common.NetworkInfo]) {
 	for _, removedItem := range removed {
 		networkInfo := removedItem.Value
+		d.dnsResolver.RemoveNetwork(networkInfo)
 		network, exists := d.getNetwork(networkInfo.DockerID, networkInfo.FlannelID)
 		if exists {
 			fmt.Printf("Deleting network %s\n", networkInfo.FlannelID)
@@ -298,6 +300,7 @@ func (d *flannelDriver) handleNetworksRemoved(removed []etcd.Item[common.Network
 func (d *flannelDriver) handleContainersAdded(added []etcd.ShardItem[docker.ContainerInfo]) {
 	for _, addedItem := range added {
 		containerInfo := addedItem.Value
+		d.dnsResolver.AddContainer(containerInfo.ContainerInfo)
 		for dockerNetworkID, ipamIP := range containerInfo.IpamIPs {
 
 			network, exists := d.networksByDockerID[dockerNetworkID]
@@ -335,6 +338,7 @@ func (d *flannelDriver) handleContainersChanged(changed []etcd.ShardItemChange[d
 func (d *flannelDriver) handleContainersRemoved(removed []etcd.ShardItem[docker.ContainerInfo]) {
 	for _, removedItem := range removed {
 		containerInfo := removedItem.Value
+		d.dnsResolver.RemoveContainer(containerInfo.ContainerInfo)
 		service, exists := d.services[containerInfo.ID]
 		if exists {
 			service.RemoveContainer(containerInfo.ID)
@@ -391,11 +395,13 @@ func (d *flannelDriver) getOrAddNameserver(sandboxKey string) (dns.Nameserver, e
 }
 
 func (d *flannelDriver) createService(id, name string) common.Service {
+	fmt.Printf("Create service %s\n", name)
 	service := common.NewService(id, name)
 
 	// TODO: Store unsubscribe functions and use them upon service deletion
 	// or not? because when the service is being deleted, it is gone, no events will be raised anyway
 	service.Events().OnInitialized.Subscribe(func(s common.Service) {
+		fmt.Printf("Service created %s\n", s.GetInfo().Name)
 		if s.GetInfo().EndpointMode == common.ServiceEndpointModeVip {
 			err := d.serviceLbsManagement.CreateLoadBalancer(s)
 			if err != nil {
