@@ -177,6 +177,10 @@ func (r *resolver) ResolveName(query string, validNetworkIDs []string) []dns.RR 
 	defer r.Unlock()
 
 	fmt.Printf("Received request to resolve %s in networks %v\n", query, validNetworkIDs)
+	fmt.Printf("service data: %+v\n", r.serviceData)
+	fmt.Printf("container data: %+v\n", r.containerData)
+	fmt.Printf("network data ID -> name: %+v\n", r.networkIDToName)
+	fmt.Printf("network data name -> ID: %+v\n", r.networkNameToID)
 
 	queryParts := strings.Split(query, ".")
 	namePartsCount := len(queryParts)
