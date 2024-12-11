@@ -345,9 +345,9 @@ func (n *nameserver) replaceDNATSNATRules() error {
 			rule := strings.Fields(rawRule)[2:]
 			err = ipt.Delete(table, chain, rule...)
 			if err != nil {
-				log.Printf("Failed to delete rule in chain %s: %v", chain, err)
+				log.Printf("Failed to delete rule in chain %s: %v, err:%v", chain, rule, err)
 			} else {
-				fmt.Printf("Deleted rule in chain %s: %v", chain, rule)
+				fmt.Printf("Deleted rule in chain %s: %v\n", chain, rule)
 			}
 		}
 	}
