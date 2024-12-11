@@ -94,6 +94,7 @@ type resolver struct {
 func NewResolver(dockerCompatibilityMode bool) Resolver {
 	return &resolver{
 		networkNameToID:         make(map[string]string),
+		networkIDToName:         make(map[string]string),
 		dockerCompatibilityMode: dockerCompatibilityMode,
 		containerData: containerData{
 			byAlias: make(map[string][]containerAliasData),
