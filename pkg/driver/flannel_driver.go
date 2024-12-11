@@ -400,13 +400,15 @@ func (d *flannelDriver) createService(id, name string) common.Service {
 	// or not? because when the service is being deleted, it is gone, no events will be raised anyway
 	service.Events().OnInitialized.Subscribe(func(s common.Service) {
 		fmt.Printf("Service created %s\n", s.GetInfo().Name)
+		d.dnsResolver.AddService(s)
 		if s.GetInfo().EndpointMode == common.ServiceEndpointModeVip {
 			err := d.serviceLbsManagement.CreateLoadBalancer(s)
 			if err != nil {
 				log.Printf("Failed to create load balancer of service %s: %v\n", name, err)
+			} else {
+				fmt.Printf("Created load balancer of service %s\n", name)
 			}
 		}
-		d.dnsResolver.AddService(s)
 	})
 
 	d.services[id] = service

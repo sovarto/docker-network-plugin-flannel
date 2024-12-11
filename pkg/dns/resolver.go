@@ -113,6 +113,7 @@ func (r *resolver) AddService(service common.Service) {
 	r.Lock()
 	defer r.Unlock()
 
+	fmt.Printf("Adding service %s\n", service.GetInfo().Name)
 	serviceInfo := service.GetInfo()
 	r.serviceData.byName[serviceInfo.Name] = service
 	r.serviceData.byID[serviceInfo.ID] = service
