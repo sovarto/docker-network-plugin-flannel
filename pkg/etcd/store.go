@@ -96,7 +96,7 @@ func (s *storeBase[T]) parseItem(kv *mvccpb.KeyValue, prefix string) (itemID str
 	key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
 	parts := strings.Split(key, "/")
 	if len(parts) != 1 {
-		fmt.Printf("Found unexpected key %s under prefix %s. Ignoring...", key, prefix)
+		fmt.Printf("Found unexpected key %s under prefix %s. Ignoring...\n", key, prefix)
 		ignored = true
 		return
 	}

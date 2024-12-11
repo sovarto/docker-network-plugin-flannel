@@ -310,7 +310,7 @@ func (d *flannelDriver) handleContainersAdded(added []etcd.ShardItem[docker.Cont
 
 			if !ipamIP.Equal(containerInfo.IPs[dockerNetworkID]) {
 				if network.GetInfo().HostSubnet.Contains(ipamIP) {
-					log.Printf("Releasing IPAM IP %s of container %s", ipamIP, containerInfo.ID)
+					fmt.Printf("Releasing IPAM IP %s of container %s\n", ipamIP, containerInfo.ID)
 					err := network.GetPool().ReleaseIP(ipamIP.String())
 					if err != nil {
 						log.Printf("Failed to release IPAM IP %s for network %s: %v", ipamIP.String(), dockerNetworkID, err)
