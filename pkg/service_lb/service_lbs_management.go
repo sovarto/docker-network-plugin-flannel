@@ -72,11 +72,17 @@ func NewServiceLbManagement(etcdClient etcd.Client) (ServiceLbsManagement, error
 }
 
 func (m *serviceLbManagement) AddNetwork(dockerNetworkID string, network flannel_network.Network) error {
+	if dockerNetworkID == "" {
+		return fmt.Errorf("error adding network: docker network id is empty for network %s", network.GetInfo().FlannelID)
+	}
 	m.networksByDockerID[dockerNetworkID] = network
 	return nil
 }
 
 func (m *serviceLbManagement) DeleteNetwork(dockerNetworkID string) error {
+	if dockerNetworkID == "" {
+		return fmt.Errorf("error removing network: docker network id is empty")
+	}
 	delete(m.networksByDockerID, dockerNetworkID)
 	return nil
 }
