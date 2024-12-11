@@ -21,28 +21,30 @@ type FwmarksManagement interface {
 
 type fwmarks struct {
 	etcdClient etcd.Client
+	hostname   string
 	sync.Mutex
 }
 
-func fwmarksListKey(client etcd.Client, networkID string) string {
-	return client.GetKey(networkID, "list")
+func (f *fwmarks) fwmarksListKey(networkID string) string {
+	return f.etcdClient.GetKey(f.hostname, networkID, "list")
 }
 
-func fwmarkKey(client etcd.Client, networkID, fwmark string) string {
-	return fmt.Sprintf("%s/%s", fwmarksListKey(client, networkID), fwmark)
+func (f *fwmarks) fwmarkKey(networkID, fwmark string) string {
+	return fmt.Sprintf("%s/%s", f.fwmarksListKey(networkID), fwmark)
 }
 
-func fwmarkServicesKey(client etcd.Client, networkID string) string {
-	return client.GetKey(networkID, "by-service")
+func (f *fwmarks) fwmarkServicesKey(networkID string) string {
+	return f.etcdClient.GetKey(f.hostname, networkID, "by-service")
 }
 
-func fwmarkServiceKey(client etcd.Client, networkID, serviceID string) string {
-	return fmt.Sprintf("%s/%s", fwmarkServicesKey(client, networkID), serviceID)
+func (f *fwmarks) fwmarkServiceKey(networkID, serviceID string) string {
+	return fmt.Sprintf("%s/%s", f.fwmarkServicesKey(networkID), serviceID)
 }
 
-func NewFwmarksManagement(etcdClient etcd.Client) FwmarksManagement {
+func NewFwmarksManagement(etcdClient etcd.Client, hostname string) FwmarksManagement {
 	return &fwmarks{
 		etcdClient: etcdClient,
+		hostname:   hostname,
 	}
 }
 
@@ -51,7 +53,7 @@ func (f *fwmarks) Get(serviceID, networkID string) (uint32, error) {
 	defer f.Unlock()
 
 	return etcd.WithConnection(f.etcdClient, func(connection *etcd.Connection) (uint32, error) {
-		serviceKey := fwmarkServiceKey(f.etcdClient, networkID, serviceID)
+		serviceKey := f.fwmarkServiceKey(networkID, serviceID)
 		resp, err := connection.Client.Get(connection.Ctx, serviceKey)
 		if err != nil {
 			return 0, err
@@ -67,7 +69,7 @@ func (f *fwmarks) Get(serviceID, networkID string) (uint32, error) {
 			}
 		}
 
-		listKey := fwmarksListKey(f.etcdClient, networkID)
+		listKey := f.fwmarksListKey(networkID)
 
 		for {
 			resp, err = connection.Client.Get(connection.Ctx, listKey, clientv3.WithPrefix())
@@ -95,7 +97,7 @@ func (f *fwmarks) Get(serviceID, networkID string) (uint32, error) {
 			}
 
 			fwmarkStr := strconv.FormatUint(uint64(fwmark), 10)
-			fwmarkKey := fwmarkKey(f.etcdClient, networkID, fwmarkStr)
+			fwmarkKey := f.fwmarkKey(networkID, fwmarkStr)
 
 			txn := connection.Client.Txn(connection.Ctx).
 				If(clientv3.Compare(clientv3.CreateRevision(fwmarkKey), "=", 0)).
@@ -126,8 +128,8 @@ func (f *fwmarks) Release(serviceID, networkID string, fwmark uint32) error {
 	defer f.Unlock()
 	_, err := etcd.WithConnection(f.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
 		fwmarkStr := strconv.FormatUint(uint64(fwmark), 10)
-		serviceKey := fwmarkServiceKey(f.etcdClient, networkID, serviceID)
-		fwmarkKey := fwmarkKey(f.etcdClient, networkID, fwmarkStr)
+		serviceKey := f.fwmarkServiceKey(networkID, serviceID)
+		fwmarkKey := f.fwmarkKey(networkID, fwmarkStr)
 		txn := connection.Client.Txn(connection.Ctx).
 			If(
 				clientv3.Compare(clientv3.Value(serviceKey), "=", fwmarkStr),
