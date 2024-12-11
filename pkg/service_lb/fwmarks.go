@@ -21,12 +21,11 @@ type FwmarksManagement interface {
 
 type fwmarks struct {
 	etcdClient etcd.Client
-	hostname   string
 	sync.Mutex
 }
 
 func (f *fwmarks) fwmarksListKey(networkID string) string {
-	return f.etcdClient.GetKey(f.hostname, networkID, "list")
+	return f.etcdClient.GetKey(networkID, "list")
 }
 
 func (f *fwmarks) fwmarkKey(networkID, fwmark string) string {
@@ -34,17 +33,16 @@ func (f *fwmarks) fwmarkKey(networkID, fwmark string) string {
 }
 
 func (f *fwmarks) fwmarkServicesKey(networkID string) string {
-	return f.etcdClient.GetKey(f.hostname, networkID, "by-service")
+	return f.etcdClient.GetKey(networkID, "by-service")
 }
 
 func (f *fwmarks) fwmarkServiceKey(networkID, serviceID string) string {
 	return fmt.Sprintf("%s/%s", f.fwmarkServicesKey(networkID), serviceID)
 }
 
-func NewFwmarksManagement(etcdClient etcd.Client, hostname string) FwmarksManagement {
+func NewFwmarksManagement(etcdClient etcd.Client) FwmarksManagement {
 	return &fwmarks{
 		etcdClient: etcdClient,
-		hostname:   hostname,
 	}
 }
 

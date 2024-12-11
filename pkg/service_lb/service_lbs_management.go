@@ -46,7 +46,6 @@ type serviceLbManagement struct {
 	servicesEventsUnsubscribers map[string]func()
 	loadBalancers               map[string]map[string]NetworkSpecificServiceLb
 	loadBalancersData           etcd.WriteOnlyStore[loadBalancerData]
-	etcdClient                  etcd.Client
 	fwmarksManagement           FwmarksManagement
 	networksByDockerID          map[string]flannel_network.Network
 	hostname                    string
@@ -61,9 +60,8 @@ func NewServiceLbManagement(etcdClient etcd.Client) (ServiceLbsManagement, error
 
 	return &serviceLbManagement{
 		loadBalancers:               make(map[string]map[string]NetworkSpecificServiceLb),
-		etcdClient:                  etcdClient,
-		loadBalancersData:           etcd.NewWriteOnlyStore(etcdClient.CreateSubClient("data"), etcd.ItemsHandlers[loadBalancerData]{}),
-		fwmarksManagement:           NewFwmarksManagement(etcdClient.CreateSubClient("fwmarks")),
+		loadBalancersData:           etcd.NewWriteOnlyStore(etcdClient.CreateSubClient(hostname, "data"), etcd.ItemsHandlers[loadBalancerData]{}),
+		fwmarksManagement:           NewFwmarksManagement(etcdClient.CreateSubClient(hostname, "fwmarks")),
 		networksByDockerID:          make(map[string]flannel_network.Network),
 		hostname:                    hostname,
 		services:                    make(map[string]common.Service),
