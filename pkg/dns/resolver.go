@@ -242,10 +242,12 @@ func (r *resolver) resolveName(requestedName string, requestedNetworkName string
 	if requestedNetworkName != "" {
 		networkID, exists := r.networkNameToID[requestedNetworkName]
 		if !exists {
+			fmt.Printf("Network Name %s does not exist\n", requestedNetworkName)
 			// No network with this name exists, so there can't be a match
 			return result
 		}
 		if validNetworkID != networkID {
+			fmt.Printf("Network ID %s is not valid. Expected: %s\n", networkID, validNetworkID)
 			// While the network exists, it's not the valid network, so there can't be a match
 			return result
 		}
@@ -282,11 +284,12 @@ func (r *resolver) resolveContainerName(requestedName string, validNetworkID str
 }
 
 func (r *resolver) resolveServiceName(requestedName string, validNetworkID string) []net.IP {
-	fmt.Sprintf("resolving service name %s in network %s\n", requestedName, validNetworkID)
+	fmt.Printf("resolving service name %s in network %s\n", requestedName, validNetworkID)
 	result := []net.IP{}
 
 	service, exists := r.serviceData.byName[requestedName]
 	if exists {
+		fmt.Printf("service exists: %+v\n", requestedName)
 		serviceInfo := service.GetInfo()
 		if serviceInfo.EndpointMode == common.ServiceEndpointModeVip {
 			result = append(result, filterIPsByNetwork(serviceInfo.VIPs, validNetworkID)...)
@@ -300,6 +303,7 @@ func (r *resolver) resolveServiceName(requestedName string, validNetworkID strin
 }
 
 func filterIPsByNetwork(ips map[string]net.IP, validNetworkID string) []net.IP {
+	fmt.Printf("filtering IPs %v by network %s\n", ips, validNetworkID)
 	result := []net.IP{}
 	for networkID, ip := range ips {
 		if validNetworkID == networkID {
