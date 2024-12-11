@@ -184,7 +184,7 @@ func (r *resolver) ResolveName(query string, validNetworkIDs []string) []dns.RR 
 	fmt.Printf("network data ID -> name: %+v\n", r.networkIDToName)
 	fmt.Printf("network data name -> ID: %+v\n", r.networkNameToID)
 
-	queryParts := strings.Split(query, ".")
+	queryParts := strings.Split(strings.TrimSuffix(query, "."), ".") // Remove trailing . in queries
 	namePartsCount := len(queryParts)
 
 	sortedNetworkIDs := make([]string, len(validNetworkIDs))
