@@ -15,12 +15,12 @@
       "type": "bind"
     },
     {
-      "destination": "/var/run/docker",
+      "destination": "/hostfs/var/run/docker/",
       "name": "var_run_docker",
       "options": [
         "rbind"
       ],
-      "source": "/var/run/docker",
+      "source": "/var/run/docker/",
       "type": "bind"
     },
     {
