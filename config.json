@@ -15,12 +15,12 @@
       "type": "bind"
     },
     {
-      "destination": "/var/run/docker/netns",
-      "name": "var_run_docker_netns",
+      "destination": "/var/run/docker",
+      "name": "var_run_docker",
       "options": [
         "rbind"
       ],
-      "source": "/var/run/docker/netns",
+      "source": "/var/run/docker",
       "type": "bind"
     },
     {
