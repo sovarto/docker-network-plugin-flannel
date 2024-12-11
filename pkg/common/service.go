@@ -137,7 +137,7 @@ func (s *service) SetVIPs(vips map[string]net.IP) {
 	defer s.withLock()()
 
 	vipsChanged := CompareIPMaps(s.vips, vips)
-	s.vips = vips
+	s.vips = maps.Clone(vips)
 	if s.IsInitialized() && vipsChanged {
 		s.events.onVIPsChanged.Raise(s)
 	}

@@ -320,6 +320,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 
 	fmt.Printf("Setting VIPs of service %s to %v\n", serviceInfo.ID, data.frontendIPs)
 	service.SetVIPs(data.frontendIPs)
+	fmt.Printf("Service %s infos: %+v\n", serviceInfo.ID, service.GetInfo())
 
 	return nil
 }
