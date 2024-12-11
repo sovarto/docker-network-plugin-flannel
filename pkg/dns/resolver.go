@@ -254,6 +254,7 @@ func (r *resolver) resolveName(requestedName string, requestedNetworkName string
 }
 
 func (r *resolver) resolveContainerName(requestedName string, validNetworkID string) []net.IP {
+	fmt.Sprintf("resolving container name %s in network %s\n", requestedName, validNetworkID)
 	result := []net.IP{}
 	aliasData, exists := r.containerData.byAlias[requestedName]
 	if exists {
@@ -275,6 +276,7 @@ func (r *resolver) resolveContainerName(requestedName string, validNetworkID str
 }
 
 func (r *resolver) resolveServiceName(requestedName string, validNetworkID string) []net.IP {
+	fmt.Sprintf("resolving service name %s in network %s\n", requestedName, validNetworkID)
 	result := []net.IP{}
 
 	service, exists := r.serviceData.byName[requestedName]
