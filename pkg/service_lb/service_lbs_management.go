@@ -287,6 +287,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 
 	existingData, exists := m.loadBalancersData.GetItem(serviceInfo.ID)
 
+	fmt.Printf("Service %s has IPAM VIPs %v\n", serviceInfo.ID, serviceInfo.IpamVIPs)
 	// Assumption: for every network we also have an IPAM VIP
 	for dockerNetworkID, ipamVip := range serviceInfo.IpamVIPs {
 		network := m.networksByDockerID[dockerNetworkID]
