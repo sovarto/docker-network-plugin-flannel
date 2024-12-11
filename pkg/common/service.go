@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 	"github.com/samber/lo"
+	"golang.org/x/exp/maps"
 	"net"
 	"sync"
 )
@@ -177,8 +178,10 @@ func (s *service) SetNetworks(networks []string, ipamVIPs map[string]net.IP) {
 
 	deletedNetworks, addedNetworks := lo.Difference(networks, s.networks)
 	ipamVIPsChanged := CompareIPMaps(s.ipamVIPs, ipamVIPs)
-	s.networks = networks
-	s.ipamVIPs = ipamVIPs
+
+	s.networks = make([]string, len(networks))
+	copy(s.networks, networks)
+	s.ipamVIPs = maps.Clone(ipamVIPs)
 
 	if s.IsInitialized() {
 		if !wasInitialized {

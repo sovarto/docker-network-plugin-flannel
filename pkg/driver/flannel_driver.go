@@ -399,7 +399,7 @@ func (d *flannelDriver) createService(id, name string) common.Service {
 	// TODO: Store unsubscribe functions and use them upon service deletion
 	// or not? because when the service is being deleted, it is gone, no events will be raised anyway
 	service.Events().OnInitialized.Subscribe(func(s common.Service) {
-		fmt.Printf("Service created %s\n", s.GetInfo().Name)
+		fmt.Printf("Service created %v\n", s.GetInfo())
 		d.dnsResolver.AddService(s)
 		if s.GetInfo().EndpointMode == common.ServiceEndpointModeVip {
 			err := d.serviceLbsManagement.CreateLoadBalancer(s)
