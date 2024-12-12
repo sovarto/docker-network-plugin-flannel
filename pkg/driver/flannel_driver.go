@@ -282,6 +282,9 @@ func (d *flannelDriver) handleNetworksRemoved(removed []etcd.Item[common.Network
 	for _, removedItem := range removed {
 		networkInfo := removedItem.Value
 		d.dnsResolver.RemoveNetwork(networkInfo)
+		if err := d.serviceLbsManagement.DeleteNetwork(networkInfo.DockerID); err != nil {
+			log.Printf("Error handling deleted network %s, err: %v", networkInfo.FlannelID, err)
+		}
 		network, exists := d.getNetwork(networkInfo.DockerID, networkInfo.FlannelID)
 		if exists {
 			fmt.Printf("Deleting network %s\n", networkInfo.FlannelID)
@@ -289,6 +292,9 @@ func (d *flannelDriver) handleNetworksRemoved(removed []etcd.Item[common.Network
 			if err != nil {
 				log.Printf("Failed to remove network '%s': %+v\n", networkInfo.FlannelID, err)
 			}
+		}
+		if err := d.globalAddressSpace.ReleasePool(networkInfo.FlannelID); err != nil {
+			log.Printf("Failed to release pool for network '%s': %+v\n", networkInfo.FlannelID, err)
 		}
 		delete(d.networksByDockerID, networkInfo.DockerID)
 		delete(d.networksByFlannelID, networkInfo.FlannelID)
