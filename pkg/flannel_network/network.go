@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -89,10 +90,15 @@ func (n *network) Delete() error {
 	if n.pid != 0 {
 		proc, err := os.FindProcess(n.pid)
 		if err == nil {
-			err := proc.Kill()
+			err := proc.Signal(syscall.SIGTERM)
 			if err != nil {
 				return errors.WithMessagef(err, "error killing flanneld process of network %s", n.flannelID)
 			}
+			_, err = proc.Wait()
+			if err != nil {
+				return errors.WithMessagef(err, "error waiting for exit for killed flanneld process of network %s", n.flannelID)
+			}
+
 			n.pid = 0
 		}
 	}

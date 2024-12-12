@@ -63,3 +63,7 @@ Services
 4. Delete Flannel config - in etcd and flannel.env on disk - for networks that no longer exist
 5. Start Flannel for existing networks
 6. Re-patch DNS into all running containers that are connected to our networks
+
+# TODO
+- Delete network: Make sure flannel interface is gone or at least no longer listens on the IP address
+- 
