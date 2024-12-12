@@ -115,7 +115,7 @@ func (n *network) Delete() error {
 		}
 		resp, err := connection.Client.Txn(connection.Ctx).
 			If(clientv3.Compare(clientv3.ModRevision(networkConfigKey), "=", result.revision)).
-			Then(clientv3.OpDelete(networkConfigKey)).
+			Then(clientv3.OpDelete(networkConfigKey, clientv3.WithPrefix())).
 			Commit()
 
 		if err != nil {
@@ -128,7 +128,7 @@ func (n *network) Delete() error {
 				return struct{}{}, errors.WithMessagef(err, "error deleting flannel network config for network %s, and error during check if it has since been deleted", n.flannelID)
 			}
 			if resp.Kvs != nil && len(resp.Kvs) > 0 {
-				return struct{}{}, fmt.Errorf("error deleting flannel network config for network %s", n.flannelID)
+				return struct{}{}, fmt.Errorf("error deleting flannel network config for network %s. Got mod revision %d, expected %d", n.flannelID, resp.Kvs[0].ModRevision, result.revision)
 			}
 		}
 
@@ -136,7 +136,7 @@ func (n *network) Delete() error {
 	})
 
 	if err != nil {
-		return errors.WithMessagef(err, "deleting network config failed for network %s", n.flannelID)
+		return err
 	}
 
 	err = n.bridge.Delete()

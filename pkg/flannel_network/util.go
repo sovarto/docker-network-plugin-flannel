@@ -24,7 +24,7 @@ func readPipe(pipe io.Reader, doneChan chan struct{}) {
 			close(doneChan)
 		}
 	}
-	if err := scanner.Err(); err != nil {
+	if err := scanner.Err(); err != nil && err != io.EOF {
 		log.Println("Error reading pipe:", err)
 	}
 }
