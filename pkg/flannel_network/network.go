@@ -286,7 +286,7 @@ func (n *network) readNetworkConfig() (ReadNetworkConfigResult, error) {
 				return ReadNetworkConfigResult{found: true, revision: resp.Header.Revision}, errors.WithMessage(err, "error deserializing configuration")
 			}
 
-			return ReadNetworkConfigResult{config: configData, found: true, revision: resp.Header.Revision}, nil
+			return ReadNetworkConfigResult{config: configData, found: true, revision: resp.Kvs[0].ModRevision}, nil
 		}
 
 		return ReadNetworkConfigResult{found: false}, nil
