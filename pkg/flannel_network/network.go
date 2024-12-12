@@ -102,7 +102,7 @@ func (n *network) Delete() error {
 	}
 
 	_, err := etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
-		networkConfigKey := flannelConfigKey(n.etcdClient, n.flannelID)
+		networkConfigKey := n.flannelConfigKey()
 
 		result, err := n.readNetworkConfig()
 		if err != nil {
@@ -115,7 +115,7 @@ func (n *network) Delete() error {
 		}
 		resp, err := connection.Client.Txn(connection.Ctx).
 			If(clientv3.Compare(clientv3.ModRevision(networkConfigKey), "=", result.revision)).
-			Then(clientv3.OpDelete(networkConfigKey, clientv3.WithPrefix())).
+			Then(clientv3.OpDelete(networkConfigKey)).
 			Commit()
 
 		if err != nil {
@@ -130,6 +130,11 @@ func (n *network) Delete() error {
 			if resp.Kvs != nil && len(resp.Kvs) > 0 {
 				return struct{}{}, fmt.Errorf("error deleting flannel network config for network %s. Got mod revision %d, expected %d", n.flannelID, resp.Kvs[0].ModRevision, result.revision)
 			}
+		}
+
+		_, err = connection.Client.Delete(connection.Ctx, n.flannelConfigPrefixKey(), clientv3.WithPrefix())
+		if err != nil {
+			return struct{}{}, errors.WithMessagef(err, "error deleting node specific flannel subnet configs for network %s", n.flannelID)
 		}
 
 		return struct{}{}, nil
@@ -192,21 +197,21 @@ type BackendConfig struct {
 	VNI  int    `json:"VNI"`
 }
 
-func flannelConfigPrefixKey(client etcd.Client, flannelNetworkID string) string {
-	return client.GetKey(flannelNetworkID)
+func (n *network) flannelConfigPrefixKey() string {
+	return n.etcdClient.GetKey(n.flannelID)
 }
 
-func flannelConfigKey(client etcd.Client, flannelNetworkID string) string {
-	return fmt.Sprintf("%s/config", flannelConfigPrefixKey(client, flannelNetworkID))
+func (n *network) flannelConfigKey() string {
+	return fmt.Sprintf("%s/config", n.flannelConfigPrefixKey())
 }
 
-func flannelLockKey(client etcd.Client, flannelNetworkID string) string {
-	return fmt.Sprintf("%s/lock", flannelConfigPrefixKey(client, flannelNetworkID))
+func (n *network) flannelLockKey() string {
+	return fmt.Sprintf("%s/lock", n.flannelConfigPrefixKey())
 }
 
 func (n *network) ensureFlannelConfig() (struct{}, error) {
 	return etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
-		networkConfigKey := flannelConfigKey(n.etcdClient, n.flannelID)
+		networkConfigKey := n.flannelConfigKey()
 
 		result, err := n.readNetworkConfig()
 		if err != nil {
@@ -273,7 +278,7 @@ type ReadNetworkConfigResult struct {
 
 func (n *network) readNetworkConfig() (ReadNetworkConfigResult, error) {
 	return etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (ReadNetworkConfigResult, error) {
-		networkConfigKey := flannelConfigKey(n.etcdClient, n.flannelID)
+		networkConfigKey := n.flannelConfigKey()
 
 		resp, err := connection.Client.Get(connection.Ctx, networkConfigKey)
 		if err != nil {
@@ -295,7 +300,7 @@ func (n *network) readNetworkConfig() (ReadNetworkConfigResult, error) {
 
 func (n *network) startFlannel() error {
 	subnetFile := n.getFlannelEnvFilename()
-	etcdPrefix := flannelConfigPrefixKey(n.etcdClient, n.flannelID)
+	etcdPrefix := n.flannelConfigPrefixKey()
 
 	args := []string{
 		fmt.Sprintf("-subnet-file=%s", subnetFile),
@@ -314,7 +319,7 @@ func (n *network) startFlannel() error {
 		// TODO: Is this hardcoded value a bad idea?
 		ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
 
-		lockKey := flannelLockKey(n.etcdClient, n.flannelID)
+		lockKey := n.flannelLockKey()
 
 		fmt.Printf("trying to acquire lock for flannel network %s at %s\n", n.flannelID, lockKey)
 		mutex := concurrency.NewMutex(session, lockKey)
