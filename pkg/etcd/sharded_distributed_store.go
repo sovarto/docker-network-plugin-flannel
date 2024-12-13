@@ -394,6 +394,7 @@ func (s *shardedDistributedStore[T]) handleWatchEvents(watcher clientv3.WatchCha
 					}
 					previousItem, exists := shardedItems[itemID]
 					shardedItems[itemID] = item
+					s.data[itemID] = item
 					if exists {
 						if s.handlers.OnChanged != nil && !previousItem.Equals(item) {
 							s.handlers.OnChanged([]ShardItemChange[T]{{
