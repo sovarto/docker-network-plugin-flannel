@@ -302,12 +302,14 @@ func (s *shardedDistributedStore[T]) loadData(connection *Connection) (map[strin
 	result := map[string]map[string]T{}
 
 	for _, kv := range resp.Kvs {
-		shardKey, itemID, item, ignored, err := s.parseItem(kv, prefix)
-		if err != nil {
-			return nil, err
-		}
+		shardKey, itemID, ignored := parseItemKey(kv, prefix)
 		if ignored {
 			continue
+		}
+
+		item, err := s.parseItem(kv)
+		if err != nil {
+			return nil, err
 		}
 
 		setShardedItem(result, shardKey, itemID, item)
@@ -325,7 +327,7 @@ func (s *shardedDistributedStore[T]) storeItem(connection *Connection, shardKey,
 	return
 }
 
-func (s *shardedDistributedStore[T]) parseItem(kv *mvccpb.KeyValue, prefix string) (shardKey, itemID string, item T, ignored bool, err error) {
+func parseItemKey(kv *mvccpb.KeyValue, prefix string) (shardKey, itemID string, ignored bool) {
 	key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
 	parts := strings.Split(key, "/")
 	if len(parts) != 2 {
@@ -335,9 +337,14 @@ func (s *shardedDistributedStore[T]) parseItem(kv *mvccpb.KeyValue, prefix strin
 	}
 	shardKey = parts[0]
 	itemID = parts[1]
+	ignored = false
+	return
+}
+
+func (s *shardedDistributedStore[T]) parseItem(kv *mvccpb.KeyValue) (item T, err error) {
 	err = json.Unmarshal(kv.Value, &item)
 	if err != nil {
-		err = errors.WithMessagef(err, "error parsing item %s for shard %s: err: %+v, value: %+v, prefix: %s", itemID, shardKey, err, string(kv.Value), prefix)
+		err = errors.WithMessagef(err, "error parsing item %s, value: %+v, err: %+v", string(kv.Key), string(kv.Value), err)
 		return
 	}
 
@@ -347,10 +354,7 @@ func (s *shardedDistributedStore[T]) parseItem(kv *mvccpb.KeyValue, prefix strin
 func (s *shardedDistributedStore[T]) handleWatchEvents(watcher clientv3.WatchChan, prefix string) {
 	for wresp := range watcher {
 		for _, ev := range wresp.Events {
-			shardKey, itemID, item, ignored, err := s.parseItem(ev.Kv, prefix)
-			if err != nil {
-				log.Printf("Error in event watcher: %+v", err)
-			}
+			shardKey, itemID, ignored := parseItemKey(ev.Kv, prefix)
 			if ignored {
 				continue
 			}
@@ -365,13 +369,19 @@ func (s *shardedDistributedStore[T]) handleWatchEvents(watcher clientv3.WatchCha
 					if exists {
 						delete(shardedItems, itemID)
 					}
-					item, exists = s.data[itemID]
+					item, exists := s.data[itemID]
 					delete(s.data, itemID)
 					delete(s.itemToShardKey, itemID)
 					if exists && s.handlers.OnRemoved != nil {
 						s.handlers.OnRemoved([]ShardItem[T]{{ID: itemID, Value: item, ShardKey: shardKey}})
 					}
 				} else if ev.Type == mvccpb.PUT {
+					item, err := s.parseItem(ev.Kv)
+					if err != nil {
+						log.Printf("Error in event watcher: %+v", err)
+						continue
+					}
+
 					shardedItems, shardExists := s.shardedData[shardKey]
 					if !shardExists {
 						shardedItems = make(map[string]T)
