@@ -96,50 +96,51 @@ func (n *network) Delete() error {
 		log.Println(err)
 	}
 
-	_, err := etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
-		networkConfigKey := n.flannelConfigKey()
+	//_, err := etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
+	//	networkConfigKey := n.flannelConfigKey()
+	//
+	//	result, err := n.readNetworkConfig()
+	//	if err != nil {
+	//		return struct{}{}, errors.WithMessagef(err, "error reading existing flannel network config for network %s", n.flannelID)
+	//	}
+	//	if result.found {
+	//		if result.config.Network != n.networkSubnet.String() {
+	//			return struct{}{}, fmt.Errorf("the flannel config for network %s has unexpected network %s instead of the expected %s", n.flannelID, result.config.Network, n.networkSubnet.String())
+	//		}
+	//	}
+	//
+	//	resp, err := connection.Client.Txn(connection.Ctx).
+	//		If(clientv3.Compare(clientv3.ModRevision(networkConfigKey), "=", result.revision)).
+	//		Then(clientv3.OpDelete(networkConfigKey)).
+	//		Commit()
+	//
+	//	if err != nil {
+	//		return struct{}{}, errors.WithMessagef(err, "error deleting flannel network config for network %s", n.flannelID)
+	//	}
+	//
+	//	if !resp.Succeeded {
+	//		resp, err := connection.Client.Get(connection.Ctx, networkConfigKey)
+	//		if err != nil {
+	//			return struct{}{}, errors.WithMessagef(err, "error deleting flannel network config for network %s, and error during check if it has since been deleted", n.flannelID)
+	//		}
+	//		if resp.Kvs != nil && len(resp.Kvs) > 0 {
+	//			return struct{}{}, fmt.Errorf("error deleting flannel network config for network %s. Got mod revision %d, expected %d", n.flannelID, resp.Kvs[0].ModRevision, result.revision)
+	//		}
+	//	}
+	//
+	//	//_, err = connection.Client.Delete(connection.Ctx, n.flannelConfigPrefixKey(), clientv3.WithPrefix())
+	//	//if err != nil {
+	//	//	return struct{}{}, errors.WithMessagef(err, "error deleting node specific flannel subnet configs for network %s", n.flannelID)
+	//	//}
+	//
+	//	return struct{}{}, nil
+	//})
+	//
+	//if err != nil {
+	//	return err
+	//}
 
-		result, err := n.readNetworkConfig()
-		if err != nil {
-			return struct{}{}, errors.WithMessagef(err, "error reading existing flannel network config for network %s", n.flannelID)
-		}
-		if result.found {
-			if result.config.Network != n.networkSubnet.String() {
-				return struct{}{}, fmt.Errorf("the flannel config for network %s has unexpected network %s instead of the expected %s", n.flannelID, result.config.Network, n.networkSubnet.String())
-			}
-		}
-		resp, err := connection.Client.Txn(connection.Ctx).
-			If(clientv3.Compare(clientv3.ModRevision(networkConfigKey), "=", result.revision)).
-			Then(clientv3.OpDelete(networkConfigKey)).
-			Commit()
-
-		if err != nil {
-			return struct{}{}, errors.WithMessagef(err, "error deleting flannel network config for network %s", n.flannelID)
-		}
-
-		if !resp.Succeeded {
-			resp, err := connection.Client.Get(connection.Ctx, networkConfigKey)
-			if err != nil {
-				return struct{}{}, errors.WithMessagef(err, "error deleting flannel network config for network %s, and error during check if it has since been deleted", n.flannelID)
-			}
-			if resp.Kvs != nil && len(resp.Kvs) > 0 {
-				return struct{}{}, fmt.Errorf("error deleting flannel network config for network %s. Got mod revision %d, expected %d", n.flannelID, resp.Kvs[0].ModRevision, result.revision)
-			}
-		}
-
-		//_, err = connection.Client.Delete(connection.Ctx, n.flannelConfigPrefixKey(), clientv3.WithPrefix())
-		//if err != nil {
-		//	return struct{}{}, errors.WithMessagef(err, "error deleting node specific flannel subnet configs for network %s", n.flannelID)
-		//}
-
-		return struct{}{}, nil
-	})
-
-	if err != nil {
-		return err
-	}
-
-	err = n.bridge.Delete()
+	err := n.bridge.Delete()
 	if err != nil {
 		return errors.WithMessagef(err, "error deleting bridge interface for network %s", n.flannelID)
 	}
