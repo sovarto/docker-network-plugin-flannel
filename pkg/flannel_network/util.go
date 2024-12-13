@@ -12,16 +12,12 @@ import (
 	"time"
 )
 
-func readPipe(pipe io.Reader, isStdErr bool, doneChan chan struct{}) {
+func readPipe(pipe io.Reader, doneChan chan struct{}) {
 	channelClosed := false
 	scanner := bufio.NewScanner(pipe)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if isStdErr {
-			log.Printf("[flanneld] %s\n", line)
-		} else {
-			fmt.Printf("[flanneld] %s\n", line)
-		}
+		fmt.Printf("[flanneld] %s\n", line)
 		if strings.Contains(line, "bootstrap done") && !channelClosed {
 			channelClosed = true
 			close(doneChan)

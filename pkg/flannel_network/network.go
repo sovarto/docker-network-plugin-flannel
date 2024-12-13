@@ -170,10 +170,10 @@ func (n *network) endFlannelDaemonProcess() error {
 		if err != nil {
 			return errors.WithMessagef(err, "error killing flanneld process of network %s", n.flannelID)
 		}
-		_, err = n.flannelDaemonProcess.Wait()
-		if err != nil {
-			return errors.WithMessagef(err, "error waiting for exit for killed flanneld process of network %s", n.flannelID)
-		}
+		//_, err = n.flannelDaemonProcess.Wait()
+		//if err != nil {
+		//	return errors.WithMessagef(err, "error waiting for exit for killed flanneld process of network %s", n.flannelID)
+		//}
 
 		n.flannelDaemonProcess = nil
 	}
@@ -356,8 +356,8 @@ func (n *network) startFlannel() error {
 
 		bootstrapDoneChan := make(chan struct{})
 
-		go readPipe(stdoutPipe, false, bootstrapDoneChan)
-		go readPipe(stderrPipe, true, bootstrapDoneChan)
+		go readPipe(stdoutPipe, bootstrapDoneChan)
+		go readPipe(stderrPipe, bootstrapDoneChan)
 
 		// Start the process
 		if err := cmd.Start(); err != nil {
