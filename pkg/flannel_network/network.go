@@ -10,8 +10,9 @@ import (
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/ipam"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
+	"github.com/vishvananda/netlink"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/client/v3/concurrency"
 	"log"
 	"net"
 	"os"
@@ -95,58 +96,77 @@ func (n *network) Delete() error {
 		// Don't fail if we can't delete the flannel env file
 		log.Println(err)
 	}
+	_, err := etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
+		_, err := connection.Client.Delete(connection.Ctx, n.flannelConfigSubnetKey(n.hostSubnet))
+		if err != nil {
+			return struct{}{}, errors.WithMessagef(err, "error deleting flannel host subnet config for network %s", n.flannelID)
+		}
 
-	//_, err := etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
-	//	networkConfigKey := n.flannelConfigKey()
-	//
-	//	result, err := n.readNetworkConfig()
-	//	if err != nil {
-	//		return struct{}{}, errors.WithMessagef(err, "error reading existing flannel network config for network %s", n.flannelID)
-	//	}
-	//	if result.found {
-	//		if result.config.Network != n.networkSubnet.String() {
-	//			return struct{}{}, fmt.Errorf("the flannel config for network %s has unexpected network %s instead of the expected %s", n.flannelID, result.config.Network, n.networkSubnet.String())
-	//		}
-	//	}
-	//
-	//	resp, err := connection.Client.Txn(connection.Ctx).
-	//		If(clientv3.Compare(clientv3.ModRevision(networkConfigKey), "=", result.revision)).
-	//		Then(clientv3.OpDelete(networkConfigKey)).
-	//		Commit()
-	//
-	//	if err != nil {
-	//		return struct{}{}, errors.WithMessagef(err, "error deleting flannel network config for network %s", n.flannelID)
-	//	}
-	//
-	//	if !resp.Succeeded {
-	//		resp, err := connection.Client.Get(connection.Ctx, networkConfigKey)
-	//		if err != nil {
-	//			return struct{}{}, errors.WithMessagef(err, "error deleting flannel network config for network %s, and error during check if it has since been deleted", n.flannelID)
-	//		}
-	//		if resp.Kvs != nil && len(resp.Kvs) > 0 {
-	//			return struct{}{}, fmt.Errorf("error deleting flannel network config for network %s. Got mod revision %d, expected %d", n.flannelID, resp.Kvs[0].ModRevision, result.revision)
-	//		}
-	//	}
-	//
-	//	//_, err = connection.Client.Delete(connection.Ctx, n.flannelConfigPrefixKey(), clientv3.WithPrefix())
-	//	//if err != nil {
-	//	//	return struct{}{}, errors.WithMessagef(err, "error deleting node specific flannel subnet configs for network %s", n.flannelID)
-	//	//}
-	//
-	//	return struct{}{}, nil
-	//})
-	//
-	//if err != nil {
-	//	return err
-	//}
+		networkConfigKey := n.flannelConfigKey()
 
-	err := n.bridge.Delete()
+		result, err := n.readNetworkConfig()
+		if err != nil {
+			return struct{}{}, errors.WithMessagef(err, "error reading existing flannel network config for network %s", n.flannelID)
+		}
+		if result.found {
+			if result.config.Network != n.networkSubnet.String() {
+				return struct{}{}, fmt.Errorf("the flannel config for network %s has unexpected network %s instead of the expected %s", n.flannelID, result.config.Network, n.networkSubnet.String())
+			}
+		}
+
+		resp, err := connection.Client.Txn(connection.Ctx).
+			If(clientv3.Compare(clientv3.ModRevision(networkConfigKey), "=", result.revision)).
+			Then(clientv3.OpDelete(networkConfigKey)).
+			Commit()
+
+		if err != nil {
+			return struct{}{}, errors.WithMessagef(err, "error deleting flannel network config for network %s", n.flannelID)
+		}
+
+		if !resp.Succeeded {
+			resp, err := connection.Client.Get(connection.Ctx, networkConfigKey)
+			if err != nil {
+				return struct{}{}, errors.WithMessagef(err, "error deleting flannel network config for network %s, and error during check if it has since been deleted", n.flannelID)
+			}
+			if resp.Kvs != nil && len(resp.Kvs) > 0 {
+				return struct{}{}, fmt.Errorf("error deleting flannel network config for network %s. Got mod revision %d, expected %d", n.flannelID, resp.Kvs[0].ModRevision, result.revision)
+			}
+		}
+
+		return struct{}{}, nil
+	})
+
 	if err != nil {
+		return err
+	}
+
+	flannelLinkName := fmt.Sprintf("flannel.%d", n.vni)
+	flannelLink, err := netlink.LinkByName(flannelLinkName)
+	if err != nil {
+		return errors.WithMessagef(err, "Error getting flannel interface %s by name", flannelLinkName)
+	}
+
+	flannelNetworkInterfaceIP := n.hostSubnet.IP.String()
+	if err := networking.StopListeningOnAddress(flannelLink, flannelNetworkInterfaceIP); err != nil {
+		return errors.WithMessagef(err, "error removing IP %s from flannel network interface %s", flannelNetworkInterfaceIP, flannelLinkName)
+	}
+
+	addresses, err := netlink.AddrList(flannelLink, netlink.FAMILY_V4)
+	if err != nil {
+		return errors.WithMessagef(err, "Error getting remaining addresses for flannel interface %s", flannelLinkName)
+	}
+
+	if len(addresses) == 0 {
+		if err := netlink.LinkDel(flannelLink); err != nil {
+			return errors.WithMessagef(err, "Error deleting flannel interface %s", flannelLinkName)
+		}
+	}
+
+	if err := n.bridge.Delete(); err != nil {
 		return errors.WithMessagef(err, "error deleting bridge interface for network %s", n.flannelID)
 	}
 
-	err = n.pool.ReleaseAllIPs()
-	if err != nil {
+	if err := n.pool.ReleaseAllIPs(); err != nil {
 		return errors.WithMessagef(err, "error releasing all IPs for network %s", n.flannelID)
 	}
 
@@ -215,6 +235,10 @@ func (n *network) flannelConfigPrefixKey() string {
 
 func (n *network) flannelConfigKey() string {
 	return fmt.Sprintf("%s/config", n.flannelConfigPrefixKey())
+}
+
+func (n *network) flannelConfigSubnetKey(subnet net.IPNet) string {
+	return fmt.Sprintf("%s/subnets/%s", n.flannelConfigPrefixKey(), common.SubnetToKey(subnet.String()))
 }
 
 func (n *network) flannelLockKey() string {
@@ -322,23 +346,14 @@ func (n *network) startFlannel() error {
 	args = append(args, n.defaultFlannelOptions...)
 
 	cmd, err := etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (*exec.Cmd, error) {
-		session, err := concurrency.NewSession(connection.Client, concurrency.WithTTL(5))
-		if err != nil {
-			return nil, errors.WithMessagef(err, "error creating concurrency session for flannel network %s", n.flannelID)
-		}
-		defer session.Close()
-
-		// TODO: Is this hardcoded value a bad idea?
-		ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
-
 		lockKey := n.flannelLockKey()
-
 		fmt.Printf("trying to acquire lock for flannel network %s at %s\n", n.flannelID, lockKey)
-		mutex := concurrency.NewMutex(session, lockKey)
-		if err := mutex.Lock(ctx); err != nil {
+		// TODO: Is this hardcoded value a bad idea?
+		mutex, err := connection.LockNewMutex(lockKey, 15*time.Second)
+		if err != nil {
 			return nil, errors.WithMessagef(err, "error acquiring lock for flannel network %s at %s", n.flannelID, lockKey)
 		}
-		defer mutex.Unlock(connection.Ctx)
+		defer mutex.UnlockAndCloseSession()
 
 		cmd := exec.Command("/flanneld", args...)
 

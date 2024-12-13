@@ -4,7 +4,9 @@ import (
 	"context"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/concurrency"
 	"log"
+	"time"
 )
 
 type Connection struct {
@@ -55,4 +57,21 @@ func WithConnection[T any](client Client, fn func(*Connection) (T, error)) (T, e
 	}
 
 	return fn(connection)
+}
+
+func (c *Connection) LockNewMutex(lockKey string, lockTimeout time.Duration) (*Mutex, error) {
+	session, err := concurrency.NewSession(c.Client, concurrency.WithTTL(5))
+	if err != nil {
+		return nil, errors.WithMessagef(err, "error creating concurrency session for lock key %s", lockKey)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), lockTimeout)
+
+	mutex := concurrency.NewMutex(session, lockKey)
+	if err := mutex.Lock(ctx); err != nil {
+		cancel()
+		return nil, errors.WithMessagef(err, "error acquiring lock at %s", lockKey)
+	}
+
+	return NewMutex(session, mutex, ctx, cancel), nil
 }

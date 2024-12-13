@@ -146,8 +146,7 @@ func EnsureInterface(name string, interfaceType string, mtu int, up bool) (netli
 		}
 		err := netlink.LinkAdd(link)
 		if err != nil {
-			log.Printf("Error adding %s interface %s: %v", interfaceType, name, err)
-			return nil, err
+			return nil, errors.WithMessagef(err, "Error adding %s interface %s", interfaceType, name)
 		}
 
 		fmt.Printf("Added %s interface %s\n", interfaceType, name)
@@ -155,8 +154,7 @@ func EnsureInterface(name string, interfaceType string, mtu int, up bool) (netli
 
 	link, err := netlink.LinkByName(name)
 	if err != nil {
-		log.Printf("Error getting %s interface %s by name: %v", interfaceType, name, err)
-		return nil, err
+		return nil, errors.WithMessagef(err, "Error getting %s interface %s by name", interfaceType, name)
 	}
 
 	if link.Attrs().MTU != mtu {
