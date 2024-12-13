@@ -127,10 +127,10 @@ func (n *network) Delete() error {
 			}
 		}
 
-		_, err = connection.Client.Delete(connection.Ctx, n.flannelConfigPrefixKey(), clientv3.WithPrefix())
-		if err != nil {
-			return struct{}{}, errors.WithMessagef(err, "error deleting node specific flannel subnet configs for network %s", n.flannelID)
-		}
+		//_, err = connection.Client.Delete(connection.Ctx, n.flannelConfigPrefixKey(), clientv3.WithPrefix())
+		//if err != nil {
+		//	return struct{}{}, errors.WithMessagef(err, "error deleting node specific flannel subnet configs for network %s", n.flannelID)
+		//}
 
 		return struct{}{}, nil
 	})
