@@ -100,6 +100,6 @@ func releasePoolSubnet(client etcd.Client, subnet, id string) (PoolSubnetLeaseRe
 			return PoolSubnetLeaseResult{Success: true}, nil
 		}
 
-		return PoolSubnetLeaseResult{Success: false}, nil
+		return PoolSubnetLeaseResult{Success: false, PoolID: string(getResponse.Kvs[0].Value)}, nil
 	})
 }
