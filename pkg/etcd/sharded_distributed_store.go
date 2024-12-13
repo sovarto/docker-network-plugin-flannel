@@ -365,9 +365,10 @@ func (s *shardedDistributedStore[T]) handleWatchEvents(watcher clientv3.WatchCha
 					if exists {
 						delete(shardedItems, itemID)
 					}
+					item, exists = s.data[itemID]
 					delete(s.data, itemID)
 					delete(s.itemToShardKey, itemID)
-					if s.handlers.OnRemoved != nil {
+					if exists && s.handlers.OnRemoved != nil {
 						s.handlers.OnRemoved([]ShardItem[T]{{ID: itemID, Value: item, ShardKey: shardKey}})
 					}
 				} else if ev.Type == mvccpb.PUT {
