@@ -367,7 +367,7 @@ func (s *shardedDistributedStore[T]) handleWatchEvents(watcher clientv3.WatchCha
 				// - if not: print error message as this shouldn't happen
 			} else {
 				if ev.Type == mvccpb.DELETE {
-					fmt.Printf("Received DELETE for item %s from shard %s\n", itemID, shardKey)
+					fmt.Printf("Received DELETE for item %s from shard %s. Shard data: %+v, data: %+v\n", itemID, shardKey, s.shardedData, s.data)
 					shardedItems, exists := s.shardedData[shardKey]
 					if exists {
 						delete(shardedItems, itemID)
