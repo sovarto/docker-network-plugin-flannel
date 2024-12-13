@@ -79,10 +79,11 @@ func reservePoolSubnet(client etcd.Client, subnet, id string) (PoolSubnetLeaseRe
 
 func releasePoolSubnet(client etcd.Client, subnet, id string) (PoolSubnetLeaseResult, error) {
 	return etcd.WithConnection(client, func(conn *etcd.Connection) (PoolSubnetLeaseResult, error) {
+		key := subnetKey(client, subnet)
 		resp, err := conn.Client.Txn(conn.Ctx).
-			If(clientv3.Compare(clientv3.Value(subnetKey(client, subnet)), "=", id)).
-			Then(clientv3.OpDelete(subnetKey(client, subnet))).
-			Else(clientv3.OpGet(subnetKey(client, subnet))).
+			If(clientv3.Compare(clientv3.Value(key), "=", id)).
+			Then(clientv3.OpDelete(key)).
+			Else(clientv3.OpGet(key)).
 			Commit()
 
 		if err != nil {
@@ -92,7 +93,13 @@ func releasePoolSubnet(client etcd.Client, subnet, id string) (PoolSubnetLeaseRe
 		if resp.Succeeded {
 			return PoolSubnetLeaseResult{Success: true}, nil
 		}
-		// It probably has already been deleted by another node
+
+		getResponse := resp.Responses[0].GetResponseRange()
+		if getResponse.Kvs == nil || len(getResponse.Kvs) == 0 {
+			// It probably has already been deleted by another node
+			return PoolSubnetLeaseResult{Success: true}, nil
+		}
+
 		return PoolSubnetLeaseResult{Success: false}, nil
 	})
 }
