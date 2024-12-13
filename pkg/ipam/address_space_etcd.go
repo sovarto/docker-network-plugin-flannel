@@ -92,6 +92,7 @@ func releasePoolSubnet(client etcd.Client, subnet, id string) (PoolSubnetLeaseRe
 		if resp.Succeeded {
 			return PoolSubnetLeaseResult{Success: true}, nil
 		}
-		return PoolSubnetLeaseResult{Success: false, PoolID: string(resp.Responses[0].GetResponseRange().Kvs[0].Value)}, nil
+		// It probably has already been deleted by another node
+		return PoolSubnetLeaseResult{Success: false}, nil
 	})
 }

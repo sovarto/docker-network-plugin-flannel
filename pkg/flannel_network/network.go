@@ -35,7 +35,7 @@ type Network interface {
 
 type network struct {
 	flannelID             string
-	pid                   int
+	flannelDaemonProcess  *os.Process
 	etcdClient            etcd.Client
 	networkSubnet         net.IPNet
 	hostSubnet            net.IPNet
@@ -87,24 +87,13 @@ func (n *network) Delete() error {
 	n.Lock()
 	defer n.Unlock()
 
-	if n.pid != 0 {
-		proc, err := os.FindProcess(n.pid)
-		if err == nil {
-			err := proc.Signal(syscall.SIGTERM)
-			if err != nil {
-				return errors.WithMessagef(err, "error killing flanneld process of network %s", n.flannelID)
-			}
-			_, err = proc.Wait()
-			if err != nil {
-				return errors.WithMessagef(err, "error waiting for exit for killed flanneld process of network %s", n.flannelID)
-			}
-
-			n.pid = 0
-		}
+	if err := n.endFlannelDaemonProcess(); err != nil {
+		return err
 	}
 
 	if err := deleteFileIfExists(n.getFlannelEnvFilename()); err != nil {
-		fmt.Println(err)
+		// Don't fail if we can't delete the flannel env file
+		log.Println(err)
 	}
 
 	_, err := etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
@@ -175,6 +164,22 @@ func (n *network) Delete() error {
 	return nil
 }
 
+func (n *network) endFlannelDaemonProcess() error {
+	if n.flannelDaemonProcess != nil {
+		err := n.flannelDaemonProcess.Signal(syscall.SIGTERM)
+		if err != nil {
+			return errors.WithMessagef(err, "error killing flanneld process of network %s", n.flannelID)
+		}
+		_, err = n.flannelDaemonProcess.Wait()
+		if err != nil {
+			return errors.WithMessagef(err, "error waiting for exit for killed flanneld process of network %s", n.flannelID)
+		}
+
+		n.flannelDaemonProcess = nil
+	}
+	return nil
+}
+
 func (n *network) Ensure() error {
 	n.Lock()
 	defer n.Unlock()
@@ -184,7 +189,7 @@ func (n *network) Ensure() error {
 		return err
 	}
 
-	if n.pid == 0 || !isProcessRunning(n.pid) {
+	if !n.isFlannelDaemonProcessRunning() {
 		err = n.startFlannel()
 		return err
 	}
@@ -404,7 +409,7 @@ func (n *network) startFlannel() error {
 		return err
 	}
 
-	n.pid = cmd.Process.Pid
+	n.flannelDaemonProcess = cmd.Process
 
 	return nil
 }
@@ -540,4 +545,29 @@ func deleteFileIfExists(filename string) error {
 		return fmt.Errorf("error checking file: %w", err)
 	}
 	return nil
+}
+
+func (n *network) isFlannelDaemonProcessRunning() bool {
+	if n.flannelDaemonProcess == nil {
+		return false
+	}
+	err := n.flannelDaemonProcess.Signal(syscall.Signal(0))
+	if err == nil {
+		return true
+	}
+	if err.Error() == "os: process already finished" {
+		return false
+	}
+	var errno syscall.Errno
+	ok := errors.As(err, &errno)
+	if !ok {
+		return false
+	}
+	switch {
+	case errors.Is(errno, syscall.ESRCH):
+		return false
+	case errors.Is(errno, syscall.EPERM):
+		return true
+	}
+	return false
 }

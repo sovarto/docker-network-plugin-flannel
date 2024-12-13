@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -27,35 +26,6 @@ func readPipe(pipe io.Reader, doneChan chan struct{}) {
 	if err := scanner.Err(); err != nil && !errors.Is(err, os.ErrClosed) {
 		log.Println("Error reading pipe:", err)
 	}
-}
-
-func isProcessRunning(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	err = proc.Signal(syscall.Signal(0))
-	if err == nil {
-		return true
-	}
-	if err.Error() == "os: process already finished" {
-		return false
-	}
-	var errno syscall.Errno
-	ok := errors.As(err, &errno)
-	if !ok {
-		return false
-	}
-	switch {
-	case errors.Is(errno, syscall.ESRCH):
-		return false
-	case errors.Is(errno, syscall.EPERM):
-		return true
-	}
-	return false
 }
 
 func waitForFileWithContext(ctx context.Context, path string) error {
