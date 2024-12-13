@@ -356,8 +356,8 @@ func (n *network) startFlannel() error {
 
 		bootstrapDoneChan := make(chan struct{})
 
-		go readPipe(stdoutPipe, bootstrapDoneChan)
-		go readPipe(stderrPipe, bootstrapDoneChan)
+		go readPipe(stdoutPipe, false, bootstrapDoneChan)
+		go readPipe(stderrPipe, true, bootstrapDoneChan)
 
 		// Start the process
 		if err := cmd.Start(); err != nil {
@@ -387,8 +387,7 @@ func (n *network) startFlannel() error {
 		case <-time.After(1500 * time.Millisecond):
 			// Timeout occurred before "bootstrap done"
 			log.Printf("flanneld failed to bootstrap within 1.5 seconds for network %s\n", n.flannelID)
-			// Kill the process
-			if err := cmd.Process.Kill(); err != nil {
+			if err := n.endFlannelDaemonProcess(); err != nil {
 				log.Println("Failed to kill flanneld process:", err)
 			}
 			return nil, fmt.Errorf("flanneld failed to bootstrap within 1.5 seconds for network %s", n.flannelID)
@@ -402,14 +401,14 @@ func (n *network) startFlannel() error {
 	}
 
 	err = n.loadFlannelConfig(subnetFile)
+
+	n.flannelDaemonProcess = cmd.Process
 	if err != nil {
-		if err := cmd.Process.Kill(); err != nil {
+		if err := n.endFlannelDaemonProcess(); err != nil {
 			log.Println("Failed to kill flanneld process:", err)
 		}
 		return err
 	}
-
-	n.flannelDaemonProcess = cmd.Process
 
 	return nil
 }
