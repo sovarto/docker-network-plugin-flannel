@@ -327,8 +327,9 @@ func (slb *serviceLb) Delete() error {
 	defer handle.Close()
 
 	svc := &ipvs.Service{
-		FWMark:    slb.fwmark,
-		SchedName: "rr",
+		FWMark:        slb.fwmark,
+		SchedName:     "rr",
+		AddressFamily: unix.AF_INET,
 	}
 
 	err = handle.DelService(svc)

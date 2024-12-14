@@ -124,7 +124,7 @@ func (r *resolver) RemoveService(service common.Service) {
 	defer r.Unlock()
 
 	serviceInfo := service.GetInfo()
-	fmt.Printf("Adding service from resolver %+v\n", serviceInfo)
+	fmt.Printf("Removing service from resolver %+v\n", serviceInfo)
 	delete(r.serviceData.byName, serviceInfo.Name)
 	delete(r.serviceData.byID, serviceInfo.ID)
 }
