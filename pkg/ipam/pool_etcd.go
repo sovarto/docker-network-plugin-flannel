@@ -149,7 +149,7 @@ func allocateReservedIPForService(client etcd.Client, reservedIP net.IP) (IPLeas
 		},
 	}
 
-	return reserveIPByCondition(client, reservedIP, ReservationTypeContainerIP, "", conditions)
+	return reserveIPByCondition(client, reservedIP, ReservationTypeServiceVIP, "", conditions)
 }
 
 func reserveIP(client etcd.Client, ip net.IP, reservationType, mac string) (IPLeaseResult, error) {

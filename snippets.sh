@@ -6,7 +6,7 @@ docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl get /fla
 docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl del /flannel --prefix
 
 docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=flannel-id=$(uuidgen) f3
-docker service create --name s10_1 --network f10 --mode global traefik/whoami
+docker service create --name s1_1 --network f1 --mode global traefik/whoami
 
 docker plugin disable --force flannel:dev || true && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev && docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=flannel-id=$(uuidgen) f$i && docker service create --name s${i}_1 --network f$i --mode global traefik/whoami && docker run --rm -it --network f$i fedora curl s${i}_1
 

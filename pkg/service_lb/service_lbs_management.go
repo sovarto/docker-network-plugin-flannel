@@ -146,6 +146,7 @@ func (m *serviceLbManagement) CreateLoadBalancer(service common.Service) error {
 	})
 
 	unsubscribeFromOnContainerRemoved := service.Events().OnContainerRemoved.Subscribe(func(data common.OnContainerData) {
+		fmt.Printf("Container removed from service %s: %+v\n", service.GetInfo().ID, data)
 		serviceID := service.GetInfo().ID
 		err := m.removeBackendIPsFromLoadBalancer(serviceID, data.Container.IPs)
 		if err != nil {
