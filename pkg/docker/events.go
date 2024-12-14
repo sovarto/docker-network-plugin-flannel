@@ -55,7 +55,7 @@ func (d *data) handleEvent(event events.Message) error {
 			return d.handleService(event.Actor.ID)
 		case events.ActionUpdate:
 			return d.handleService(event.Actor.ID)
-		case events.ActionDelete:
+		case events.ActionRemove:
 			return d.handleDeletedService(event.Actor.ID)
 		}
 	}
