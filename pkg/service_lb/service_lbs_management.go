@@ -41,7 +41,6 @@ func (d loadBalancerData) Equals(other common.Equaler) bool {
 }
 
 type serviceLbManagement struct {
-	// serviceID, then networkID
 	services                    map[string]common.Service
 	servicesEventsUnsubscribers map[string]func()
 	loadBalancers               map[string]map[string]NetworkSpecificServiceLb
@@ -200,13 +199,16 @@ func (m *serviceLbManagement) DeleteLoadBalancer(serviceID string) error {
 		return fmt.Errorf("no load balancer found for service %s.\n", serviceID)
 	}
 
+	serviceInfo := m.services[serviceID].GetInfo()
+
 	for dockerNetworkID, lb := range lbs {
-		err := m.deleteForNetwork(serviceID, lb, dockerNetworkID)
+		err := m.deleteForNetwork(serviceInfo, lb, dockerNetworkID)
 		if err != nil {
 			return err
 		}
 	}
 	delete(m.loadBalancers, serviceID)
+	delete(m.services, serviceID)
 	err := m.loadBalancersData.DeleteItem(serviceID)
 	if err != nil {
 		return errors.WithMessagef(err, "failed to delete load balancer data for service %s", serviceID)
@@ -215,25 +217,23 @@ func (m *serviceLbManagement) DeleteLoadBalancer(serviceID string) error {
 	return nil
 }
 
-func (m *serviceLbManagement) deleteForNetwork(serviceID string, lb NetworkSpecificServiceLb, dockerNetworkID string) error {
+func (m *serviceLbManagement) deleteForNetwork(serviceInfo common.ServiceInfo, lb NetworkSpecificServiceLb, dockerNetworkID string) error {
 	err := lb.Delete()
 	if err != nil {
-		return errors.WithMessagef(err, "failed to delete load balancer for service %s and network %s", serviceID, dockerNetworkID)
+		return errors.WithMessagef(err, "failed to delete load balancer for service %s and network %s", serviceInfo.ID, dockerNetworkID)
 	}
-
-	serviceInfo := m.services[serviceID].GetInfo()
 
 	// Only release VIP if we allocated it - that's the case when IpamVIP and actual VIP differ
 	if lb.GetFrontendIP() != nil && !serviceInfo.IpamVIPs[dockerNetworkID].Equal(serviceInfo.VIPs[dockerNetworkID]) {
 		network := m.networksByDockerID[dockerNetworkID]
 		err = network.GetPool().ReleaseIP(lb.GetFrontendIP().String())
 		if err != nil {
-			return errors.WithMessagef(err, "failed to release IP for service %s and network %s", serviceID, dockerNetworkID)
+			return errors.WithMessagef(err, "failed to release IP for service %s and network %s", serviceInfo.ID, dockerNetworkID)
 		}
 	}
-	err = m.fwmarksManagement.Release(serviceID, dockerNetworkID, lb.GetFwmark())
+	err = m.fwmarksManagement.Release(serviceInfo.ID, dockerNetworkID, lb.GetFwmark())
 	if err != nil {
-		return errors.WithMessagef(err, "failed to release fwmark for service %s and network %s", serviceID, dockerNetworkID)
+		return errors.WithMessagef(err, "failed to release fwmark for service %s and network %s", serviceInfo.ID, dockerNetworkID)
 	}
 	return nil
 }
@@ -243,6 +243,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 	defer m.Unlock()
 
 	serviceInfo := service.GetInfo()
+	m.services[serviceInfo.ID] = service
 	lbs, exists := m.loadBalancers[serviceInfo.ID]
 	if !exists {
 		lbs = make(map[string]NetworkSpecificServiceLb)
@@ -276,7 +277,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 	}
 
 	for _, deletedNetworkID := range deleted {
-		err := m.deleteForNetwork(serviceInfo.ID, lbs[deletedNetworkID], deletedNetworkID)
+		err := m.deleteForNetwork(serviceInfo, lbs[deletedNetworkID], deletedNetworkID)
 		if err != nil {
 			return errors.WithMessagef(err, "failed to delete load balancer for service %s and network %s", serviceInfo.ID, deletedNetworkID)
 		}
