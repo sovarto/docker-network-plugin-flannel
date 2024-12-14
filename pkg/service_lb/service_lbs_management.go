@@ -221,7 +221,10 @@ func (m *serviceLbManagement) deleteForNetwork(serviceID string, lb NetworkSpeci
 		return errors.WithMessagef(err, "failed to delete load balancer for service %s and network %s", serviceID, dockerNetworkID)
 	}
 
-	if lb.GetFrontendIP() != nil {
+	serviceInfo := m.services[serviceID].GetInfo()
+
+	// Only release VIP if we allocated it - that's the case when IpamVIP and actual VIP differ
+	if lb.GetFrontendIP() != nil && !serviceInfo.IpamVIPs[dockerNetworkID].Equal(serviceInfo.VIPs[dockerNetworkID]) {
 		network := m.networksByDockerID[dockerNetworkID]
 		err = network.GetPool().ReleaseIP(lb.GetFrontendIP().String())
 		if err != nil {
