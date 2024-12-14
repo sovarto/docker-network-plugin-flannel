@@ -343,7 +343,7 @@ func (d *flannelDriver) handleContainersRemoved(removed []etcd.ShardItem[docker.
 	for _, removedItem := range removed {
 		containerInfo := removedItem.Value
 		d.dnsResolver.RemoveContainer(containerInfo.ContainerInfo)
-		service, exists := d.services[containerInfo.ID]
+		service, exists := d.services[containerInfo.ServiceID]
 		if exists {
 			service.RemoveContainer(containerInfo.ID)
 		}
