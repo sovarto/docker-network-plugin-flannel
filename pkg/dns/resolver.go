@@ -184,10 +184,6 @@ func (r *resolver) ResolveName(query string, validNetworkIDs []string) []dns.RR 
 	defer r.Unlock()
 
 	fmt.Printf("Received request to resolve %s in networks %v\n", query, validNetworkIDs)
-	fmt.Printf("service data: %+v\n", r.serviceData)
-	fmt.Printf("container data: %+v\n", r.containerData)
-	fmt.Printf("network data ID -> name: %+v\n", r.networkIDToName)
-	fmt.Printf("network data name -> ID: %+v\n", r.networkNameToID)
 
 	queryParts := strings.Split(strings.TrimSuffix(query, "."), ".") // Remove trailing . in queries
 	namePartsCount := len(queryParts)
@@ -267,7 +263,6 @@ func (r *resolver) resolveName(requestedName string, requestedNetworkName string
 }
 
 func (r *resolver) resolveContainerName(requestedName string, validNetworkID string) []net.IP {
-	fmt.Sprintf("resolving container name %s in network %s\n", requestedName, validNetworkID)
 	result := []net.IP{}
 	aliasData, exists := r.containerData.byAlias[requestedName]
 	if exists {
@@ -289,13 +284,11 @@ func (r *resolver) resolveContainerName(requestedName string, validNetworkID str
 }
 
 func (r *resolver) resolveServiceName(requestedName string, validNetworkID string) []net.IP {
-	fmt.Printf("resolving service name %s in network %s\n", requestedName, validNetworkID)
 	result := []net.IP{}
 
 	service, exists := r.serviceData.byName[requestedName]
 	if exists {
 		serviceInfo := service.GetInfo()
-		fmt.Printf("service exists: %+v\n", serviceInfo)
 		if serviceInfo.EndpointMode == common.ServiceEndpointModeVip {
 			result = append(result, filterIPsByNetwork(serviceInfo.VIPs, validNetworkID)...)
 		} else if serviceInfo.EndpointMode == common.ServiceEndpointModeDnsrr {
@@ -308,7 +301,6 @@ func (r *resolver) resolveServiceName(requestedName string, validNetworkID strin
 }
 
 func filterIPsByNetwork(ips map[string]net.IP, validNetworkID string) []net.IP {
-	fmt.Printf("filtering IPs %v by network %s\n", ips, validNetworkID)
 	result := []net.IP{}
 	for networkID, ip := range ips {
 		if validNetworkID == networkID {

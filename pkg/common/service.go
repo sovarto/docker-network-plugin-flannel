@@ -1,7 +1,6 @@
 package common
 
 import (
-	"fmt"
 	"github.com/samber/lo"
 	"golang.org/x/exp/maps"
 	"net"
@@ -177,8 +176,6 @@ func (s *service) RemoveContainer(containerID string) {
 
 func (s *service) SetNetworks(networks []string, ipamVIPs map[string]net.IP) {
 	s.Lock()
-
-	fmt.Printf("For service %s, setting networks to %v, ipamVIPs to %v\n", s.id, networks, ipamVIPs)
 
 	wasInitialized := s.IsInitialized()
 
