@@ -29,6 +29,7 @@ type allocation struct {
 	ip             net.IP
 	allocationType string
 	allocatedAt    time.Time
+	dataKey        string
 	data           string
 }
 

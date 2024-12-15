@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+const (
+	dataKeyMac       = "mac"
+	dataKeyServiceID = "service-id"
+)
+
 func allocatedIPsKey(client etcd.Client) string {
 	return client.GetKey("allocated-ips")
 }
@@ -18,11 +23,11 @@ func allocatedIPKey(client etcd.Client, ip string) string {
 }
 
 func macKey(client etcd.Client, ip string) string {
-	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), "mac")
+	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), dataKeyMac)
 }
 
 func serviceIDKey(client etcd.Client, ip string) string {
-	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), "service-id")
+	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), dataKeyServiceID)
 }
 
 func allocatedAtKey(client etcd.Client, ip string) string {
@@ -43,14 +48,18 @@ func releaseReservation(client etcd.Client, r allocation) (IPAllocationResult, e
 		ipStr := r.ip.String()
 		key := allocatedIPKey(client, ipStr)
 		macKey := macKey(client, ipStr)
+		serviceIDKey := serviceIDKey(client, ipStr)
 		cmps := []clientv3.Cmp{
 			clientv3.Compare(clientv3.Value(key), "=", r.allocationType),
 		}
 
-		if r.data == "" {
-			cmps = append(cmps, clientv3.Compare(clientv3.CreateRevision(macKey), "=", 0))
+		if r.data == "" || r.dataKey == "" {
+			cmps = append(cmps,
+				clientv3.Compare(clientv3.CreateRevision(macKey), "=", 0),
+				clientv3.Compare(clientv3.CreateRevision(serviceIDKey), "=", 0),
+			)
 		} else {
-			cmps = append(cmps, clientv3.Compare(clientv3.Value(macKey), "=", r.data))
+			cmps = append(cmps, clientv3.Compare(clientv3.Value(r.dataKey), "=", r.data))
 		}
 
 		resp, err := conn.Client.Txn(conn.Ctx).
@@ -58,11 +67,14 @@ func releaseReservation(client etcd.Client, r allocation) (IPAllocationResult, e
 			Then(
 				clientv3.OpDelete(key),
 				clientv3.OpDelete(allocatedAtKey(client, ipStr)),
-				clientv3.OpDelete(macKey)).
+				clientv3.OpDelete(macKey),
+				clientv3.OpDelete(serviceIDKey),
+			).
 			Else(
 				clientv3.OpGet(key),
 				clientv3.OpGet(allocatedAtKey(client, ipStr)),
 				clientv3.OpGet(macKey),
+				clientv3.OpGet(serviceIDKey),
 			).
 			Commit()
 
@@ -80,16 +92,24 @@ func releaseReservation(client etcd.Client, r allocation) (IPAllocationResult, e
 			fmt.Printf("Couldn't parse reserved at value '%s' for '%s'. Ignoring...\n", reservedAtStr, key)
 		}
 
-		var mac string
-		if len(resp.Responses[2].GetResponseRange().Kvs) > 0 {
-			mac = string(resp.Responses[2].GetResponseRange().Kvs[0].Value)
+		var data string
+		var dataKey string
+		getMacResp := resp.Responses[2].GetResponseRange().Kvs
+		getServiceIDResp := resp.Responses[3].GetResponseRange().Kvs
+		if len(getMacResp) > 0 {
+			data = string(getMacResp[0].Value)
+			dataKey = string(getMacResp[0].Key)
+		} else if len(getServiceIDResp) > 0 {
+			data = string(getServiceIDResp[0].Value)
+			dataKey = string(getServiceIDResp[0].Key)
 		}
 
 		return IPAllocationResult{Success: false, Allocation: allocation{
 			ip:             r.ip,
 			allocationType: string(resp.Responses[0].GetResponseRange().Kvs[0].Value),
 			allocatedAt:    reservedAt,
-			data:           mac,
+			dataKey:        dataKey,
+			data:           data,
 		}}, nil
 	})
 }
@@ -196,6 +216,7 @@ func allocateIPByCondition(client etcd.Client, ip net.IP, allocationType, dataKe
 					ip:             ip,
 					allocationType: allocationType,
 					allocatedAt:    now,
+					dataKey:        dataKey,
 					data:           data,
 				}}, nil
 			}
