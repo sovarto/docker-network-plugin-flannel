@@ -116,13 +116,18 @@ func writeToEtcd(endpoint *endpoint, create bool) error {
 }
 
 func (e *endpoint) GetInfo() endpointInfo {
-	return endpointInfo{
-		ID:          e.id,
-		IpAddress:   e.ipAddress,
-		MacAddress:  e.macAddress,
-		VethInside:  e.vethPair.GetInside(),
-		VethOutside: e.vethPair.GetOutside(),
+	result := endpointInfo{
+		ID:         e.id,
+		IpAddress:  e.ipAddress,
+		MacAddress: e.macAddress,
 	}
+
+	if e.vethPair != nil {
+		result.VethInside = e.vethPair.GetInside()
+		result.VethOutside = e.vethPair.GetOutside()
+	}
+
+	return result
 }
 
 func (e *endpoint) Join(sandboxKey string) error {
