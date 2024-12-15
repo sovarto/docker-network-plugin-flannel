@@ -56,9 +56,14 @@ func NewServiceLbManagement(etcdClient etcd.Client) (ServiceLbsManagement, error
 		return nil, errors.WithMessage(err, "error getting hostname")
 	}
 
+	loadBalancerData := etcd.NewWriteOnlyStore(etcdClient.CreateSubClient(hostname, "data"), etcd.ItemsHandlers[loadBalancerData]{})
+	if err := loadBalancerData.Init(); err != nil {
+		return nil, errors.WithMessage(err, "error initializing load balancer data store")
+	}
+
 	return &serviceLbManagement{
 		loadBalancers:               make(map[string]map[string]NetworkSpecificServiceLb),
-		loadBalancersData:           etcd.NewWriteOnlyStore(etcdClient.CreateSubClient(hostname, "data"), etcd.ItemsHandlers[loadBalancerData]{}),
+		loadBalancersData:           loadBalancerData,
 		fwmarksManagement:           NewFwmarksManagement(etcdClient.CreateSubClient(hostname, "fwmarks")),
 		networksByDockerID:          make(map[string]flannel_network.Network),
 		hostname:                    hostname,
