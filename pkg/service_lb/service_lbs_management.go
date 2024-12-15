@@ -27,7 +27,7 @@ type ServiceLbsManagement interface {
 }
 
 type loadBalancerData struct {
-	frontendIPs map[string]net.IP // docker network ID -> VIP
+	FrontendIPs map[string]net.IP `json:"FrontendIPs"` // docker network ID -> VIP
 }
 
 func (d loadBalancerData) Equals(other common.Equaler) bool {
@@ -36,7 +36,7 @@ func (d loadBalancerData) Equals(other common.Equaler) bool {
 		return false
 	}
 
-	return common.CompareIPMaps(d.frontendIPs, o.frontendIPs)
+	return common.CompareIPMaps(d.FrontendIPs, o.FrontendIPs)
 }
 
 type serviceLbManagement struct {
@@ -284,7 +284,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 	}
 
 	data := loadBalancerData{
-		frontendIPs: make(map[string]net.IP),
+		FrontendIPs: make(map[string]net.IP),
 	}
 
 	existingData, exists := m.loadBalancersData.GetItem(serviceInfo.ID)
@@ -296,7 +296,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 		var ip net.IP
 		ipExists := false
 		if exists {
-			ip, ipExists = existingData.frontendIPs[dockerNetworkID]
+			ip, ipExists = existingData.FrontendIPs[dockerNetworkID]
 		}
 
 		if !ipExists {
@@ -312,7 +312,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 		if err != nil {
 			return errors.WithMessagef(err, "error updating frontend IP to %s for load balancer for service %s and network %s", ip, serviceInfo.ID, dockerNetworkID)
 		}
-		data.frontendIPs[dockerNetworkID] = ip
+		data.FrontendIPs[dockerNetworkID] = ip
 	}
 
 	err := m.loadBalancersData.AddOrUpdateItem(serviceInfo.ID, data)
@@ -320,9 +320,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 		return errors.WithMessagef(err, "error adding load balancer data for service %s", serviceInfo.ID)
 	}
 
-	fmt.Printf("Setting VIPs of service %s to %v\n", serviceInfo.ID, data.frontendIPs)
-	service.SetVIPs(data.frontendIPs)
-	fmt.Printf("Service %s infos: %+v\n", serviceInfo.ID, service.GetInfo())
+	service.SetVIPs(data.FrontendIPs)
 
 	return nil
 }
