@@ -48,13 +48,17 @@ type endpointJson struct {
 }
 
 func (e *endpoint) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&endpointJson{
-		IPAddress:   e.ipAddress.String(),
-		MacAddress:  e.macAddress,
-		VethInside:  e.vethPair.GetInside(),
-		VethOutside: e.vethPair.GetOutside(),
-		SandboxKey:  e.sandboxKey,
-	})
+	dataStruct := &endpointJson{
+		IPAddress:  e.ipAddress.String(),
+		MacAddress: e.macAddress,
+		SandboxKey: e.sandboxKey,
+	}
+
+	if e.vethPair != nil {
+		dataStruct.VethInside = e.vethPair.GetInside()
+		dataStruct.VethOutside = e.vethPair.GetOutside()
+	}
+	return json.Marshal(dataStruct)
 }
 
 func endpointKey(client etcd.Client, id string) string {
