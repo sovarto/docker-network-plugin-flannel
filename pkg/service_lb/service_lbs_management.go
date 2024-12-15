@@ -57,7 +57,7 @@ func NewServiceLbManagement(etcdClient etcd.Client) (ServiceLbsManagement, error
 	}
 
 	loadBalancerData := etcd.NewWriteOnlyStore(etcdClient.CreateSubClient(hostname, "data"), etcd.ItemsHandlers[loadBalancerData]{})
-	if err := loadBalancerData.Init(); err != nil {
+	if err := loadBalancerData.InitFromEtcd(); err != nil {
 		return nil, errors.WithMessage(err, "error initializing load balancer data store")
 	}
 
