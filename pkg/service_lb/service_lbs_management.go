@@ -294,10 +294,6 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 
 	existingData, exists := m.loadBalancersData.GetItem(serviceInfo.ID)
 
-	if !exists {
-		fmt.Printf("No existing lb data for service %s found. All data: %+v\n", serviceInfo.ID, m.loadBalancersData.GetAll())
-	}
-
 	fmt.Printf("Service %s has IPAM VIPs %v\n", serviceInfo.ID, serviceInfo.IpamVIPs)
 	// Assumption: for every network we also have an IPAM VIP
 	for dockerNetworkID, ipamVip := range serviceInfo.IpamVIPs {

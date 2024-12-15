@@ -360,14 +360,13 @@ func (s *shardedDistributedStore[T]) handleWatchEvents(watcher clientv3.WatchCha
 				continue
 			}
 			if shardKey == s.localShardKey {
-				fmt.Printf("Ignored watch event for item %s, because it is from the local shard\n", itemID)
+				// fmt.Printf("Ignored watch event for item %s, because it is from the local shard\n", itemID)
 				// Ignore for now
 				// TODO: Check if item change matches our internal state
 				// - if yes: ignore
 				// - if not: print error message as this shouldn't happen
 			} else {
 				if ev.Type == mvccpb.DELETE {
-					fmt.Printf("Received DELETE for item %s from shard %s. Shard data: %+v, data: %+v\n", itemID, shardKey, s.shardedData, s.data)
 					shardedItems, exists := s.shardedData[shardKey]
 					if exists {
 						delete(shardedItems, itemID)

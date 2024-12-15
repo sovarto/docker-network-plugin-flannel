@@ -30,6 +30,13 @@ func randomVethName() string {
 	return vethPrefix + strings.Replace(randomUuid.String(), "-", "", -1)[:vethLen]
 }
 
+func HydrateVethPair(insideName, outsideName string) VethPair {
+	return &vethPair{
+		insideName:  insideName,
+		outsideName: outsideName,
+	}
+}
+
 func (b *bridgeInterface) CreateAttachedVethPair(macAddress string) (VethPair, error) {
 	vethInsideName := randomVethName()
 	vethOutsideName := randomVethName()

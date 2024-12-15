@@ -46,7 +46,8 @@ type network struct {
 	defaultFlannelOptions []string
 	pool                  ipam.AddressPool
 	bridge                bridge.BridgeInterface
-	endpoints             map[string]Endpoint
+	endpoints             map[string]Endpoint // endpoint ID -> endpoint
+	endpointsEtcdClient   etcd.Client
 	vni                   int
 	sync.Mutex
 }
@@ -59,14 +60,24 @@ func NewNetwork(etcdClient etcd.Client, flannelID string, networkSubnet net.IPNe
 		defaultFlannelOptions: defaultFlannelOptions,
 		hostSubnetSize:        hostSubnetSize,
 		endpoints:             make(map[string]Endpoint),
+		endpointsEtcdClient:   etcdClient.CreateSubClient("endpoints"),
 		vni:                   vni,
 	}
 
-	err := result.
-		Ensure()
+	err := result.Ensure()
 	if err != nil {
 		return nil, err
 	}
+
+	endpoints, err := loadEndpointsFromEtcd(result.endpointsEtcdClient, result.bridge)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, endpoint := range endpoints {
+		result.endpoints[endpoint.GetInfo().ID] = endpoint
+	}
+
 	return result, nil
 }
 
@@ -520,7 +531,7 @@ func (n *network) loadFlannelConfig(filename string) error {
 }
 
 func (n *network) AddEndpoint(id string, ip net.IP, mac string) (Endpoint, error) {
-	endpoint, err := NewEndpoint(n.etcdClient.CreateSubClient("endpoints"), id, ip, mac, n.bridge)
+	endpoint, err := NewEndpoint(n.endpointsEtcdClient, id, ip, mac, n.bridge)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "error creating endpoint for network %s", n.flannelID)
 	}
