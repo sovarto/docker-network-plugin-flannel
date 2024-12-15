@@ -18,24 +18,26 @@ import (
 type AddressPool interface {
 	GetID() string
 	GetPoolSubnet() net.IPNet
-	AllocateIP(preferredIP, mac, allocationType string, random bool) (*net.IP, error)
+	AllocateContainerIP(preferredIP, mac string, random bool) (*net.IP, error)
+	AllocateServiceVIP(ipamVIP, serviceID string, random bool) (*net.IP, error)
+	ReserveIP(random bool) (*net.IP, error)
 	ReleaseIP(ip string) error
 	ReleaseAllIPs() error
 }
 
-type reservation struct {
-	ip              net.IP
-	reservationType string
-	reservedAt      time.Time
-	mac             string
+type allocation struct {
+	ip             net.IP
+	allocationType string
+	allocatedAt    time.Time
+	data           string
 }
 
 type etcdPool struct {
-	poolID      string
-	poolSubnet  net.IPNet
-	etcdClient  etcd.Client
-	allIPs      []net.IP
-	reservedIPs map[string]reservation
+	poolID       string
+	poolSubnet   net.IPNet
+	etcdClient   etcd.Client
+	allIPs       []net.IP
+	allocatedIPs map[string]allocation
 	// The time since when this IP is unused. Not stored in etcd, because it is only for short-term
 	// prevention of rapid re-assignment of the same IP after it was just released
 	unusedIPs map[string]time.Time
@@ -43,9 +45,9 @@ type etcdPool struct {
 }
 
 var (
-	ReservationTypeReserved    = "reserved"
-	ReservationTypeContainerIP = "container-ip"
-	ReservationTypeServiceVIP  = "service-vip"
+	AllocationTypeReserved    = "reserved"
+	AllocationTypeContainerIP = "container-ip"
+	AllocationTypeServiceVIP  = "service-vip"
 )
 
 func NewEtcdBasedAddressPool(poolID string, poolSubnet net.IPNet, etcdClient etcd.Client) (AddressPool, error) {
@@ -72,46 +74,89 @@ func NewEtcdBasedAddressPool(poolID string, poolSubnet net.IPNet, etcdClient etc
 func (p *etcdPool) GetID() string            { return p.poolID }
 func (p *etcdPool) GetPoolSubnet() net.IPNet { return p.poolSubnet }
 
-func (p *etcdPool) AllocateIP(reservedIP, mac, allocationType string, random bool) (*net.IP, error) {
+func (p *etcdPool) ReserveIP(random bool) (*net.IP, error) {
 	p.Lock()
 	defer p.Unlock()
 
-	if reservedIP != "" && ((mac != "" && allocationType == ReservationTypeContainerIP) || allocationType == ReservationTypeServiceVIP) {
-		parsedIP := net.ParseIP(reservedIP)
-		if parsedIP == nil {
-			return nil, fmt.Errorf("reserved IP %s is invalid", reservedIP)
+	return p.allocateFreeIP(random, func(ip net.IP) (IPAllocationResult, error) {
+		return reserveIP(p.etcdClient, ip)
+	})
+}
+
+func (p *etcdPool) AllocateContainerIP(preferredIP, mac string, random bool) (*net.IP, error) {
+	p.Lock()
+	defer p.Unlock()
+
+	parsedIP := net.ParseIP(preferredIP)
+	if parsedIP == nil {
+		return nil, fmt.Errorf("preferred IP %s is invalid", preferredIP)
+	}
+
+	inSubnet := p.poolSubnet.Contains(parsedIP)
+	if inSubnet {
+		var result IPAllocationResult
+		var err error
+
+		result, err = allocateIPForContainer(p.etcdClient, parsedIP, mac)
+		if err != nil {
+			return nil, errors.WithMessagef(err, "Error allocating reserved IP %s for container with MAC %s", preferredIP, mac)
 		}
 
-		inSubnet := p.poolSubnet.Contains(parsedIP)
-		if inSubnet {
-			var result IPLeaseResult
-			var err error
-			if allocationType == ReservationTypeContainerIP {
-				result, err = allocateReservedIPForContainer(p.etcdClient, parsedIP, mac)
-				if err != nil {
-					return nil, errors.WithMessagef(err, "Error allocating reserved IP %s for container with MAC %s", reservedIP, mac)
-				}
-			} else {
-				result, err = allocateReservedIPForService(p.etcdClient, parsedIP)
-				if err != nil {
-					return nil, errors.WithMessagef(err, "Error allocating reserved IP %s for service", reservedIP)
-				}
+		if result.Success {
+			_, has := p.allocatedIPs[preferredIP]
+			if !has {
+				fmt.Printf("reserved IP %s wasn't previously reserved. This shouldn't happen.", preferredIP)
+				delete(p.unusedIPs, preferredIP)
 			}
 
-			if result.Success {
-				_, has := p.reservedIPs[reservedIP]
-				if !has {
-					fmt.Printf("reserved IP %s wasn't previously reserved. This shouldn't happen.", reservedIP)
-					delete(p.unusedIPs, reservedIP)
-				}
+			p.allocatedIPs[preferredIP] = result.Allocation
 
-				p.reservedIPs[reservedIP] = result.Reservation
-
-				return &result.Reservation.ip, nil
-			}
+			return &result.Allocation.ip, nil
 		}
 	}
 
+	return p.allocateFreeIP(random, func(ip net.IP) (IPAllocationResult, error) {
+		return allocateIPForContainer(p.etcdClient, ip, mac)
+	})
+}
+
+func (p *etcdPool) AllocateServiceVIP(ipamVIP, serviceID string, random bool) (*net.IP, error) {
+	p.Lock()
+	defer p.Unlock()
+
+	parsedIP := net.ParseIP(ipamVIP)
+	if parsedIP == nil {
+		return nil, fmt.Errorf("ipam VIP %s is invalid", ipamVIP)
+	}
+
+	inSubnet := p.poolSubnet.Contains(parsedIP)
+	if inSubnet {
+		var result IPAllocationResult
+		var err error
+		result, err = allocateIPForService(p.etcdClient, parsedIP, serviceID)
+		if err != nil {
+			return nil, errors.WithMessagef(err, "Error allocating IPAM VIP %s for service %s", ipamVIP, serviceID)
+		}
+
+		if result.Success {
+			_, has := p.allocatedIPs[ipamVIP]
+			if !has {
+				fmt.Printf("IPAM VIP %s wasn't previously reserved. This shouldn't happen.", ipamVIP)
+				delete(p.unusedIPs, ipamVIP)
+			}
+
+			p.allocatedIPs[ipamVIP] = result.Allocation
+
+			return &result.Allocation.ip, nil
+		}
+	}
+
+	return p.allocateFreeIP(random, func(ip net.IP) (IPAllocationResult, error) {
+		return allocateIPForService(p.etcdClient, ip, serviceID)
+	})
+}
+
+func (p *etcdPool) allocateFreeIP(random bool, allocator func(ip net.IP) (IPAllocationResult, error)) (*net.IP, error) {
 	for {
 		availableUnusedIPs, err := p.getAvailableUnusedIPs()
 
@@ -123,24 +168,24 @@ func (p *etcdPool) AllocateIP(reservedIP, mac, allocationType string, random boo
 		if random {
 			ip = availableUnusedIPs[rand.Intn(len(availableUnusedIPs))]
 		} else {
-			nextIp, err := getNextAvailableIP(availableUnusedIPs, p.reservedIPs)
+			nextIp, err := getNextAvailableIP(availableUnusedIPs, p.allocatedIPs)
 			if err != nil {
 				return nil, errors.WithMessagef(err, "Error getting next available IP for pool %s", p.poolID)
 			}
 			ip = nextIp
 		}
 
-		result, err := reserveIP(p.etcdClient, ip, allocationType, mac)
+		result, err := allocator(ip)
 
 		if err != nil {
 			return nil, errors.WithMessagef(err, "Error reserving IP for pool %s", p.poolID)
 		}
 
 		if result.Success {
-			ipStr := result.Reservation.ip.String()
+			ipStr := result.Allocation.ip.String()
 			delete(p.unusedIPs, ipStr)
-			p.reservedIPs[ipStr] = result.Reservation
-			return &result.Reservation.ip, nil
+			p.allocatedIPs[ipStr] = result.Allocation
+			return &result.Allocation.ip, nil
 		}
 	}
 }
@@ -151,7 +196,7 @@ func (p *etcdPool) ReleaseIP(ip string) error {
 
 	fmt.Printf("Releasing IP %s for pool %s...\n", ip, p.poolID)
 
-	reservation, has := p.reservedIPs[ip]
+	reservation, has := p.allocatedIPs[ip]
 
 	if !has {
 		return fmt.Errorf("IP %s is not reserved in pool %s. Can't release it", ip, p.poolID)
@@ -164,11 +209,11 @@ func (p *etcdPool) ReleaseIP(ip string) error {
 	}
 
 	if !result.Success {
-		p.reservedIPs[ip] = result.Reservation
-		return fmt.Errorf("couldn't release ip %s for pool %s. It has since been reserved like this: Reservation Type: %s; IP: %s; MAC %s, Reserved At: %s. This shouldn't happen.\n", ip, p.poolID, result.Reservation.reservationType, result.Reservation.ip.String(), result.Reservation.mac, result.Reservation.reservedAt.Format(time.RFC3339))
+		p.allocatedIPs[ip] = result.Allocation
+		return fmt.Errorf("couldn't release ip %s for pool %s. It has since been reserved like this: Allocation Type: %s; IP: %s; MAC %s, Reserved At: %s. This shouldn't happen.\n", ip, p.poolID, result.Allocation.allocationType, result.Allocation.ip.String(), result.Allocation.data, result.Allocation.allocatedAt.Format(time.RFC3339))
 	}
 
-	delete(p.reservedIPs, ip)
+	delete(p.allocatedIPs, ip)
 	p.unusedIPs[ip] = time.Now()
 
 	return nil
@@ -201,7 +246,7 @@ func (p *etcdPool) syncIPs() error {
 		}
 	}
 
-	p.reservedIPs = reservedIPs
+	p.allocatedIPs = reservedIPs
 	p.unusedIPs = unusedIPs
 
 	return nil
@@ -242,7 +287,7 @@ func (p *etcdPool) getAvailableUnusedIPs() ([]net.IP, error) {
 }
 
 func (p *etcdPool) watchForIPUsageChanges(etcdClient etcd.Client) (clientv3.WatchChan, error) {
-	prefix := reservedIPsKey(etcdClient)
+	prefix := allocatedIPsKey(etcdClient)
 	watcher, err := etcd.WithConnection(etcdClient, func(conn *etcd.Connection) (clientv3.WatchChan, error) {
 		return conn.Client.Watch(conn.Ctx, prefix, clientv3.WithPrefix()), nil
 	})
@@ -261,45 +306,45 @@ func (p *etcdPool) watchForIPUsageChanges(etcdClient etcd.Client) (clientv3.Watc
 					}
 					ipStr := ip.String()
 					p.Lock()
-					existingReservation, has := p.reservedIPs[ipStr]
+					existingReservation, has := p.allocatedIPs[ipStr]
 					r, err := readReservation(p.etcdClient, ipStr)
 
 					if err != nil {
-						log.Printf("found new reservation for IP '%s' for pool '%s', but retrieving the whole object resulted in an error: %v", ipStr, p.poolID, err)
+						log.Printf("found new allocation for IP '%s' for pool '%s', but retrieving the whole object resulted in an error: %v", ipStr, p.poolID, err)
 						continue
 					}
 
 					if r == nil {
-						log.Printf("found new reservation for IP '%s' for pool '%s', but when retrieving the whole object, it could no longer be found", ipStr, p.poolID)
+						log.Printf("found new allocation for IP '%s' for pool '%s', but when retrieving the whole object, it could no longer be found", ipStr, p.poolID)
 						continue
 					}
 
-					if has && (existingReservation.reservationType != r.reservationType || existingReservation.reservedAt != r.reservedAt || existingReservation.mac != r.mac) {
-						fmt.Printf("found change in reservation data of ip %s from %+v to %+v. This shouldn't happen", ipStr, existingReservation, r)
-						p.reservedIPs[ipStr] = *r
+					if has && (existingReservation.allocationType != r.allocationType || existingReservation.allocatedAt != r.allocatedAt || existingReservation.data != r.data) {
+						fmt.Printf("found change in allocation data of ip %s from %+v to %+v. This shouldn't happen", ipStr, existingReservation, r)
+						p.allocatedIPs[ipStr] = *r
 					} else if !has {
 						fmt.Printf("found new reserved IP %s for pool %s. This shouldn't happen", ipStr, p.poolID)
 						delete(p.unusedIPs, ipStr)
-						p.reservedIPs[ipStr] = *r
+						p.allocatedIPs[ipStr] = *r
 					} else {
-						// found reservation and in memory reservation have the same reservation type
+						// found allocation and in memory allocation have the same allocation type
 					}
 					p.Unlock()
 					break
 				case mvccpb.DELETE:
 					ip := net.ParseIP(keyParts[0])
 					if ip == nil {
-						log.Printf("found deleted reservation '%s' for pool '%s', but it can't be parsed as a IP. This looks like a data issue. Ignoring..., err: %v", key, p.poolID, err)
+						log.Printf("found deleted allocation '%s' for pool '%s', but it can't be parsed as a IP. This looks like a data issue. Ignoring..., err: %v", key, p.poolID, err)
 						continue
 					}
 					ipStr := ip.String()
 
 					p.Lock()
-					if _, has := p.reservedIPs[ipStr]; !has {
-						// the reservation has already been deleted in our in-memory data
+					if _, has := p.allocatedIPs[ipStr]; !has {
+						// the allocation has already been deleted in our in-memory data
 					} else {
-						log.Printf("found deleted reservation for IP '%s' in pool '%s'. This shouldn't happen", ipStr, p.poolID)
-						delete(p.reservedIPs, ipStr)
+						log.Printf("found deleted allocation for IP '%s' in pool '%s'. This shouldn't happen", ipStr, p.poolID)
+						delete(p.allocatedIPs, ipStr)
 						p.unusedIPs[ipStr] = time.Now()
 					}
 					p.Unlock()

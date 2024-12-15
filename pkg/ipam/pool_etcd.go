@@ -9,71 +9,69 @@ import (
 	"time"
 )
 
-var (
-	reservationsKeyName = "reservations"
-	reservedAtKeyName   = "reserved-at"
-	macKeyName          = "mac"
-)
-
-func reservedIPsKey(client etcd.Client) string {
-	return client.GetKey(reservationsKeyName)
+func allocatedIPsKey(client etcd.Client) string {
+	return client.GetKey("allocated-ips")
 }
 
-func reservedIPKey(client etcd.Client, ip string) string {
-	return fmt.Sprintf("%s/%s", reservedIPsKey(client), ip)
+func allocatedIPKey(client etcd.Client, ip string) string {
+	return fmt.Sprintf("%s/%s", allocatedIPsKey(client), ip)
 }
 
 func macKey(client etcd.Client, ip string) string {
-	return fmt.Sprintf("%s/%s", reservedIPKey(client, ip), macKeyName)
+	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), "mac")
 }
 
-func reservedAtKey(client etcd.Client, ip string) string {
-	return fmt.Sprintf("%s/%s", reservedIPKey(client, ip), reservedAtKeyName)
+func serviceIDKey(client etcd.Client, ip string) string {
+	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), "service-id")
 }
 
-func getReservations(client etcd.Client) (map[string]reservation, error) {
-	return getReservationsByPrefix(client, reservedIPsKey(client))
+func allocatedAtKey(client etcd.Client, ip string) string {
+	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), "allocated-at")
 }
 
-type IPLeaseResult struct {
-	Success     bool
-	Reservation reservation
+func getReservations(client etcd.Client) (map[string]allocation, error) {
+	return getReservationsByPrefix(client, allocatedIPsKey(client))
 }
 
-func releaseReservation(client etcd.Client, r reservation) (IPLeaseResult, error) {
-	return etcd.WithConnection(client, func(conn *etcd.Connection) (IPLeaseResult, error) {
+type IPAllocationResult struct {
+	Success    bool
+	Allocation allocation
+}
+
+func releaseReservation(client etcd.Client, r allocation) (IPAllocationResult, error) {
+	return etcd.WithConnection(client, func(conn *etcd.Connection) (IPAllocationResult, error) {
 		ipStr := r.ip.String()
-		key := reservedIPKey(client, ipStr)
+		key := allocatedIPKey(client, ipStr)
 		macKey := macKey(client, ipStr)
 		cmps := []clientv3.Cmp{
-			clientv3.Compare(clientv3.Value(key), "=", r.reservationType),
+			clientv3.Compare(clientv3.Value(key), "=", r.allocationType),
 		}
 
-		if r.mac == "" {
+		if r.data == "" {
 			cmps = append(cmps, clientv3.Compare(clientv3.CreateRevision(macKey), "=", 0))
 		} else {
-			cmps = append(cmps, clientv3.Compare(clientv3.Value(macKey), "=", r.mac))
+			cmps = append(cmps, clientv3.Compare(clientv3.Value(macKey), "=", r.data))
 		}
 
 		resp, err := conn.Client.Txn(conn.Ctx).
 			If(cmps...).
 			Then(
 				clientv3.OpDelete(key),
-				clientv3.OpDelete(reservedAtKey(client, ipStr)),
+				clientv3.OpDelete(allocatedAtKey(client, ipStr)),
 				clientv3.OpDelete(macKey)).
 			Else(
 				clientv3.OpGet(key),
-				clientv3.OpGet(reservedAtKey(client, ipStr)),
+				clientv3.OpGet(allocatedAtKey(client, ipStr)),
 				clientv3.OpGet(macKey),
 			).
 			Commit()
 
 		if err != nil {
-			return IPLeaseResult{Success: false}, err
+			return IPAllocationResult{Success: false}, err
 		}
 
 		if resp.Succeeded {
-			return IPLeaseResult{Success: true}, nil
+			return IPAllocationResult{Success: true}, nil
 		}
 
 		reservedAtStr := string(resp.Responses[1].GetResponseRange().Kvs[0].Value)
@@ -87,74 +85,74 @@ func releaseReservation(client etcd.Client, r reservation) (IPLeaseResult, error
 			mac = string(resp.Responses[2].GetResponseRange().Kvs[0].Value)
 		}
 
-		return IPLeaseResult{Success: false, Reservation: reservation{
-			ip:              r.ip,
-			reservationType: string(resp.Responses[0].GetResponseRange().Kvs[0].Value),
-			reservedAt:      reservedAt,
-			mac:             mac,
+		return IPAllocationResult{Success: false, Allocation: allocation{
+			ip:             r.ip,
+			allocationType: string(resp.Responses[0].GetResponseRange().Kvs[0].Value),
+			allocatedAt:    reservedAt,
+			data:           mac,
 		}}, nil
 	})
 }
 
-func allocateReservedIPForContainer(client etcd.Client, reservedIP net.IP, mac string) (IPLeaseResult, error) {
-	key := reservedIPKey(client, reservedIP.String())
+func allocateIPForContainer(client etcd.Client, reservedIP net.IP, mac string) (IPAllocationResult, error) {
+	key := allocatedIPKey(client, reservedIP.String())
 	macKey := macKey(client, reservedIP.String())
 
 	conditions := [][]clientv3.Cmp{
 		// It was already reserved, but without a MAC - usually first pass IPAM, before a container exists
 		// This is the default case
 		{
-			clientv3.Compare(clientv3.Value(key), "=", ReservationTypeReserved),
+			clientv3.Compare(clientv3.Value(key), "=", AllocationTypeReserved),
 			clientv3.Compare(clientv3.CreateRevision(macKey), "=", 0),
 		},
-		// It was never before reserved or has since been freed -> shouldn't ever happen
+		// It was never before reserved or has since been freed -> This happens when a service container
+		// is started on a different node than the one that was asked for the IPAM IP
 		{
 			clientv3.Compare(clientv3.CreateRevision(key), "=", 0),
 		},
+		// It was already reserved for this same MAC -> shouldn't ever happen, reservations are without mac
+		{
+			clientv3.Compare(clientv3.Value(key), "=", AllocationTypeReserved),
+			clientv3.Compare(clientv3.Value(macKey), "=", mac),
+		},
+		// It was already reserved for this same MAC for a container -> this happens when our plugin is restarted
+		{
+			clientv3.Compare(clientv3.Value(key), "=", AllocationTypeContainerIP),
+			clientv3.Compare(clientv3.Value(macKey), "=", mac),
+		},
 	}
 
-	if mac != "" {
-		conditions = append(conditions, [][]clientv3.Cmp{
-			// It was already reserved for this same MAC -> shouldn't ever happen, because we
-			// don't get a MAC during first pass IPAM
-			{
-				clientv3.Compare(clientv3.Value(key), "=", ReservationTypeReserved),
-				clientv3.Compare(clientv3.Value(macKey), "=", mac),
-			},
-			// It was already reserved for this same MAC for a container -> shouldn't ever happen
-			{
-				clientv3.Compare(clientv3.Value(key), "=", ReservationTypeContainerIP),
-				clientv3.Compare(clientv3.Value(macKey), "=", mac),
-			},
-		}...)
-	}
-
-	return reserveIPByCondition(client, reservedIP, ReservationTypeContainerIP, mac, conditions)
+	return allocateIPByCondition(client, reservedIP, AllocationTypeContainerIP, macKey, mac, conditions)
 }
 
-func allocateReservedIPForService(client etcd.Client, reservedIP net.IP) (IPLeaseResult, error) {
-	key := reservedIPKey(client, reservedIP.String())
-	macKey := macKey(client, reservedIP.String())
+func allocateIPForService(client etcd.Client, reservedIP net.IP, serviceID string) (IPAllocationResult, error) {
+	key := allocatedIPKey(client, reservedIP.String())
+	serviceIDKey := serviceIDKey(client, reservedIP.String())
 
 	conditions := [][]clientv3.Cmp{
 		// It was already reserved, but without a MAC
 		// This is the default case
 		{
-			clientv3.Compare(clientv3.Value(key), "=", ReservationTypeReserved),
-			clientv3.Compare(clientv3.CreateRevision(macKey), "=", 0),
+			clientv3.Compare(clientv3.Value(key), "=", AllocationTypeReserved),
+			clientv3.Compare(clientv3.CreateRevision(serviceIDKey), "=", 0),
 		},
-		// It was never before reserved or has since been freed -> shouldn't ever happen
+		// It has already been registered as service VIP
+		// This happens when our plugin is being restarted
+		{
+			clientv3.Compare(clientv3.Value(key), "=", AllocationTypeServiceVIP),
+			clientv3.Compare(clientv3.Value(serviceIDKey), "=", serviceID),
+		},
+		// It was never before reserved (this shouldn't happen)
 		{
 			clientv3.Compare(clientv3.CreateRevision(key), "=", 0),
 		},
 	}
 
-	return reserveIPByCondition(client, reservedIP, ReservationTypeServiceVIP, "", conditions)
+	return allocateIPByCondition(client, reservedIP, AllocationTypeServiceVIP, serviceIDKey, serviceID, conditions)
 }
 
-func reserveIP(client etcd.Client, ip net.IP, reservationType, mac string) (IPLeaseResult, error) {
-	key := reservedIPKey(client, ip.String())
-	macKey := macKey(client, ip.String())
+func reserveIP(client etcd.Client, ip net.IP) (IPAllocationResult, error) {
+	key := allocatedIPKey(client, ip.String())
 
 	conditions := [][]clientv3.Cmp{
 		// It was never before reserved or has since been freed -> default case
@@ -163,33 +161,23 @@ func reserveIP(client etcd.Client, ip net.IP, reservationType, mac string) (IPLe
 		},
 	}
 
-	if mac != "" {
-		conditions = append(conditions, [][]clientv3.Cmp{
-			// It was already reserved for this same MAC and reservation type -> shouldn't ever happen
-			{
-				clientv3.Compare(clientv3.Value(key), "=", reservationType),
-				clientv3.Compare(clientv3.Value(macKey), "=", mac),
-			},
-		}...)
-	}
-	return reserveIPByCondition(client, ip, reservationType, mac, conditions)
+	return allocateIPByCondition(client, ip, AllocationTypeReserved, "", "", conditions)
 }
 
-func reserveIPByCondition(client etcd.Client, ip net.IP, reservationType, mac string, conditions [][]clientv3.Cmp) (IPLeaseResult, error) {
-	key := reservedIPKey(client, ip.String())
-	macKey := macKey(client, ip.String())
+func allocateIPByCondition(client etcd.Client, ip net.IP, allocationType, dataKey, data string, conditions [][]clientv3.Cmp) (IPAllocationResult, error) {
+	key := allocatedIPKey(client, ip.String())
 
-	return etcd.WithConnection(client, func(conn *etcd.Connection) (IPLeaseResult, error) {
+	return etcd.WithConnection(client, func(conn *etcd.Connection) (IPAllocationResult, error) {
 
 		now := time.Now()
 
 		ops := []clientv3.Op{
-			clientv3.OpPut(key, reservationType),
-			clientv3.OpPut(reservedAtKey(client, ip.String()), now.Format(time.RFC3339)),
+			clientv3.OpPut(key, allocationType),
+			clientv3.OpPut(allocatedAtKey(client, ip.String()), now.Format(time.RFC3339)),
 		}
 
-		if mac != "" {
-			ops = append(ops, clientv3.OpPut(macKey, mac))
+		if dataKey != "" && data != "" {
+			ops = append(ops, clientv3.OpPut(dataKey, data))
 		}
 
 		for _, condition := range conditions {
@@ -200,25 +188,25 @@ func reserveIPByCondition(client etcd.Client, ip net.IP, reservationType, mac st
 
 			txnResp, err := txn.Commit()
 			if err != nil {
-				return IPLeaseResult{Success: false}, fmt.Errorf("etcd transaction failed: %v", err)
+				return IPAllocationResult{Success: false}, fmt.Errorf("etcd transaction failed: %v", err)
 			}
 
 			if txnResp.Succeeded {
-				return IPLeaseResult{Success: true, Reservation: reservation{
-					ip:              ip,
-					reservationType: reservationType,
-					reservedAt:      now,
-					mac:             mac,
+				return IPAllocationResult{Success: true, Allocation: allocation{
+					ip:             ip,
+					allocationType: allocationType,
+					allocatedAt:    now,
+					data:           data,
 				}}, nil
 			}
 		}
 
-		return IPLeaseResult{Success: false}, nil
+		return IPAllocationResult{Success: false}, nil
 	})
 }
 
-func readReservation(client etcd.Client, ip string) (*reservation, error) {
-	tmp, err := getReservationsByPrefix(client, reservedIPKey(client, ip))
+func readReservation(client etcd.Client, ip string) (*allocation, error) {
+	tmp, err := getReservationsByPrefix(client, allocatedIPKey(client, ip))
 
 	if err != nil {
 		return nil, err
@@ -232,14 +220,14 @@ func readReservation(client etcd.Client, ip string) (*reservation, error) {
 	return &r, nil
 }
 
-func getReservationsByPrefix(client etcd.Client, prefix string) (map[string]reservation, error) {
-	return etcd.WithConnection(client, func(connection *etcd.Connection) (map[string]reservation, error) {
+func getReservationsByPrefix(client etcd.Client, prefix string) (map[string]allocation, error) {
+	return etcd.WithConnection(client, func(connection *etcd.Connection) (map[string]allocation, error) {
 		resp, err := connection.Client.Get(connection.Ctx, prefix, clientv3.WithPrefix(), clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend))
 		if err != nil {
 			return nil, err
 		}
 
-		result := make(map[string]reservation)
+		result := make(map[string]allocation)
 		for _, kv := range resp.Kvs {
 			key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
 			value := string(kv.Value)
@@ -252,26 +240,26 @@ func getReservationsByPrefix(client etcd.Client, prefix string) (map[string]rese
 					continue
 				}
 
-				addOrUpdate(result, key, reservation{
-					ip:              ip,
-					reservationType: value,
-				}, func(existing reservation) {
+				addOrUpdate(result, key, allocation{
+					ip:             ip,
+					allocationType: value,
+				}, func(existing allocation) {
 					existing.ip = ip
-					existing.reservationType = value
+					existing.allocationType = value
 				})
 			} else {
 				parts := strings.Split(key, "/")
 				if len(parts) == 2 {
-					if parts[1] == macKeyName {
-						addOrUpdate(result, key, reservation{mac: value}, func(existing reservation) { existing.mac = value })
-					} else if parts[1] == reservedAtKeyName {
+					if parts[1] == ("mac") {
+						addOrUpdate(result, key, allocation{data: value}, func(existing allocation) { existing.data = value })
+					} else if parts[1] == ("reserved-at") {
 						reservedAt, err := time.Parse(time.RFC3339, value)
 						if err != nil {
 							fmt.Printf("Couldn't parse reserved at value '%s' for '%s'. Skipping...\n", value, key)
 							continue
 						}
-						addOrUpdate(result, key, reservation{reservedAt: reservedAt},
-							func(existing reservation) { existing.reservedAt = reservedAt })
+						addOrUpdate(result, key, allocation{allocatedAt: reservedAt},
+							func(existing allocation) { existing.allocatedAt = reservedAt })
 					}
 				}
 			}
@@ -283,7 +271,7 @@ func getReservationsByPrefix(client etcd.Client, prefix string) (map[string]rese
 
 func deleteAllReservations(client etcd.Client) error {
 	_, err := etcd.WithConnection(client, func(connection *etcd.Connection) (struct{}, error) {
-		_, err := connection.Client.Delete(connection.Ctx, reservedIPsKey(client), clientv3.WithPrefix())
+		_, err := connection.Client.Delete(connection.Ctx, allocatedIPsKey(client), clientv3.WithPrefix())
 		return struct{}{}, err
 	})
 

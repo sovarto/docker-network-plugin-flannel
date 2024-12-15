@@ -7,7 +7,6 @@ import (
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/flannel_network"
-	"github.com/sovarto/FlannelNetworkPlugin/pkg/ipam"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
 	"golang.org/x/exp/maps"
 	"log"
@@ -301,7 +300,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 		}
 
 		if !ipExists {
-			allocatedIP, err := network.GetPool().AllocateIP(ipamVip.String(), "", ipam.ReservationTypeServiceVIP, true)
+			allocatedIP, err := network.GetPool().AllocateServiceVIP(ipamVip.String(), serviceInfo.ID, true)
 			if err != nil {
 				return errors.WithMessagef(err, "error allocating ip for service %s and network %s", serviceInfo.ID, serviceInfo.ID)
 			}

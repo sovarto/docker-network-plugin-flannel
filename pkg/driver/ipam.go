@@ -4,8 +4,8 @@ import (
 	"fmt"
 	docker_ipam "github.com/docker/go-plugins-helpers/ipam"
 	"github.com/pkg/errors"
-	"github.com/sovarto/FlannelNetworkPlugin/pkg/ipam"
 	"log"
+	"net"
 	"strings"
 )
 
@@ -77,11 +77,14 @@ func (d *flannelDriver) RequestAddress(request *docker_ipam.RequestAddressReques
 
 	mac := request.Options["com.docker.network.endpoint.macaddress"]
 
-	reservationType := ipam.ReservationTypeReserved
+	var address *net.IP
+	var err error
+
 	if request.Address != "" && mac != "" {
-		reservationType = ipam.ReservationTypeContainerIP
+		address, err = network.GetPool().AllocateContainerIP(request.Address, mac, true)
+	} else {
+		address, err = network.GetPool().ReserveIP(true)
 	}
-	address, err := network.GetPool().AllocateIP(request.Address, mac, reservationType, true)
 
 	if err != nil {
 		log.Printf("Failed to reserve address for network %s: %+v", flannelNetworkID, err)
