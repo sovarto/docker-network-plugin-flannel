@@ -24,9 +24,6 @@ docker run --rm -it --network manual-flannel fedora
 
 docker plugin install sovarto/docker-network-plugin-flannel --alias flannel --grant-all-permissions --disable && \
 
-ssh root@188.245.202.183
-ssh root@116.203.53.199
-ssh root@157.90.157.1
 
 ALIAS=flannel:dev; \
 PREFIX=/flannel; \

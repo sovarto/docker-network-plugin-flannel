@@ -33,7 +33,7 @@ func NewReadOnlyStore[T common.Equaler](client Client, handlers ItemsHandlers[T]
 
 // Init initializes the ReadOnlyStore by loading data from etcd and starting the watcher
 func (s *readOnlyStore[T]) Init() error {
-	err := s.sync(false)
+	err := s.sync(true)
 	if err != nil {
 		return errors.WithMessage(err, "Error performing initial sync")
 	}

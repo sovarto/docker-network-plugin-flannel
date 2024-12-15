@@ -105,7 +105,7 @@ func (s *writeOnlyStory[T]) DeleteItem(itemID string) error {
 	return nil
 }
 
-func (s *writeOnlyStory[T]) Init(items map[string]T) error { return s.sync(items, false) }
+func (s *writeOnlyStory[T]) Init(items map[string]T) error { return s.sync(items, true) }
 func (s *writeOnlyStory[T]) Sync(items map[string]T) error { return s.sync(items, true) }
 func (s *writeOnlyStory[T]) sync(items map[string]T, callHandlers bool) error {
 	s.Lock()

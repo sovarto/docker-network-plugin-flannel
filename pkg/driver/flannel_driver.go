@@ -138,6 +138,30 @@ func (d *flannelDriver) Init() error {
 	}
 	fmt.Println("Initialized docker data handler")
 
+	//networkCallbacks.OnAdded(lo.Map(maps.Values(dockerData.GetNetworks().GetAll()),
+	//	func(item common.NetworkInfo, index int) etcd.Item[common.NetworkInfo] {
+	//		return etcd.Item[common.NetworkInfo]{
+	//			ID:    item.DockerID,
+	//			Value: item,
+	//		}
+	//	}))
+	//
+	//serviceCallbacks.OnAdded(lo.Map(maps.Values(dockerData.GetServices().GetAll()),
+	//	func(item docker.ServiceInfo, index int) etcd.Item[docker.ServiceInfo] {
+	//		return etcd.Item[docker.ServiceInfo]{
+	//			ID:    item.ID,
+	//			Value: item,
+	//		}
+	//	}))
+	//
+	//containerCallbacks.OnAdded(lo.Map(maps.Values(dockerData.GetContainers().GetAll()),
+	//	func(item map[string]docker.ContainerInfo, index int) etcd.Item[docker.ContainerInfo] {
+	//		return etcd.Item[docker.ContainerInfo]{
+	//			ID:    item.ID,
+	//			Value: item,
+	//		}
+	//	}))
+
 	d.isInitialized = true
 
 	return nil
@@ -357,10 +381,6 @@ func (d *flannelDriver) handleContainersRemoved(removed []etcd.ShardItem[docker.
 		}
 	}
 }
-
-// TODO: Handle service created, changed and deleted: create, change (?) and delete load balancer
-// Allocate and release IPs and fwmark here, not in service_lbs_management -> ???
-// Store allocated IPs, use sharded distributed store for it
 
 // TODO: Properly handle startup
 
