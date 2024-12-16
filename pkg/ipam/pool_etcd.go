@@ -262,17 +262,17 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 					continue
 				}
 
-				addOrUpdate(result, key, allocation{
-					ip:             ip,
-					allocationType: value,
-				}, func(existing allocation) {
-					existing.ip = ip
-					existing.allocationType = value
-				})
+				addOrUpdate(result, key,
+					allocation{ip: ip, allocationType: value},
+					func(existing allocation) {
+						existing.ip = ip
+						existing.allocationType = value
+					})
 			} else {
 				parts := strings.Split(key, "/")
 				if len(parts) == 2 {
 					if parts[1] == dataKeyPartMac {
+						fmt.Printf("Found mac for %s\n", key)
 						addOrUpdate(result, key,
 							allocation{dataKey: dataKeyPartMac, data: value},
 							func(existing allocation) {
@@ -280,6 +280,7 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 								existing.data = value
 							})
 					} else if parts[1] == dataKeyPartServiceID {
+						fmt.Printf("Found service-id for %s\n", key)
 						addOrUpdate(result, key,
 							allocation{dataKey: dataKeyPartServiceID, data: value},
 							func(existing allocation) {
@@ -287,6 +288,7 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 								existing.data = value
 							})
 					} else if parts[1] == allocatedAtKeyPart {
+						fmt.Printf("Found allocated-at for %s\n", key)
 						allocatedAt, err := time.Parse(time.RFC3339, value)
 						if err != nil {
 							fmt.Printf("Couldn't parse allocated at value '%s' for '%s'. Skipping...\n", value, key)
@@ -294,6 +296,8 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 						}
 						addOrUpdate(result, key, allocation{allocatedAt: allocatedAt},
 							func(existing allocation) { existing.allocatedAt = allocatedAt })
+					} else {
+						fmt.Printf("Skipping unknown key %s\n", key)
 					}
 				}
 			}

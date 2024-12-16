@@ -235,7 +235,7 @@ func (p *etcdPool) ReleaseAllIPs() error {
 }
 
 func (p *etcdPool) syncIPs() error {
-	reservedIPs, err := getAllocations(p.etcdClient)
+	allocatedIPs, err := getAllocations(p.etcdClient)
 
 	if err != nil {
 		return errors.WithMessagef(err, "Error getting allocations for pool %s", p.poolID)
@@ -244,12 +244,12 @@ func (p *etcdPool) syncIPs() error {
 	unusedIPs := make(map[string]time.Time)
 
 	for _, ip := range p.allIPs {
-		if _, has := reservedIPs[ip.String()]; !has {
+		if _, has := allocatedIPs[ip.String()]; !has {
 			unusedIPs[ip.String()] = time.Now()
 		}
 	}
 
-	p.allocatedIPs = reservedIPs
+	p.allocatedIPs = allocatedIPs
 	p.unusedIPs = unusedIPs
 
 	return nil
