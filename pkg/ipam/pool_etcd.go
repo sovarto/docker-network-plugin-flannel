@@ -275,7 +275,7 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 						fmt.Printf("Found mac for %s\n", key)
 						addOrUpdate(result, key,
 							allocation{dataKey: dataKeyPartMac, data: value},
-							func(existing allocation) {
+							func(existing *allocation) {
 								existing.dataKey = dataKeyPartMac
 								existing.data = value
 							})
@@ -283,7 +283,7 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 						fmt.Printf("Found service-id for %s\n", key)
 						addOrUpdate(result, key,
 							allocation{dataKey: dataKeyPartServiceID, data: value},
-							func(existing allocation) {
+							func(existing *allocation) {
 								existing.dataKey = dataKeyPartServiceID
 								existing.data = value
 							})
@@ -295,7 +295,7 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 							continue
 						}
 						addOrUpdate(result, key, allocation{allocatedAt: allocatedAt},
-							func(existing allocation) { existing.allocatedAt = allocatedAt })
+							func(existing *allocation) { existing.allocatedAt = allocatedAt })
 					} else {
 						fmt.Printf("Skipping unknown key %s\n", key)
 					}
@@ -318,11 +318,11 @@ func deleteAllAllocations(client etcd.Client) error {
 	return err
 }
 
-func addOrUpdate[T any](store map[string]T, id string, valueToAdd T, update func(existing T)) {
+func addOrUpdate[T any](store map[string]T, id string, valueToAdd T, update func(existing *T)) {
 	existing, exists := store[id]
 	if exists {
 		if update != nil {
-			update(existing)
+			update(&existing)
 		}
 	} else {
 		existing = valueToAdd
