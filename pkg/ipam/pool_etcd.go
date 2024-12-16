@@ -270,31 +270,32 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 					})
 			} else {
 				parts := strings.Split(key, "/")
+				id := parts[0]
 				if len(parts) == 2 {
 					if parts[1] == dataKeyPartMac {
-						fmt.Printf("Found mac for %s\n", key)
-						addOrUpdate(result, key,
+						fmt.Printf("Found mac for %s\n", id)
+						addOrUpdate(result, id,
 							allocation{dataKey: dataKeyPartMac, data: value},
 							func(existing *allocation) {
 								existing.dataKey = dataKeyPartMac
 								existing.data = value
 							})
 					} else if parts[1] == dataKeyPartServiceID {
-						fmt.Printf("Found service-id for %s\n", key)
-						addOrUpdate(result, key,
+						fmt.Printf("Found service-id for %s\n", id)
+						addOrUpdate(result, id,
 							allocation{dataKey: dataKeyPartServiceID, data: value},
 							func(existing *allocation) {
 								existing.dataKey = dataKeyPartServiceID
 								existing.data = value
 							})
 					} else if parts[1] == allocatedAtKeyPart {
-						fmt.Printf("Found allocated-at for %s\n", key)
+						fmt.Printf("Found allocated-at for %s\n", id)
 						allocatedAt, err := time.Parse(time.RFC3339, value)
 						if err != nil {
 							fmt.Printf("Couldn't parse allocated at value '%s' for '%s'. Skipping...\n", value, key)
 							continue
 						}
-						addOrUpdate(result, key, allocation{allocatedAt: allocatedAt},
+						addOrUpdate(result, id, allocation{allocatedAt: allocatedAt},
 							func(existing *allocation) { existing.allocatedAt = allocatedAt })
 					} else {
 						fmt.Printf("Skipping unknown key %s\n", key)
