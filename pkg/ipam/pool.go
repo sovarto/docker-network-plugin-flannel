@@ -213,7 +213,7 @@ func (p *etcdPool) ReleaseIP(ip string) error {
 
 	if !result.Success {
 		p.allocatedIPs[ip] = result.Allocation
-		return fmt.Errorf("couldn't release ip %s for pool %s. It has since been reserved like this: Allocation Type: %s; IP: %s; MAC %s, Reserved At: %s. This shouldn't happen.\n", ip, p.poolID, result.Allocation.allocationType, result.Allocation.ip.String(), result.Allocation.data, result.Allocation.allocatedAt.Format(time.RFC3339))
+		return fmt.Errorf("couldn't release ip %s for pool %s. It has since been allocated like this: Allocation Type: %s; IP: %s; MAC %s, Reserved At: %s. This shouldn't happen.\n", ip, p.poolID, result.Allocation.allocationType, result.Allocation.ip.String(), result.Allocation.data, result.Allocation.allocatedAt.Format(time.RFC3339))
 	}
 
 	delete(p.allocatedIPs, ip)
@@ -226,19 +226,19 @@ func (p *etcdPool) ReleaseAllIPs() error {
 	p.Lock()
 	defer p.Unlock()
 
-	err := deleteAllReservations(p.etcdClient)
+	err := deleteAllAllocations(p.etcdClient)
 	if err != nil {
-		return errors.WithMessagef(err, "Error deleting all reserved IPs for pool %s", p.poolID)
+		return errors.WithMessagef(err, "Error releasing all IPs for pool %s", p.poolID)
 	}
 
 	return p.syncIPs()
 }
 
 func (p *etcdPool) syncIPs() error {
-	reservedIPs, err := getReservations(p.etcdClient)
+	reservedIPs, err := getAllocations(p.etcdClient)
 
 	if err != nil {
-		return errors.WithMessagef(err, "Error getting reservations for pool %s", p.poolID)
+		return errors.WithMessagef(err, "Error getting allocations for pool %s", p.poolID)
 	}
 
 	unusedIPs := make(map[string]time.Time)
@@ -310,7 +310,7 @@ func (p *etcdPool) watchForIPUsageChanges(etcdClient etcd.Client) (clientv3.Watc
 					ipStr := ip.String()
 					p.Lock()
 					existingReservation, has := p.allocatedIPs[ipStr]
-					r, err := readReservation(p.etcdClient, ipStr)
+					r, err := readAllocation(p.etcdClient, ipStr)
 
 					if err != nil {
 						log.Printf("found new allocation for IP '%s' for pool '%s', but retrieving the whole object resulted in an error: %v", ipStr, p.poolID, err)

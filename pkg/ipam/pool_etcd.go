@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	dataKeyMac       = "mac"
-	dataKeyServiceID = "service-id"
+	dataKeyPartMac       = "mac"
+	dataKeyPartServiceID = "service-id"
+	allocatedAtKeyPart   = "allocated-at"
 )
 
 func allocatedIPsKey(client etcd.Client) string {
@@ -23,19 +24,19 @@ func allocatedIPKey(client etcd.Client, ip string) string {
 }
 
 func macKey(client etcd.Client, ip string) string {
-	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), dataKeyMac)
+	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), dataKeyPartMac)
 }
 
 func serviceIDKey(client etcd.Client, ip string) string {
-	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), dataKeyServiceID)
+	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), dataKeyPartServiceID)
 }
 
 func allocatedAtKey(client etcd.Client, ip string) string {
-	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), "allocated-at")
+	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), allocatedAtKeyPart)
 }
 
-func getReservations(client etcd.Client) (map[string]allocation, error) {
-	return getReservationsByPrefix(client, allocatedIPsKey(client))
+func getAllocations(client etcd.Client) (map[string]allocation, error) {
+	return getAllocationsByPrefix(client, allocatedIPsKey(client))
 }
 
 type IPAllocationResult struct {
@@ -86,10 +87,10 @@ func releaseAllocation(client etcd.Client, r allocation) (IPAllocationResult, er
 			return IPAllocationResult{Success: true}, nil
 		}
 
-		reservedAtStr := string(resp.Responses[1].GetResponseRange().Kvs[0].Value)
-		reservedAt, err := time.Parse(time.RFC3339, reservedAtStr)
+		allocatedAtStr := string(resp.Responses[1].GetResponseRange().Kvs[0].Value)
+		allocatedAt, err := time.Parse(time.RFC3339, allocatedAtStr)
 		if err != nil {
-			fmt.Printf("Couldn't parse reserved at value '%s' for '%s'. Ignoring...\n", reservedAtStr, key)
+			fmt.Printf("Couldn't parse allocated at value '%s' for '%s'. Ignoring...\n", allocatedAtStr, key)
 		}
 
 		var data string
@@ -107,7 +108,7 @@ func releaseAllocation(client etcd.Client, r allocation) (IPAllocationResult, er
 		return IPAllocationResult{Success: false, Allocation: allocation{
 			ip:             r.ip,
 			allocationType: string(resp.Responses[0].GetResponseRange().Kvs[0].Value),
-			allocatedAt:    reservedAt,
+			allocatedAt:    allocatedAt,
 			dataKey:        dataKey,
 			data:           data,
 		}}, nil
@@ -226,8 +227,8 @@ func allocateIPByCondition(client etcd.Client, ip net.IP, allocationType, dataKe
 	})
 }
 
-func readReservation(client etcd.Client, ip string) (*allocation, error) {
-	tmp, err := getReservationsByPrefix(client, allocatedIPKey(client, ip))
+func readAllocation(client etcd.Client, ip string) (*allocation, error) {
+	tmp, err := getAllocationsByPrefix(client, allocatedIPKey(client, ip))
 
 	if err != nil {
 		return nil, err
@@ -241,7 +242,7 @@ func readReservation(client etcd.Client, ip string) (*allocation, error) {
 	return &r, nil
 }
 
-func getReservationsByPrefix(client etcd.Client, prefix string) (map[string]allocation, error) {
+func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]allocation, error) {
 	return etcd.WithConnection(client, func(connection *etcd.Connection) (map[string]allocation, error) {
 		resp, err := connection.Client.Get(connection.Ctx, prefix, clientv3.WithPrefix(), clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend))
 		if err != nil {
@@ -271,16 +272,22 @@ func getReservationsByPrefix(client etcd.Client, prefix string) (map[string]allo
 			} else {
 				parts := strings.Split(key, "/")
 				if len(parts) == 2 {
-					if parts[1] == ("mac") {
-						addOrUpdate(result, key, allocation{data: value}, func(existing allocation) { existing.data = value })
-					} else if parts[1] == ("reserved-at") {
-						reservedAt, err := time.Parse(time.RFC3339, value)
+					if parts[1] == dataKeyPartMac {
+						addOrUpdate(result, key,
+							allocation{dataKey: dataKeyPartMac, data: value},
+							func(existing allocation) { existing.data = value })
+					} else if parts[1] == dataKeyPartServiceID {
+						addOrUpdate(result, key,
+							allocation{dataKey: dataKeyPartServiceID, data: value},
+							func(existing allocation) { existing.data = value })
+					} else if parts[1] == allocatedAtKeyPart {
+						allocatedAt, err := time.Parse(time.RFC3339, value)
 						if err != nil {
-							fmt.Printf("Couldn't parse reserved at value '%s' for '%s'. Skipping...\n", value, key)
+							fmt.Printf("Couldn't parse allocated at value '%s' for '%s'. Skipping...\n", value, key)
 							continue
 						}
-						addOrUpdate(result, key, allocation{allocatedAt: reservedAt},
-							func(existing allocation) { existing.allocatedAt = reservedAt })
+						addOrUpdate(result, key, allocation{allocatedAt: allocatedAt},
+							func(existing allocation) { existing.allocatedAt = allocatedAt })
 					}
 				}
 			}
@@ -290,7 +297,7 @@ func getReservationsByPrefix(client etcd.Client, prefix string) (map[string]allo
 	})
 }
 
-func deleteAllReservations(client etcd.Client) error {
+func deleteAllAllocations(client etcd.Client) error {
 	_, err := etcd.WithConnection(client, func(connection *etcd.Connection) (struct{}, error) {
 		_, err := connection.Client.Delete(connection.Ctx, allocatedIPsKey(client), clientv3.WithPrefix())
 		return struct{}{}, err
