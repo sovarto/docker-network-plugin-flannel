@@ -261,6 +261,9 @@ func (n *nameserver) replaceDNATSNATRules() error {
 	}
 
 	table := "nat"
+	// We wait for either:
+	// - The docker chains to have any rules in them. Scenario: A container is started while the plugin runs
+	// - or, our own output chain to have any rules in them. Scenario: The plugin was restarted and needs to re-inject the nameserver into already running containers
 	dockerChains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
 	err = waitForChainsWithRules(ipt, table, [][]string{dockerChains, {"FLANNEL_DNS_OUTPUT"}}, 30*time.Second)
 

@@ -133,7 +133,7 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 		return nil, err
 	}
 
-	err = endpoint.Join(request.EndpointID)
+	err = endpoint.Join(request.SandboxKey)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "failed to join endpoint %s to network %s", request.EndpointID, request.NetworkID)
 	}
