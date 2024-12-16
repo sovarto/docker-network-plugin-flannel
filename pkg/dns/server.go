@@ -262,7 +262,7 @@ func (n *nameserver) replaceDNATSNATRules() error {
 
 	table := "nat"
 	dockerChains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
-	err = waitForChainsWithRules(ipt, table, dockerChains, 30*time.Second)
+	err = waitForChainsWithRules(ipt, table, [][]string{dockerChains, {"FLANNEL_DNS_OUTPUT"}}, 30*time.Second)
 
 	if err != nil {
 		return err
@@ -397,42 +397,44 @@ func createChainIfNecessary(ipt *iptables.IPTables, table, chain string) error {
 	return nil
 }
 
-func waitForChainsWithRules(ipt *iptables.IPTables, table string, chains []string, timeout time.Duration) error {
+// Waits until at least one chains group has rules for each chain in the group
+func waitForChainsWithRules(ipt *iptables.IPTables, table string, chainsGroups [][]string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 
 	for {
-		allChainsReady := true
+		for _, chainsGroup := range chainsGroups {
+			allChainsReady := true
 
-		for _, chain := range chains {
-			// Check if the chain exists
-			chainExists, err := ipt.ChainExists(table, chain)
-			if err != nil {
-				return fmt.Errorf("error checking if chain exists: %w", err)
-			}
-			if !chainExists {
-				allChainsReady = false
-				break
+			for _, chain := range chainsGroup {
+				// Check if the chain exists
+				chainExists, err := ipt.ChainExists(table, chain)
+				if err != nil {
+					return fmt.Errorf("error checking if chain exists: %w", err)
+				}
+				if !chainExists {
+					allChainsReady = false
+					break
+				}
+
+				// Check if the chain has at least one rule
+				rules, err := ipt.List(table, chain)
+				if err != nil {
+					return fmt.Errorf("error listing rules for chain %s: %w", chain, err)
+				}
+				if len(rules) <= 1 { // The first line is usually a header
+					allChainsReady = false
+					break
+				}
 			}
 
-			// Check if the chain has at least one rule
-			rules, err := ipt.List(table, chain)
-			if err != nil {
-				return fmt.Errorf("error listing rules for chain %s: %w", chain, err)
+			if allChainsReady {
+				return nil
 			}
-			if len(rules) <= 1 { // The first line is usually a header
-				allChainsReady = false
-				break
+
+			if time.Now().After(deadline) {
+				return errors.New("timeout waiting for chains with rules")
 			}
 		}
-
-		if allChainsReady {
-			return nil
-		}
-
-		if time.Now().After(deadline) {
-			return errors.New("timeout waiting for chains with rules")
-		}
-
 		time.Sleep(5 * time.Millisecond) // Wait before retrying
 	}
 }
