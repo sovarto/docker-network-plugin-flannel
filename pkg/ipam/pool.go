@@ -202,7 +202,7 @@ func (p *etcdPool) ReleaseIP(ip string) error {
 	if !has {
 		return fmt.Errorf("IP %s is not reserved in pool %s. Can't release it", ip, p.poolID)
 	} else {
-		fmt.Printf("Releasing allocation %+v for pool %s...\n", allocation, p.poolID)
+		fmt.Printf("Releasing allocation Allocation Type: %s; IP: %s; %s %s, Reserved At: %s for pool %s...\n", allocation.allocationType, allocation.ip.String(), allocation.dataKey, allocation.data, allocation.allocatedAt.Format(time.RFC3339), p.poolID)
 	}
 
 	result, err := releaseAllocation(p.etcdClient, allocation)
@@ -213,7 +213,7 @@ func (p *etcdPool) ReleaseIP(ip string) error {
 
 	if !result.Success {
 		p.allocatedIPs[ip] = result.Allocation
-		return fmt.Errorf("couldn't release ip %s for pool %s. It has since been allocated like this: Allocation Type: %s; IP: %s; MAC %s, Reserved At: %s. This shouldn't happen.\n", ip, p.poolID, result.Allocation.allocationType, result.Allocation.ip.String(), result.Allocation.data, result.Allocation.allocatedAt.Format(time.RFC3339))
+		return fmt.Errorf("couldn't release ip %s for pool %s. It has since been allocated like this: Allocation Type: %s; IP: %s; %s %s, Reserved At: %s. This shouldn't happen.\n", ip, p.poolID, result.Allocation.allocationType, result.Allocation.ip.String(), result.Allocation.dataKey, result.Allocation.data, result.Allocation.allocatedAt.Format(time.RFC3339))
 	}
 
 	delete(p.allocatedIPs, ip)
