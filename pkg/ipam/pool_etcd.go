@@ -274,16 +274,16 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 				if len(parts) == 2 {
 					if parts[1] == dataKeyPartMac {
 						addOrUpdate(result, id,
-							allocation{dataKey: dataKeyPartMac, data: value},
+							allocation{dataKey: string(kv.Key), data: value},
 							func(existing *allocation) {
-								existing.dataKey = dataKeyPartMac
+								existing.dataKey = string(kv.Key)
 								existing.data = value
 							})
 					} else if parts[1] == dataKeyPartServiceID {
 						addOrUpdate(result, id,
-							allocation{dataKey: dataKeyPartServiceID, data: value},
+							allocation{dataKey: string(kv.Key), data: value},
 							func(existing *allocation) {
-								existing.dataKey = dataKeyPartServiceID
+								existing.dataKey = string(kv.Key)
 								existing.data = value
 							})
 					} else if parts[1] == allocatedAtKeyPart {
