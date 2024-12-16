@@ -18,6 +18,7 @@ import (
 	"log"
 	"math"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -449,7 +450,7 @@ func (d *flannelDriver) injectNameserverIntoAlreadyRunningContainers() {
 	for _, shardContainers := range maps.Values(d.dockerData.GetContainers().GetAll()) {
 		for _, container := range shardContainers {
 			if lo.Some(ourNetworkIDs, maps.Keys(container.IPs)) {
-				nameserver, err := d.getOrAddNameserver(container.SandboxKey)
+				nameserver, err := d.getOrAddNameserver(adjustSandboxKey(container.SandboxKey))
 				if err != nil {
 					log.Printf("Error getting nameserver for container %s: %v\n", container, err)
 				}
@@ -461,4 +462,12 @@ func (d *flannelDriver) injectNameserverIntoAlreadyRunningContainers() {
 			}
 		}
 	}
+}
+
+func adjustSandboxKey(sandboxKey string) string {
+	if strings.Index(sandboxKey, "/hostfs") == 0 {
+		return sandboxKey
+	}
+
+	return "/hostfs" + sandboxKey
 }

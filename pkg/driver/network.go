@@ -143,7 +143,7 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 	go func() {
 		// The node path /var/run/docker is mounted to /hostfs/var/run/docker and the sandbox keys
 		// are of form /var/run/docker/netns/<key>
-		sandboxKey := "/hostfs" + request.SandboxKey
+		sandboxKey := adjustSandboxKey(request.SandboxKey)
 		err := WaitForSandboxAndConfigure(sandboxKey, 10*time.Second, func() error {
 			start := time.Now()
 			defer func() {
