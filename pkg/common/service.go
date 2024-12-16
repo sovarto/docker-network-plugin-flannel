@@ -8,13 +8,14 @@ import (
 )
 
 type ContainerInfo struct {
-	ID          string            `json:"ContainerID"`
-	Name        string            `json:"ContainerName"`
-	ServiceID   string            `json:"ServiceID"`
-	ServiceName string            `json:"ServiceName"`
-	SandboxKey  string            `json:"SandboxKey"`
-	IPs         map[string]net.IP `json:"IPs"`     // networkID -> IP
-	Aliases     map[string]string `json:"Aliases"` // networkID -> alias
+	ID          string              `json:"ContainerID"`
+	Name        string              `json:"ContainerName"`
+	ServiceID   string              `json:"ServiceID"`
+	ServiceName string              `json:"ServiceName"`
+	SandboxKey  string              `json:"SandboxKey"`
+	IPs         map[string]net.IP   `json:"IPs"`       // networkID -> IP
+	Aliases     map[string][]string `json:"Aliases"`   // networkID -> aliases
+	Endpoints   map[string]string   `json:"Endpoints"` // networkID -> endpoint ID
 }
 
 var (

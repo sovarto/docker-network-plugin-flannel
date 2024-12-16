@@ -5,6 +5,7 @@ import (
 	"github.com/docker/docker/libnetwork/types"
 	"github.com/docker/go-plugins-helpers/sdk"
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/api"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/dns"
@@ -13,6 +14,7 @@ import (
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/flannel_network"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/ipam"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/service_lb"
+	"golang.org/x/exp/maps"
 	"log"
 	"math"
 	"net"
@@ -161,6 +163,8 @@ func (d *flannelDriver) Init() error {
 	//			Value: item,
 	//		}
 	//	}))
+
+	d.injectNameserverIntoAlreadyRunningContainers()
 
 	d.isInitialized = true
 
@@ -438,4 +442,23 @@ func (d *flannelDriver) createService(id, name string) common.Service {
 	d.services[id] = service
 
 	return service
+}
+
+func (d *flannelDriver) injectNameserverIntoAlreadyRunningContainers() {
+	ourNetworkIDs := maps.Keys(d.dockerData.GetNetworks().GetAll())
+	for _, shardContainers := range maps.Values(d.dockerData.GetContainers().GetAll()) {
+		for _, container := range shardContainers {
+			if lo.Some(ourNetworkIDs, maps.Keys(container.IPs)) {
+				nameserver, err := d.getOrAddNameserver(container.SandboxKey)
+				if err != nil {
+					log.Printf("Error getting nameserver for container %s: %v\n", container, err)
+				}
+
+				for networkID, endpointID := range container.Endpoints {
+					d.nameserversByEndpointID[endpointID] = nameserver
+					nameserver.AddValidNetworkID(networkID)
+				}
+			}
+		}
+	}
 }
