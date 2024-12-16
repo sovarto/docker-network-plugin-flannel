@@ -303,6 +303,8 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 			}
 		}
 
+		fmt.Printf("Found %d allocations: %+v\n", len(result), result)
+
 		return result, nil
 	})
 }
