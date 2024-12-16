@@ -154,12 +154,14 @@ func (r *resolver) AddContainer(container common.ContainerInfo) {
 	fmt.Printf("Adding container to resolver %+v\n", container)
 	r.containerData.byID[container.ID] = container
 	add(r.containerData.byName, container.Name, container)
-	for networkID, alias := range container.Aliases {
-		add(r.containerData.byAlias, alias, containerAliasData{
-			networkID:   networkID,
-			ip:          container.IPs[networkID],
-			containerID: container.ID,
-		})
+	for networkID, aliases := range container.Aliases {
+		for _, alias := range aliases {
+			add(r.containerData.byAlias, alias, containerAliasData{
+				networkID:   networkID,
+				ip:          container.IPs[networkID],
+				containerID: container.ID,
+			})
+		}
 	}
 }
 
@@ -169,10 +171,12 @@ func (r *resolver) RemoveContainer(container common.ContainerInfo) {
 
 	fmt.Printf("Removing container from resolver %+v\n", container)
 	delete(r.containerData.byID, container.ID)
-	for _, alias := range container.Aliases {
-		remove(r.containerData.byAlias, alias, func(item containerAliasData) bool {
-			return item.containerID == container.ID
-		})
+	for _, aliases := range container.Aliases {
+		for _, alias := range aliases {
+			remove(r.containerData.byAlias, alias, func(item containerAliasData) bool {
+				return item.containerID == container.ID
+			})
+		}
 	}
 	remove(r.containerData.byName, container.Name, func(item common.ContainerInfo) bool {
 		return item.ID == container.ID
