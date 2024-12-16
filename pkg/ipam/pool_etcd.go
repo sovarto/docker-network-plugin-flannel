@@ -264,7 +264,7 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 
 				addOrUpdate(result, key,
 					allocation{ip: ip, allocationType: value},
-					func(existing allocation) {
+					func(existing *allocation) {
 						existing.ip = ip
 						existing.allocationType = value
 					})
