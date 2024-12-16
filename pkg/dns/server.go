@@ -270,6 +270,21 @@ func (n *nameserver) replaceDNATSNATRules() error {
 		fmt.Println("Chains exist and have at least one rule")
 	}
 
+	rulesToDelete := map[string][]string{}
+	flannelDnsOutputExists, err := ipt.ChainExists(table, "FLANNEL_DNS_OUTPUT")
+	if err != nil {
+		return errors.WithMessagef(err, "Error checking if chain FLANNEL_DNS_OUTPUT exists in table %s", table)
+	}
+
+	if flannelDnsOutputExists {
+		rules, err := ipt.List("nat", "FLANNEL_DNS_OUTPUT")
+		if err != nil {
+			log.Printf("Error listing iptables rules in namespace %s, table %s, chain FLANNEL_DNS_OUTPUT", n.networkNamespace, table)
+		} else {
+			rulesToDelete["FLANNEL_DNS_OUTPUT"] = rules
+		}
+	}
+
 	rules := []networking.IptablesRule{
 		{
 			Chain: "FLANNEL_DNS_OUTPUT",
@@ -336,7 +351,7 @@ func (n *nameserver) replaceDNATSNATRules() error {
 		if err := createChainIfNecessary(ipt, table, rule.Chain); err != nil {
 			return errors.WithMessagef(err, "Error in namespace %s", n.networkNamespace)
 		}
-		if err := ipt.InsertUnique(table, rule.Chain, 1, rule.RuleSpec...); err != nil {
+		if err := ipt.Insert(table, rule.Chain, 1, rule.RuleSpec...); err != nil {
 			return errors.WithMessagef(err, "Error applying iptables rule in namespace %s, table %s, chain %s", n.networkNamespace, rule.Table, rule.Chain)
 		}
 	}
@@ -346,7 +361,10 @@ func (n *nameserver) replaceDNATSNATRules() error {
 		if err != nil {
 			log.Printf("Error listing iptables rules in namespace %s, table %s, chain %s", n.networkNamespace, table, chain)
 		}
+		rulesToDelete[chain] = rules
+	}
 
+	for chain, rules := range rulesToDelete {
 		for _, rawRule := range rules {
 			rule := strings.Fields(rawRule)[2:]
 			if len(rule) == 0 {

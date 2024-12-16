@@ -447,12 +447,17 @@ func (d *flannelDriver) createService(id, name string) common.Service {
 
 func (d *flannelDriver) injectNameserverIntoAlreadyRunningContainers() {
 	ourNetworkIDs := maps.Keys(d.dockerData.GetNetworks().GetAll())
-	for _, shardContainers := range maps.Values(d.dockerData.GetContainers().GetAll()) {
+	containersStore := d.dockerData.GetContainers()
+	for shardKey, shardContainers := range containersStore.GetAll() {
+		if shardKey != containersStore.GetLocalShardKey() {
+			continue
+		}
 		for _, container := range shardContainers {
 			if lo.Some(ourNetworkIDs, maps.Keys(container.IPs)) {
 				nameserver, err := d.getOrAddNameserver(adjustSandboxKey(container.SandboxKey))
 				if err != nil {
 					log.Printf("Error getting nameserver for container %s: %v\n", container, err)
+					continue
 				}
 
 				for networkID, endpointID := range container.Endpoints {
