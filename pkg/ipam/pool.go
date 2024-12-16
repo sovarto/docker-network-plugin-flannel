@@ -197,13 +197,15 @@ func (p *etcdPool) ReleaseIP(ip string) error {
 
 	fmt.Printf("Releasing IP %s for pool %s...\n", ip, p.poolID)
 
-	reservation, has := p.allocatedIPs[ip]
+	allocation, has := p.allocatedIPs[ip]
 
 	if !has {
 		return fmt.Errorf("IP %s is not reserved in pool %s. Can't release it", ip, p.poolID)
+	} else {
+		fmt.Printf("Releasing allocation %+v for pool %s...\n", allocation, p.poolID)
 	}
 
-	result, err := releaseReservation(p.etcdClient, reservation)
+	result, err := releaseAllocation(p.etcdClient, allocation)
 
 	if err != nil {
 		return errors.WithMessagef(err, "error releasing ip %s for pool %s", ip, p.poolID)

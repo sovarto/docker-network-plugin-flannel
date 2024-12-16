@@ -43,7 +43,7 @@ type IPAllocationResult struct {
 	Allocation allocation
 }
 
-func releaseReservation(client etcd.Client, r allocation) (IPAllocationResult, error) {
+func releaseAllocation(client etcd.Client, r allocation) (IPAllocationResult, error) {
 	return etcd.WithConnection(client, func(conn *etcd.Connection) (IPAllocationResult, error) {
 		ipStr := r.ip.String()
 		key := allocatedIPKey(client, ipStr)

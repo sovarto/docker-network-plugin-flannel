@@ -141,6 +141,7 @@ func (e *endpoint) Join(sandboxKey string) error {
 		return err
 	}
 
+	e.sandboxKey = sandboxKey
 	e.vethPair = vethPair
 
 	if err := writeToEtcd(e, false); err != nil {
@@ -155,6 +156,7 @@ func (e *endpoint) Leave() error {
 		return err
 	}
 
+	e.sandboxKey = ""
 	e.vethPair = nil
 
 	if err := writeToEtcd(e, false); err != nil {
