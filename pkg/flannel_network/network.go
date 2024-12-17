@@ -633,8 +633,12 @@ func (n *network) isFlannelDaemonProcessRunning() bool {
 }
 
 func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.NetworkInfo) error {
+	localIPs, err := getLocalIPsMap()
+	if err != nil {
+		return err
+	}
 	networksToDelete := make(map[string]*network)
-	_, err := etcd.WithConnection(etcdClient, func(connection *etcd.Connection) (struct{}, error) {
+	_, err = etcd.WithConnection(etcdClient, func(connection *etcd.Connection) (struct{}, error) {
 		resp, err := connection.Client.Get(connection.Ctx, etcdClient.GetKey(), clientv3.WithPrefix())
 		if err != nil {
 			return struct{}{}, errors.WithMessagef(err, "error retrieving existing networks data from etcd")
@@ -642,6 +646,7 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 
 		for _, kv := range resp.Kvs {
 			key := strings.TrimLeft(strings.TrimRight(string(kv.Key), etcdClient.GetKey()), "/")
+			fmt.Printf("Found key %s", key)
 			keyParts := strings.Split(key, "/")
 			flannelNetworkID := keyParts[0]
 			if lo.SomeBy(existingNetworks, func(item common.NetworkInfo) bool {
@@ -698,6 +703,11 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 					return struct{}{}, errors.WithMessagef(err, "error deserializing subnet %s configuration of network %s", subnet, flannelNetworkID)
 				}
 
+				_, isLocalIP := localIPs[configData.PublicIP]
+				if !isLocalIP {
+					continue
+				}
+
 				n := &network{
 					flannelID:           flannelNetworkID,
 					etcdClient:          etcdClient,
@@ -717,8 +727,6 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 					(*existing).localGateway = n.localGateway
 					(*existing).pool = n.pool
 				})
-			} else if len(keyParts) == 3 && keyParts[1] == "endpoints" {
-
 			}
 		}
 
@@ -730,6 +738,7 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 	}
 
 	for _, network := range networksToDelete {
+		fmt.Printf("Deleting stale network %s\n", network.flannelID)
 		endpoints, err := loadEndpointsFromEtcd(network.endpointsEtcdClient, network.bridge)
 		if err != nil {
 			log.Printf("error loading endpoints for stale network %s: %v", network.flannelID, err)
@@ -745,4 +754,42 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 	}
 
 	return nil
+}
+
+func getLocalIPsMap() (map[string]struct{}, error) {
+	localIPs := make(map[string]struct{})
+
+	// Get all network interfaces
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to get network interfaces")
+	}
+
+	// Iterate over all interfaces and gather IPs
+	for _, iface := range interfaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return nil, errors.WithMessagef(err, "failed to get addresses for interface %s", iface.Name)
+		}
+
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+
+			// Skip invalid or zero IPs
+			if ip == nil || ip.IsUnspecified() {
+				continue
+			}
+
+			// Add the IP string to the map
+			localIPs[ip.String()] = struct{}{}
+		}
+	}
+
+	return localIPs, nil
 }
