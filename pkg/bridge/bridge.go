@@ -36,6 +36,19 @@ func NewBridgeInterface(network common.FlannelNetworkInfo) BridgeInterface {
 	}
 }
 
+func Hydrate(network common.FlannelNetworkInfo) (BridgeInterface, error) {
+	bridgeInterface := NewBridgeInterface(network).(*bridgeInterface)
+
+	link, err := netlink.LinkByName(bridgeInterface.interfaceName)
+	if err != nil {
+		return nil, errors.WithMessagef(err, "cannot find bridge interface %s", bridgeInterface.interfaceName)
+	}
+
+	bridgeInterface.route = *getRoute(network, link)
+
+	return bridgeInterface, nil
+}
+
 func (b *bridgeInterface) GetNetworkInfo() common.FlannelNetworkInfo {
 	return b.network
 }
@@ -61,13 +74,7 @@ func (b *bridgeInterface) Ensure() error {
 		return err
 	}
 
-	route := &netlink.Route{
-		Dst:       b.network.HostSubnet,
-		Src:       b.network.LocalGateway,
-		LinkIndex: bridge.Attrs().Index,
-		Scope:     netlink.SCOPE_LINK,
-		Protocol:  unix.RTPROT_KERNEL,
-	}
+	route := getRoute(b.network, bridge)
 
 	if err := netlink.RouteAdd(route); err != nil {
 		if strings.Contains(err.Error(), "file exists") {
@@ -85,6 +92,16 @@ func (b *bridgeInterface) Ensure() error {
 	}
 
 	return nil
+}
+
+func getRoute(network common.FlannelNetworkInfo, bridge netlink.Link) *netlink.Route {
+	return &netlink.Route{
+		Dst:       network.HostSubnet,
+		Src:       network.LocalGateway,
+		LinkIndex: bridge.Attrs().Index,
+		Scope:     netlink.SCOPE_LINK,
+		Protocol:  unix.RTPROT_KERNEL,
+	}
 }
 
 func (b *bridgeInterface) Delete() error {

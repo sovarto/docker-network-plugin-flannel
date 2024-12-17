@@ -675,7 +675,11 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 					hostSubnetSize:      configData.SubnetLen,
 					endpointsEtcdClient: etcdClient.CreateSubClient(flannelNetworkID, "endpoints"),
 				}
-				n.bridge = bridge.NewBridgeInterface(n.GetInfo())
+				b, err := bridge.Hydrate(n.GetInfo())
+				if err != nil {
+					return struct{}{}, errors.WithMessagef(err, "error hydrating bridge interface for network %s", flannelNetworkID)
+				}
+				n.bridge = b
 				common.AddOrUpdate(networksToDelete, flannelNetworkID, n, func(existing **network) {
 					(*existing).vni = n.vni
 					(*existing).hostSubnetSize = n.hostSubnetSize
