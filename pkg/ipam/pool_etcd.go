@@ -2,6 +2,7 @@ package ipam
 
 import (
 	"fmt"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"net"
@@ -262,7 +263,7 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 					continue
 				}
 
-				addOrUpdate(result, key,
+				common.AddOrUpdate(result, key,
 					allocation{ip: ip, allocationType: value},
 					func(existing *allocation) {
 						existing.ip = ip
@@ -273,14 +274,14 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 				id := parts[0]
 				if len(parts) == 2 {
 					if parts[1] == dataKeyPartMac {
-						addOrUpdate(result, id,
+						common.AddOrUpdate(result, id,
 							allocation{dataKey: string(kv.Key), data: value},
 							func(existing *allocation) {
 								existing.dataKey = string(kv.Key)
 								existing.data = value
 							})
 					} else if parts[1] == dataKeyPartServiceID {
-						addOrUpdate(result, id,
+						common.AddOrUpdate(result, id,
 							allocation{dataKey: string(kv.Key), data: value},
 							func(existing *allocation) {
 								existing.dataKey = string(kv.Key)
@@ -292,7 +293,7 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 							fmt.Printf("Couldn't parse allocated at value '%s' for '%s'. Skipping...\n", value, key)
 							continue
 						}
-						addOrUpdate(result, id, allocation{allocatedAt: allocatedAt},
+						common.AddOrUpdate(result, id, allocation{allocatedAt: allocatedAt},
 							func(existing *allocation) { existing.allocatedAt = allocatedAt })
 					} else {
 						fmt.Printf("Skipping unknown key %s\n", key)
@@ -314,16 +315,4 @@ func deleteAllAllocations(client etcd.Client) error {
 	})
 
 	return err
-}
-
-func addOrUpdate[T any](store map[string]T, id string, valueToAdd T, update func(existing *T)) {
-	existing, exists := store[id]
-	if exists {
-		if update != nil {
-			update(&existing)
-		}
-	} else {
-		existing = valueToAdd
-	}
-	store[id] = existing
 }

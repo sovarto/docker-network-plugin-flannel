@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/bridge"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
@@ -60,7 +61,7 @@ func NewNetwork(etcdClient etcd.Client, flannelID string, networkSubnet net.IPNe
 		defaultFlannelOptions: defaultFlannelOptions,
 		hostSubnetSize:        hostSubnetSize,
 		endpoints:             make(map[string]Endpoint),
-		endpointsEtcdClient:   etcdClient.CreateSubClient("endpoints"),
+		endpointsEtcdClient:   etcdClient.CreateSubClient(flannelID, "endpoints"),
 		vni:                   vni,
 	}
 
@@ -103,10 +104,45 @@ func (n *network) Delete() error {
 		return err
 	}
 
+	n.cleanupFlannelEnvFile()
+
+	if err := n.cleanupEtcdData(); err != nil {
+		return err
+	}
+
+	if err := n.cleanupInterfaces(); err != nil {
+		return err
+	}
+
+	if err := n.cleanupEndpoints(); err != nil {
+		return err
+	}
+
+	n.endpoints = map[string]Endpoint{}
+	n.localGateway = nil
+	n.hostSubnet = net.IPNet{}
+	n.mtu = 0
+
+	return nil
+}
+
+func (n *network) cleanupEndpoints() error {
+	for endpointID, endpoint := range n.endpoints {
+		if err := endpoint.Delete(); err != nil {
+			return errors.WithMessagef(err, "error deleting endpoint %s for network %s", endpointID, n.flannelID)
+		}
+	}
+	return nil
+}
+
+func (n *network) cleanupFlannelEnvFile() {
 	if err := deleteFileIfExists(n.getFlannelEnvFilename()); err != nil {
 		// Don't fail if we can't delete the flannel env file
 		log.Println(err)
 	}
+}
+
+func (n *network) cleanupEtcdData() error {
 	_, err := etcd.WithConnection(n.etcdClient, func(connection *etcd.Connection) (struct{}, error) {
 		_, err := connection.Client.Delete(connection.Ctx, n.flannelConfigSubnetKey(n.hostSubnet))
 		if err != nil {
@@ -147,10 +183,10 @@ func (n *network) Delete() error {
 		return struct{}{}, nil
 	})
 
-	if err != nil {
-		return err
-	}
+	return err
+}
 
+func (n *network) cleanupInterfaces() error {
 	flannelLinkName := fmt.Sprintf("flannel.%d", n.vni)
 	flannelLink, err := netlink.LinkByName(flannelLinkName)
 	if err != nil {
@@ -180,19 +216,6 @@ func (n *network) Delete() error {
 	if err := n.pool.ReleaseAllIPs(); err != nil {
 		return errors.WithMessagef(err, "error releasing all IPs for network %s", n.flannelID)
 	}
-
-	for endpointID, endpoint := range n.endpoints {
-		err = endpoint.Delete()
-		if err != nil {
-			return errors.WithMessagef(err, "error deleting endpoint %s for network %s", endpointID, n.flannelID)
-		}
-	}
-
-	n.endpoints = map[string]Endpoint{}
-	n.localGateway = nil
-	n.hostSubnet = net.IPNet{}
-	n.mtu = 0
-
 	return nil
 }
 
@@ -238,6 +261,17 @@ type Config struct {
 type BackendConfig struct {
 	Type string `json:"Type"`
 	VNI  int    `json:"VNI"`
+}
+
+type SubnetConfig struct {
+	PublicIP    string      `json:"PublicIP"`
+	BackendType string      `json:"BackendType"`
+	BackendData BackendData `json:"BackendData"`
+}
+
+type BackendData struct {
+	VNI     int    `json:"VNI"`
+	VtepMAC string `json:"VtepMAC"`
 }
 
 func (n *network) flannelConfigPrefixKey() string {
@@ -494,7 +528,7 @@ func (n *network) loadFlannelConfig(filename string) error {
 				return errors.WithMessagef(err, "invalid CIDR format for subnet: %s", value)
 			}
 			pool, err := ipam.NewEtcdBasedAddressPool(n.flannelID,
-				*ipNet, n.etcdClient.CreateSubClient("address-space", "host-subnets", common.SubnetToKey(ipNet.String())))
+				*ipNet, n.etcdClient.CreateSubClient(n.flannelID, "host-subnets", common.SubnetToKey(ipNet.String())))
 			if err != nil {
 				return errors.WithMessagef(err, "can't create address pool for network %s and subnet %s", n.flannelID, ipNet.String())
 			}
@@ -520,8 +554,8 @@ func (n *network) loadFlannelConfig(filename string) error {
 		return errors.WithMessagef(err, "error reading file: %s", filename)
 	}
 
-	b, err := bridge.NewBridgeInterface(n.GetInfo())
-	if err != nil {
+	b := bridge.NewBridgeInterface(n.GetInfo())
+	if err := b.Ensure(); err != nil {
 		return errors.WithMessagef(err, "error creating bridge interface")
 	}
 
@@ -596,4 +630,119 @@ func (n *network) isFlannelDaemonProcessRunning() bool {
 		return true
 	}
 	return false
+}
+
+func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.NetworkInfo) error {
+	networksToDelete := make(map[string]*network)
+	_, err := etcd.WithConnection(etcdClient, func(connection *etcd.Connection) (struct{}, error) {
+		resp, err := connection.Client.Get(connection.Ctx, etcdClient.GetKey(), clientv3.WithPrefix())
+		if err != nil {
+			return struct{}{}, errors.WithMessagef(err, "error retrieving existing networks data from etcd")
+		}
+
+		for _, kv := range resp.Kvs {
+			key := strings.TrimLeft(strings.TrimRight(string(kv.Key), etcdClient.GetKey()), "/")
+			keyParts := strings.Split(key, "/")
+			flannelNetworkID := keyParts[0]
+			if lo.SomeBy(existingNetworks, func(item common.NetworkInfo) bool {
+				return item.FlannelID == flannelNetworkID
+			}) {
+				continue
+			}
+			if len(keyParts) == 2 && keyParts[1] == "config" {
+				var configData Config
+				err := json.Unmarshal(resp.Kvs[0].Value, &configData)
+				if err != nil {
+					return struct{}{}, errors.WithMessagef(err, "error deserializing configuration of network %s", flannelNetworkID)
+				}
+
+				_, networkSubnet, err := net.ParseCIDR(configData.Network)
+				if err != nil {
+					return struct{}{}, errors.WithMessagef(err, "error parsing %s as CIDR for network %s", configData.Network, flannelNetworkID)
+				}
+
+				n := &network{
+					flannelID:           flannelNetworkID,
+					etcdClient:          etcdClient,
+					vni:                 configData.Backend.VNI,
+					networkSubnet:       *networkSubnet,
+					endpoints:           make(map[string]Endpoint),
+					hostSubnetSize:      configData.SubnetLen,
+					endpointsEtcdClient: etcdClient.CreateSubClient(flannelNetworkID, "endpoints"),
+				}
+				n.bridge = bridge.NewBridgeInterface(n.GetInfo())
+				common.AddOrUpdate(networksToDelete, flannelNetworkID, n, func(existing **network) {
+					(*existing).vni = n.vni
+					(*existing).hostSubnetSize = n.hostSubnetSize
+					(*existing).networkSubnet = n.networkSubnet
+				})
+			} else if len(keyParts) == 3 && keyParts[1] == "subnets" {
+				subnet := keyParts[2]
+				subnetParts := strings.Split(subnet, "-")
+				subnetSize := subnetParts[1]
+				_, hostSubnet, err := net.ParseCIDR(strings.ReplaceAll(subnet, "-", "/"))
+				if err != nil {
+					return struct{}{}, errors.WithMessagef(err, "error parsing subnet %s for network %s", subnet, flannelNetworkID)
+				}
+				hostSubnetSize, err := strconv.Atoi(subnetSize)
+				if err != nil {
+					return struct{}{}, errors.WithMessagef(err, "error parsing subnet size %s for network %s", subnetSize, flannelNetworkID)
+				}
+
+				pool, err := ipam.NewEtcdBasedAddressPool(flannelNetworkID, *hostSubnet, etcdClient.CreateSubClient(flannelNetworkID, "host-subnets"))
+				if err != nil {
+					return struct{}{}, errors.WithMessagef(err, "error creating address pool for network %s", flannelNetworkID)
+				}
+				var configData SubnetConfig
+				if err := json.Unmarshal(resp.Kvs[0].Value, &configData); err != nil {
+					return struct{}{}, errors.WithMessagef(err, "error deserializing subnet %s configuration of network %s", subnet, flannelNetworkID)
+				}
+
+				n := &network{
+					flannelID:           flannelNetworkID,
+					etcdClient:          etcdClient,
+					vni:                 configData.BackendData.VNI,
+					endpoints:           make(map[string]Endpoint),
+					hostSubnetSize:      hostSubnetSize,
+					hostSubnet:          *hostSubnet,
+					localGateway:        hostSubnet.IP,
+					pool:                pool,
+					endpointsEtcdClient: etcdClient.CreateSubClient(flannelNetworkID, "endpoints"),
+				}
+				n.bridge = bridge.NewBridgeInterface(n.GetInfo())
+				common.AddOrUpdate(networksToDelete, flannelNetworkID, n, func(existing **network) {
+					(*existing).vni = n.vni
+					(*existing).hostSubnetSize = n.hostSubnetSize
+					(*existing).hostSubnet = n.hostSubnet
+					(*existing).localGateway = n.localGateway
+					(*existing).pool = n.pool
+				})
+			} else if len(keyParts) == 3 && keyParts[1] == "endpoints" {
+
+			}
+		}
+
+		return struct{}{}, nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	for _, network := range networksToDelete {
+		endpoints, err := loadEndpointsFromEtcd(network.endpointsEtcdClient, network.bridge)
+		if err != nil {
+			log.Printf("error loading endpoints for stale network %s: %v", network.flannelID, err)
+		}
+		for _, endpoint := range endpoints {
+			if err := endpoint.Delete(); err != nil {
+				log.Printf("error deleting endpoint %+v for stale network %s: %v", endpoint.GetInfo(), network.flannelID, err)
+			}
+		}
+		if err := network.Delete(); err != nil {
+			log.Printf("error deleting stale network %s: %v", network.flannelID, err)
+		}
+	}
+
+	return nil
 }

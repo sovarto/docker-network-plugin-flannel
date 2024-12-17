@@ -27,11 +27,15 @@ type FlannelDriver interface {
 	Serve() error
 	Init() error
 }
-
+type etcdClients struct {
+	root         etcd.Client
+	dockerData   etcd.Client
+	serviceLbs   etcd.Client
+	addressSpace etcd.Client
+	networks     etcd.Client
+}
 type flannelDriver struct {
 	globalAddressSpace      ipam.AddressSpace
-	etcdPrefix              string
-	etcdEndPoints           []string
 	defaultFlannelOptions   []string
 	defaultHostSubnetSize   int
 	networksByFlannelID     map[string]flannel_network.Network // flannel network ID -> network
@@ -46,6 +50,7 @@ type flannelDriver struct {
 	nameserversBySandboxKey map[string]dns.Nameserver
 	nameserversByEndpointID map[string]dns.Nameserver
 	dnsResolver             dns.Resolver
+	etcdClients             etcdClients
 	sync.Mutex
 }
 
@@ -54,8 +59,6 @@ func NewFlannelDriver(
 	networkSubnetSize int, defaultHostSubnetSize int, vniStart int, dnsDockerCompatibilityMode bool) FlannelDriver {
 
 	driver := &flannelDriver{
-		etcdPrefix:              etcdPrefix,
-		etcdEndPoints:           etcdEndPoints,
 		defaultFlannelOptions:   defaultFlannelOptions,
 		defaultHostSubnetSize:   defaultHostSubnetSize,
 		networksByFlannelID:     make(map[string]flannel_network.Network),
@@ -68,6 +71,13 @@ func NewFlannelDriver(
 		nameserversBySandboxKey: make(map[string]dns.Nameserver),
 		nameserversByEndpointID: make(map[string]dns.Nameserver),
 		dnsResolver:             dns.NewResolver(dnsDockerCompatibilityMode),
+		etcdClients: etcdClients{
+			root:         getEtcdClient(etcdPrefix, "", etcdEndPoints),
+			dockerData:   getEtcdClient(etcdPrefix, "docker-data", etcdEndPoints),
+			serviceLbs:   getEtcdClient(etcdPrefix, "service-lbs", etcdEndPoints),
+			addressSpace: getEtcdClient(etcdPrefix, "address-space", etcdEndPoints),
+			networks:     getEtcdClient(etcdPrefix, "networks", etcdEndPoints),
+		},
 	}
 
 	numNetworks := countPoolSizeSubnets(completeSpace, networkSubnetSize)
@@ -95,9 +105,9 @@ func (d *flannelDriver) Serve() error {
 }
 
 func (d *flannelDriver) Init() error {
-	err := d.getEtcdClient("").WaitUntilAvailable(5*time.Second, 6)
+	err := d.etcdClients.root.WaitUntilAvailable(5*time.Second, 6)
 
-	globalAddressSpace, err := ipam.NewEtcdBasedAddressSpace(d.completeAddressSpace, d.networkSubnetSize, d.getEtcdClient("address-space"))
+	globalAddressSpace, err := ipam.NewEtcdBasedAddressSpace(d.completeAddressSpace, d.networkSubnetSize, d.etcdClients.addressSpace)
 	if err != nil {
 		return errors.WithMessage(err, "Failed to create address space")
 	}
@@ -122,14 +132,14 @@ func (d *flannelDriver) Init() error {
 		OnRemoved: d.handleNetworksRemoved,
 	}
 
-	serviceLbsManagement, err := service_lb.NewServiceLbManagement(d.getEtcdClient("service-lbs"))
+	serviceLbsManagement, err := service_lb.NewServiceLbManagement(d.etcdClients.serviceLbs)
 	if err != nil {
 		return errors.WithMessage(err, "Failed to create service lbs management")
 	}
 	d.serviceLbsManagement = serviceLbsManagement
 	fmt.Println("Initialized service load balancer management")
 
-	dockerData, err := docker.NewData(d.getEtcdClient("docker-data"), containerCallbacks, serviceCallbacks, networkCallbacks)
+	dockerData, err := docker.NewData(d.etcdClients.dockerData, containerCallbacks, serviceCallbacks, networkCallbacks)
 	if err != nil {
 		return errors.WithMessage(err, "Failed to create docker data handler")
 	}
@@ -140,6 +150,23 @@ func (d *flannelDriver) Init() error {
 		return errors.WithMessage(err, "Failed to initialize docker data handler")
 	}
 	fmt.Println("Initialized docker data handler")
+
+	existingNetworks := maps.Values(dockerData.GetNetworks().GetAll())
+	containersStore := dockerData.GetContainers()
+	existingLocalContainers, shardExists := containersStore.GetShard(containersStore.GetLocalShardKey())
+
+	existingLocalEndpoints := make(map[string]string)
+	if shardExists {
+		for _, container := range existingLocalContainers {
+			for networkID, endpointID := range container.Endpoints {
+				existingLocalEndpoints[networkID] = endpointID
+			}
+		}
+	}
+
+	if err := flannel_network.CleanupStaleNetworks(d.etcdClients.networks, existingNetworks); err != nil {
+		return errors.WithMessage(err, "Failed to cleanup stale flannel network data")
+	}
 
 	//networkCallbacks.OnAdded(lo.Map(maps.Values(dockerData.GetNetworks().GetAll()),
 	//	func(item common.NetworkInfo, index int) etcd.Item[common.NetworkInfo] {
@@ -172,8 +199,8 @@ func (d *flannelDriver) Init() error {
 	return nil
 }
 
-func (d *flannelDriver) getEtcdClient(prefix string) etcd.Client {
-	return etcd.NewEtcdClient(d.etcdEndPoints, 5*time.Second, fmt.Sprintf("%s/%s", d.etcdPrefix, prefix))
+func getEtcdClient(rootPrefix, prefix string, endPoints []string) etcd.Client {
+	return etcd.NewEtcdClient(endPoints, 5*time.Second, fmt.Sprintf("%s/%s", rootPrefix, prefix))
 }
 
 func (d *flannelDriver) getEndpoint(dockerNetworkID, endpointID string) (flannel_network.Network, flannel_network.Endpoint, error) {
@@ -265,7 +292,7 @@ func (d *flannelDriver) getOrCreateNetwork(dockerNetworkID string, flannelNetwor
 		}
 
 		vni := d.vniStart + common.Max(len(d.networksByFlannelID), len(d.networksByDockerID)) + 1
-		network, err = flannel_network.NewNetwork(d.getEtcdClient(common.SubnetToKey(networkSubnet.String())), flannelNetworkID, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions, vni)
+		network, err = flannel_network.NewNetwork(d.etcdClients.networks, flannelNetworkID, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions, vni)
 
 		if err != nil {
 			return nil, errors.WithMessagef(err, "failed to ensure network '%s' is operational", flannelNetworkID)

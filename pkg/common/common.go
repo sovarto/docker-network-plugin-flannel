@@ -56,8 +56,8 @@ func CompareIPMaps(a, b map[string]net.IP) bool {
 
 type Ordered interface {
 	~int | ~int8 | ~int16 | ~int32 | ~int64 |
-		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 |
-		~float32 | ~float64 | ~string
+	~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 |
+	~float32 | ~float64 | ~string
 }
 
 // Generic Max function
@@ -78,4 +78,16 @@ func (c NetworkInfo) Equals(other Equaler) bool {
 	}
 
 	return true
+}
+
+func AddOrUpdate[T any](store map[string]T, id string, valueToAdd T, update func(existing *T)) {
+	existing, exists := store[id]
+	if exists {
+		if update != nil {
+			update(&existing)
+		}
+	} else {
+		existing = valueToAdd
+	}
+	store[id] = existing
 }

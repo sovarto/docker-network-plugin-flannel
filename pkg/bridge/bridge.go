@@ -27,21 +27,13 @@ type bridgeInterface struct {
 	route         netlink.Route
 }
 
-func NewBridgeInterface(network common.FlannelNetworkInfo) (BridgeInterface, error) {
+func NewBridgeInterface(network common.FlannelNetworkInfo) BridgeInterface {
 	interfaceName := networking.GetInterfaceName("fl", "-", network.FlannelID)
-	result := &bridgeInterface{
+	return &bridgeInterface{
 		interfaceName: interfaceName,
 		iptablesRules: getIptablesRules(interfaceName, network.HostSubnet),
 		network:       network,
 	}
-
-	err := result.Ensure()
-
-	if err != nil {
-		return nil, errors.WithMessagef(err, "failed to ensure bridge interface for network %s", network.FlannelID)
-	}
-
-	return result, nil
 }
 
 func (b *bridgeInterface) GetNetworkInfo() common.FlannelNetworkInfo {
