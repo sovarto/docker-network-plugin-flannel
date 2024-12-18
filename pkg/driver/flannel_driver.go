@@ -195,21 +195,6 @@ func (d *flannelDriver) Init() error {
 	return nil
 }
 
-// networkID -> endpointID
-func (d *flannelDriver) getExistingLocalEndpoints() map[string]string {
-	containersStore := d.dockerData.GetContainers()
-	existingLocalContainers, shardExists := containersStore.GetShard(containersStore.GetLocalShardKey())
-	existingLocalEndpoints := make(map[string]string)
-	if shardExists {
-		for _, container := range existingLocalContainers {
-			for networkID, endpointID := range container.Endpoints {
-				existingLocalEndpoints[networkID] = endpointID
-			}
-		}
-	}
-	return existingLocalEndpoints
-}
-
 func getEtcdClient(rootPrefix, prefix string, endPoints []string) etcd.Client {
 	return etcd.NewEtcdClient(endPoints, 5*time.Second, fmt.Sprintf("%s/%s", rootPrefix, prefix))
 }
@@ -305,7 +290,7 @@ func (d *flannelDriver) getOrCreateNetwork(dockerNetworkID string, flannelNetwor
 		vni := d.vniStart + common.Max(len(d.networksByFlannelID), len(d.networksByDockerID)) + 1
 		network = flannel_network.NewNetwork(d.etcdClients.networks, flannelNetworkID, *networkSubnet, d.defaultHostSubnetSize, d.defaultFlannelOptions, vni)
 
-		if err := network.Init(maps.Values(d.getExistingLocalEndpoints())); err != nil {
+		if err := network.Init(d.dockerData); err != nil {
 			return nil, errors.WithMessagef(err, "failed to ensure network '%s' is operational", flannelNetworkID)
 		}
 	}

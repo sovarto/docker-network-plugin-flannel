@@ -36,16 +36,16 @@ func allocatedAtKey(client etcd.Client, ip string) string {
 	return fmt.Sprintf("%s/%s", allocatedIPKey(client, ip), allocatedAtKeyPart)
 }
 
-func getAllocations(client etcd.Client) (map[string]allocation, error) {
+func getAllocations(client etcd.Client) (map[string]Allocation, error) {
 	return getAllocationsByPrefix(client, allocatedIPsKey(client))
 }
 
 type IPAllocationResult struct {
 	Success    bool
-	Allocation allocation
+	Allocation Allocation
 }
 
-func releaseAllocation(client etcd.Client, r allocation) (IPAllocationResult, error) {
+func releaseAllocation(client etcd.Client, r Allocation) (IPAllocationResult, error) {
 	return etcd.WithConnection(client, func(conn *etcd.Connection) (IPAllocationResult, error) {
 		ipStr := r.ip.String()
 		key := allocatedIPKey(client, ipStr)
@@ -106,7 +106,7 @@ func releaseAllocation(client etcd.Client, r allocation) (IPAllocationResult, er
 			dataKey = string(getServiceIDResp[0].Key)
 		}
 
-		return IPAllocationResult{Success: false, Allocation: allocation{
+		return IPAllocationResult{Success: false, Allocation: Allocation{
 			ip:             r.ip,
 			allocationType: string(resp.Responses[0].GetResponseRange().Kvs[0].Value),
 			allocatedAt:    allocatedAt,
@@ -214,7 +214,7 @@ func allocateIPByCondition(client etcd.Client, ip net.IP, allocationType, dataKe
 			}
 
 			if txnResp.Succeeded {
-				return IPAllocationResult{Success: true, Allocation: allocation{
+				return IPAllocationResult{Success: true, Allocation: Allocation{
 					ip:             ip,
 					allocationType: allocationType,
 					allocatedAt:    now,
@@ -228,7 +228,7 @@ func allocateIPByCondition(client etcd.Client, ip net.IP, allocationType, dataKe
 	})
 }
 
-func readAllocation(client etcd.Client, ip string) (*allocation, error) {
+func readAllocation(client etcd.Client, ip string) (*Allocation, error) {
 	tmp, err := getAllocationsByPrefix(client, allocatedIPKey(client, ip))
 
 	if err != nil {
@@ -243,14 +243,14 @@ func readAllocation(client etcd.Client, ip string) (*allocation, error) {
 	return &r, nil
 }
 
-func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]allocation, error) {
-	return etcd.WithConnection(client, func(connection *etcd.Connection) (map[string]allocation, error) {
+func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]Allocation, error) {
+	return etcd.WithConnection(client, func(connection *etcd.Connection) (map[string]Allocation, error) {
 		resp, err := connection.Client.Get(connection.Ctx, prefix, clientv3.WithPrefix(), clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend))
 		if err != nil {
 			return nil, err
 		}
 
-		result := make(map[string]allocation)
+		result := make(map[string]Allocation)
 		for _, kv := range resp.Kvs {
 			key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
 			value := string(kv.Value)
@@ -264,8 +264,8 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 				}
 
 				common.AddOrUpdate(result, key,
-					allocation{ip: ip, allocationType: value},
-					func(existing *allocation) {
+					Allocation{ip: ip, allocationType: value},
+					func(existing *Allocation) {
 						existing.ip = ip
 						existing.allocationType = value
 					})
@@ -275,15 +275,15 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 				if len(parts) == 2 {
 					if parts[1] == dataKeyPartMac {
 						common.AddOrUpdate(result, id,
-							allocation{dataKey: string(kv.Key), data: value},
-							func(existing *allocation) {
+							Allocation{dataKey: string(kv.Key), data: value},
+							func(existing *Allocation) {
 								existing.dataKey = string(kv.Key)
 								existing.data = value
 							})
 					} else if parts[1] == dataKeyPartServiceID {
 						common.AddOrUpdate(result, id,
-							allocation{dataKey: string(kv.Key), data: value},
-							func(existing *allocation) {
+							Allocation{dataKey: string(kv.Key), data: value},
+							func(existing *Allocation) {
 								existing.dataKey = string(kv.Key)
 								existing.data = value
 							})
@@ -293,8 +293,8 @@ func getAllocationsByPrefix(client etcd.Client, prefix string) (map[string]alloc
 							fmt.Printf("Couldn't parse allocated at value '%s' for '%s'. Skipping...\n", value, key)
 							continue
 						}
-						common.AddOrUpdate(result, id, allocation{allocatedAt: allocatedAt},
-							func(existing *allocation) { existing.allocatedAt = allocatedAt })
+						common.AddOrUpdate(result, id, Allocation{allocatedAt: allocatedAt},
+							func(existing *Allocation) { existing.allocatedAt = allocatedAt })
 					} else {
 						fmt.Printf("Skipping unknown key %s\n", key)
 					}

@@ -9,6 +9,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/bridge"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/docker"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/ipam"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
@@ -27,7 +28,7 @@ import (
 )
 
 type Network interface {
-	Init(existingLocalEndpoints []string) error
+	Init(dockerData docker.Data) error
 	Ensure() error
 	GetInfo() common.FlannelNetworkInfo
 	Delete() error
@@ -68,7 +69,7 @@ func NewNetwork(etcdClient etcd.Client, flannelID string, networkSubnet net.IPNe
 	}
 }
 
-func (n *network) Init(existingLocalEndpoints []string) error {
+func (n *network) Init(dockerData docker.Data) error {
 	err := n.Ensure()
 	if err != nil {
 		return err
@@ -79,6 +80,21 @@ func (n *network) Init(existingLocalEndpoints []string) error {
 		return err
 	}
 
+	containersStore := dockerData.GetContainers()
+	existingLocalContainers, shardExists := containersStore.GetShard(containersStore.GetLocalShardKey())
+	existingLocalEndpoints := []string{}
+	existingLocalContainerIPs := []net.IP{}
+	if shardExists {
+		for _, container := range existingLocalContainers {
+			for _, endpointID := range container.Endpoints {
+				existingLocalEndpoints = append(existingLocalEndpoints, endpointID)
+			}
+			for _, containerIP := range container.IPs {
+				existingLocalContainerIPs = append(existingLocalContainerIPs, containerIP)
+			}
+		}
+	}
+
 	for _, endpoint := range endpoints {
 		endpointInfo := endpoint.GetInfo()
 		if lo.Some(existingLocalEndpoints, []string{endpointInfo.ID}) {
@@ -87,6 +103,25 @@ func (n *network) Init(existingLocalEndpoints []string) error {
 			if err := endpoint.Delete(); err != nil {
 				log.Printf("Error deleting endpoint %s: %v", endpointInfo.ID, err)
 			}
+		}
+	}
+
+	existingServiceIDs := maps.Keys(dockerData.GetServices().GetAll())
+
+	for _, allocation := range n.pool.GetAllocations() {
+		if allocation.AllocationType() == ipam.AllocationTypeContainerIP {
+			if lo.SomeBy(existingLocalContainerIPs, func(item net.IP) bool {
+				return item.Equal(allocation.Ip())
+			}) {
+				continue
+			}
+		} else if allocation.AllocationType() == ipam.AllocationTypeServiceVIP {
+			if lo.Some(existingServiceIDs, []string{allocation.Data()}) {
+				continue
+			}
+		}
+		if err := n.pool.ReleaseIP(allocation.Ip().String()); err != nil {
+			log.Printf("Error releasing allocation for IP %s: %v", allocation.Ip().String(), err)
 		}
 	}
 

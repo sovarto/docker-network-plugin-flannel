@@ -23,9 +23,10 @@ type AddressPool interface {
 	ReserveIP(random bool) (*net.IP, error)
 	ReleaseIP(ip string) error
 	ReleaseAllIPs() error
+	GetAllocations() []Allocation
 }
 
-type allocation struct {
+type Allocation struct {
 	ip             net.IP
 	allocationType string
 	allocatedAt    time.Time
@@ -33,12 +34,32 @@ type allocation struct {
 	data           string
 }
 
+func (a Allocation) AllocationType() string {
+	return a.allocationType
+}
+
+func (a Allocation) AllocatedAt() time.Time {
+	return a.allocatedAt
+}
+
+func (a Allocation) DataKey() string {
+	return a.dataKey
+}
+
+func (a Allocation) Data() string {
+	return a.data
+}
+
+func (a Allocation) Ip() net.IP {
+	return a.ip
+}
+
 type etcdPool struct {
 	poolID       string
 	poolSubnet   net.IPNet
 	etcdClient   etcd.Client
 	allIPs       []net.IP
-	allocatedIPs map[string]allocation
+	allocatedIPs map[string]Allocation
 	// The time since when this IP is unused. Not stored in etcd, because it is only for short-term
 	// prevention of rapid re-assignment of the same IP after it was just released
 	unusedIPs map[string]time.Time
@@ -74,7 +95,9 @@ func NewEtcdBasedAddressPool(poolID string, poolSubnet net.IPNet, etcdClient etc
 
 func (p *etcdPool) GetID() string            { return p.poolID }
 func (p *etcdPool) GetPoolSubnet() net.IPNet { return p.poolSubnet }
-
+func (p *etcdPool) GetAllocations() []Allocation {
+	return maps.Values(p.allocatedIPs)
+}
 func (p *etcdPool) ReserveIP(random bool) (*net.IP, error) {
 	p.Lock()
 	defer p.Unlock()
