@@ -335,7 +335,7 @@ func (n *network) ensureFlannelConfig() (struct{}, error) {
 		}
 
 		if !resp.Succeeded {
-			fmt.Printf("flannel network config for network %s was created by another node. Trying to reuse", n.flannelID)
+			fmt.Printf("flannel network config for network %s was created by another node. Trying to reuse\n", n.flannelID)
 			result, err := n.readNetworkConfig()
 			if err != nil {
 				return struct{}{}, errors.WithMessagef(err, "error reading existing flannel network config for network %s", n.flannelID)

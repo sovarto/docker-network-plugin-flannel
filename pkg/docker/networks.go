@@ -17,7 +17,7 @@ func (d *data) initNetworks() error {
 	if d.isManagerNode {
 		fmt.Println("Initializing networks on manager node...")
 		networksInfos, err := d.getNetworksInfosFromDocker()
-
+		fmt.Printf("Found docker networks: %+v \n", networksInfos)
 		err = d.networks.(etcd.WriteOnlyStore[common.NetworkInfo]).Init(networksInfos)
 		if err != nil {
 			return errors.WithMessage(err, "Error initializing networks")
