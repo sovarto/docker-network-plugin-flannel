@@ -716,9 +716,9 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 			fmt.Printf("Deleting stale bridge interface %s and associated veth pairs\n", link.Attrs().Name)
 			for _, maybeVeth := range links {
 				if maybeVeth.Attrs().MasterIndex == link.Attrs().Index {
-					veth, ok := link.(*netlink.Veth)
+					veth, ok := maybeVeth.(*netlink.Veth)
 					if !ok {
-						fmt.Printf("Interface %s isn't a veth interface: %v\n", maybeVeth.Attrs().Name, err)
+						fmt.Printf("Interface %s isn't a veth interface. attr: %+v: %v\n", maybeVeth.Attrs().Name, maybeVeth.Attrs(), err)
 						continue
 					}
 
