@@ -700,9 +700,47 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 	validFlannelInterfaces := lo.Map(maps.Keys(knownNetworksVNIs), func(item int, index int) string {
 		return fmt.Sprintf("flannel.%d", item)
 	})
+	validBridgeInterfaces := lo.Map(maps.Values(knownNetworksVNIs), func(item string, index int) string {
+		return bridge.GetBridgeInterfaceName(item)
+	})
 	for _, link := range links {
 		if !lo.Some(validFlannelInterfaces, []string{link.Attrs().Name}) {
 			fmt.Printf("Deleting stale flannel network interface %s\n", link.Attrs().Name)
+			err := netlink.LinkDel(link)
+			if err != nil {
+				log.Printf("error deleting flannel network interface %s: %+v", link.Attrs().Name, err)
+			}
+		}
+
+		if !lo.Some(validBridgeInterfaces, []string{link.Attrs().Name}) {
+			fmt.Printf("Deleting stale bridge interface %s and associated vEth pairs\n", link.Attrs().Name)
+			for _, maybeVeth := range links {
+				if maybeVeth.Attrs().MasterIndex == link.Attrs().Index {
+					veth, ok := link.(*netlink.Veth)
+					if !ok {
+						fmt.Printf("Interface %s isn't a veth interface: %v\n", maybeVeth.Attrs().Name, err)
+						continue
+					}
+
+					peerLink, err := netlink.LinkByName(veth.PeerName)
+					if err != nil {
+						fmt.Printf("Failed to get peer interface of %s: %v\n", veth.Attrs().Name, err)
+						continue
+					}
+
+					if err := netlink.LinkDel(veth); err != nil {
+						log.Printf("error deleting outside interface of veth pair (%s) of flannel network bridge interface %s: %+v", veth.Attrs().Name, link.Attrs().Name, err)
+					}
+
+					if err := netlink.LinkDel(peerLink); err != nil {
+						log.Printf("error deleting inside interface of veth pair (%s) of flannel network bridge interface %s: %+v", peerLink.Attrs().Name, link.Attrs().Name, err)
+					}
+				}
+			}
+			err := netlink.LinkDel(link)
+			if err != nil {
+				log.Printf("error deleting flannel network bridge interface %s: %+v", link.Attrs().Name, err)
+			}
 		}
 	}
 

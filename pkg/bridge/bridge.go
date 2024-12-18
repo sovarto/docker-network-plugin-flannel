@@ -28,12 +28,16 @@ type bridgeInterface struct {
 }
 
 func NewBridgeInterface(network common.FlannelNetworkInfo) BridgeInterface {
-	interfaceName := networking.GetInterfaceName("fl", "-", network.FlannelID)
+	interfaceName := GetBridgeInterfaceName(network.FlannelID)
 	return &bridgeInterface{
 		interfaceName: interfaceName,
 		iptablesRules: getIptablesRules(interfaceName, network.HostSubnet),
 		network:       network,
 	}
+}
+
+func GetBridgeInterfaceName(flannelNetworkID string) string {
+	return networking.GetInterfaceName("fl", "-", flannelNetworkID)
 }
 
 func Hydrate(network common.FlannelNetworkInfo) (BridgeInterface, error) {
