@@ -204,7 +204,7 @@ func generateRandomSuffix(length int) (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func CleanUpStaleFwmarks(etcdClient etcd.Client, existingServices []string) ([]uint32, error) {
+func cleanUpStaleFwmarks(etcdClient etcd.Client, existingServices []string) ([]uint32, error) {
 	return etcd.WithConnection(etcdClient, func(connection *etcd.Connection) ([]uint32, error) {
 		fwmarks := map[string]uint32{}
 		prefix := etcdClient.GetKey()
@@ -238,7 +238,8 @@ func CleanUpStaleFwmarks(etcdClient etcd.Client, existingServices []string) ([]u
 				}
 				fwmarks[serviceID] = uint32(parsedFwmark)
 
-				_, err = connection.Client.Get(connection.Ctx, string(kv.Key))
+				fmt.Printf("Deleting fwmark data at %s for non-existing service %s\n", string(kv.Key), serviceID)
+				_, err = connection.Client.Delete(connection.Ctx, string(kv.Key))
 				if err != nil {
 					log.Printf("Failed to delete stale fwmark data at %s: %v", string(kv.Key), err)
 				}

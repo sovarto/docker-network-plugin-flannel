@@ -335,11 +335,12 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 }
 
 func CleanUpStaleLoadBalancers(etcdClient etcd.Client, existingServices []string) error {
+	fmt.Println("Cleaning up stale load balancers")
 	hostname, err := os.Hostname()
 	if err != nil {
 		return errors.WithMessage(err, "error getting hostname")
 	}
-	staleFwmarks, err := CleanUpStaleFwmarks(etcdClient.CreateSubClient(hostname, "fwmarks"), existingServices)
+	staleFwmarks, err := cleanUpStaleFwmarks(etcdClient.CreateSubClient(hostname, "fwmarks"), existingServices)
 	if err != nil {
 		return errors.WithMessage(err, "error cleaning up stale fwmarks")
 	}
