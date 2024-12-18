@@ -14,6 +14,7 @@ import (
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
 	"github.com/vishvananda/netlink"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"golang.org/x/exp/maps"
 	"log"
 	"net"
 	"os"
@@ -637,7 +638,8 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 	if err != nil {
 		return err
 	}
-	networksToDelete := make(map[string]*network)
+
+	knownNetworksVNIs := map[int]string{}
 	_, err = etcd.WithConnection(etcdClient, func(connection *etcd.Connection) (struct{}, error) {
 		resp, err := connection.Client.Get(connection.Ctx, etcdClient.GetKey(), clientv3.WithPrefix())
 		if err != nil {
@@ -649,62 +651,29 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 			fmt.Printf("Found key %s\n", key)
 			keyParts := strings.Split(key, "/")
 			flannelNetworkID := keyParts[0]
-			if lo.SomeBy(existingNetworks, func(item common.NetworkInfo) bool {
+			if !lo.SomeBy(existingNetworks, func(item common.NetworkInfo) bool {
 				return item.FlannelID == flannelNetworkID
 			}) {
+				fmt.Printf("Deleting data of stale network %s\n", flannelNetworkID)
+				_, err := connection.Client.Delete(connection.Ctx, etcdClient.GetKey(flannelNetworkID), clientv3.WithPrefix())
+				if err != nil {
+					log.Printf("error deleting flannel network %s: %v", flannelNetworkID, err)
+				}
 				continue
 			}
 			if len(keyParts) == 2 && keyParts[1] == "config" {
 				var configData Config
 				err := json.Unmarshal(resp.Kvs[0].Value, &configData)
 				if err != nil {
-					return struct{}{}, errors.WithMessagef(err, "error deserializing configuration of network %s", flannelNetworkID)
+					log.Printf("error deserializing configuration of network %s: %+v", flannelNetworkID, err)
+					continue
 				}
-
-				_, networkSubnet, err := net.ParseCIDR(configData.Network)
-				if err != nil {
-					return struct{}{}, errors.WithMessagef(err, "error parsing %s as CIDR for network %s", configData.Network, flannelNetworkID)
-				}
-
-				n := &network{
-					flannelID:           flannelNetworkID,
-					etcdClient:          etcdClient,
-					vni:                 configData.Backend.VNI,
-					networkSubnet:       *networkSubnet,
-					endpoints:           make(map[string]Endpoint),
-					hostSubnetSize:      configData.SubnetLen,
-					endpointsEtcdClient: etcdClient.CreateSubClient(flannelNetworkID, "endpoints"),
-				}
-				b, err := bridge.Hydrate(n.GetInfo())
-				if err != nil {
-					return struct{}{}, errors.WithMessagef(err, "error hydrating bridge interface for network %s", flannelNetworkID)
-				}
-				n.bridge = b
-				common.AddOrUpdate(networksToDelete, flannelNetworkID, n, func(existing **network) {
-					(*existing).vni = n.vni
-					(*existing).hostSubnetSize = n.hostSubnetSize
-					(*existing).networkSubnet = n.networkSubnet
-				})
+				knownNetworksVNIs[configData.Backend.VNI] = flannelNetworkID
 			} else if len(keyParts) == 3 && keyParts[1] == "subnets" {
-				subnet := keyParts[2]
-				subnetParts := strings.Split(subnet, "-")
-				subnetSize := subnetParts[1]
-				_, hostSubnet, err := net.ParseCIDR(strings.ReplaceAll(subnet, "-", "/"))
-				if err != nil {
-					return struct{}{}, errors.WithMessagef(err, "error parsing subnet %s for network %s", subnet, flannelNetworkID)
-				}
-				hostSubnetSize, err := strconv.Atoi(subnetSize)
-				if err != nil {
-					return struct{}{}, errors.WithMessagef(err, "error parsing subnet size %s for network %s", subnetSize, flannelNetworkID)
-				}
-
-				pool, err := ipam.NewEtcdBasedAddressPool(flannelNetworkID, *hostSubnet, etcdClient.CreateSubClient(flannelNetworkID, "host-subnets"))
-				if err != nil {
-					return struct{}{}, errors.WithMessagef(err, "error creating address pool for network %s", flannelNetworkID)
-				}
 				var configData SubnetConfig
 				if err := json.Unmarshal(resp.Kvs[0].Value, &configData); err != nil {
-					return struct{}{}, errors.WithMessagef(err, "error deserializing subnet %s configuration of network %s", subnet, flannelNetworkID)
+					log.Printf("error deserializing subnet %s configuration of network %s: %+v", keyParts[2], flannelNetworkID, err)
+					continue
 				}
 
 				_, isLocalIP := localIPs[configData.PublicIP]
@@ -712,25 +681,7 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 					continue
 				}
 
-				n := &network{
-					flannelID:           flannelNetworkID,
-					etcdClient:          etcdClient,
-					vni:                 configData.BackendData.VNI,
-					endpoints:           make(map[string]Endpoint),
-					hostSubnetSize:      hostSubnetSize,
-					hostSubnet:          *hostSubnet,
-					localGateway:        hostSubnet.IP,
-					pool:                pool,
-					endpointsEtcdClient: etcdClient.CreateSubClient(flannelNetworkID, "endpoints"),
-				}
-				n.bridge = bridge.NewBridgeInterface(n.GetInfo())
-				common.AddOrUpdate(networksToDelete, flannelNetworkID, n, func(existing **network) {
-					(*existing).vni = n.vni
-					(*existing).hostSubnetSize = n.hostSubnetSize
-					(*existing).hostSubnet = n.hostSubnet
-					(*existing).localGateway = n.localGateway
-					(*existing).pool = n.pool
-				})
+				knownNetworksVNIs[configData.BackendData.VNI] = flannelNetworkID
 			}
 		}
 
@@ -741,19 +692,17 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 		return err
 	}
 
-	for _, network := range networksToDelete {
-		fmt.Printf("Deleting stale network %s\n", network.flannelID)
-		endpoints, err := loadEndpointsFromEtcd(network.endpointsEtcdClient, network.bridge)
-		if err != nil {
-			log.Printf("error loading endpoints for stale network %s: %v", network.flannelID, err)
-		}
-		for _, endpoint := range endpoints {
-			if err := endpoint.Delete(); err != nil {
-				log.Printf("error deleting endpoint %+v for stale network %s: %v", endpoint.GetInfo(), network.flannelID, err)
-			}
-		}
-		if err := network.Delete(); err != nil {
-			log.Printf("error deleting stale network %s: %v", network.flannelID, err)
+	links, err := netlink.LinkList()
+	if err != nil {
+		return errors.WithMessage(err, "error listing network interfaces when cleaning up stale networks")
+	}
+
+	validFlannelInterfaces := lo.Map(maps.Keys(knownNetworksVNIs), func(item int, index int) string {
+		return fmt.Sprintf("flannel.%d", item)
+	})
+	for _, link := range links {
+		if !lo.Some(validFlannelInterfaces, []string{link.Attrs().Name}) {
+			fmt.Printf("Deleting stale flannel network interface %s\n", link.Attrs().Name)
 		}
 	}
 
