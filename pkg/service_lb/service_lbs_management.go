@@ -380,14 +380,19 @@ func CleanUpStaleLoadBalancers(etcdClient etcd.Client, existingServices []string
 			return strings.Contains(item, hexFwmark)
 		})
 
-		for _, rule := range iptablesRulesForFwmark {
-			if err := iptables.Delete("mangle", "PREROUTING", rule); err != nil {
+		for _, rawRule := range iptablesRulesForFwmark {
+			rule := strings.Fields(rawRule)[2:]
+			if len(rule) == 0 {
+				continue
+			}
+			if err := iptables.Delete("mangle", "PREROUTING", rule...); err != nil {
 				log.Printf("Error deleting iptables rule: %s, err: %v\n", rule, err)
 			}
 		}
 	}
+
 	_, err = etcd.WithConnection(etcdClient, func(connection *etcd.Connection) (struct{}, error) {
-		prefix := etcdClient.GetKey("data")
+		prefix := etcdClient.GetKey(hostname, "data")
 		resp, err := connection.Client.Get(connection.Ctx, prefix, clientv3.WithPrefix())
 		if err != nil {
 			return struct{}{}, errors.WithMessagef(err, "error retrieving existing networks data from etcd")
