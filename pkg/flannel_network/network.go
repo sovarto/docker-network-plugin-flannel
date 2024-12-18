@@ -704,7 +704,7 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 		return bridge.GetBridgeInterfaceName(item)
 	})
 	for _, link := range links {
-		if !lo.Some(validFlannelInterfaces, []string{link.Attrs().Name}) {
+		if strings.Index(link.Attrs().Name, "flannel") == 0 && !lo.Some(validFlannelInterfaces, []string{link.Attrs().Name}) {
 			fmt.Printf("Deleting stale flannel network interface %s\n", link.Attrs().Name)
 			err := netlink.LinkDel(link)
 			if err != nil {
@@ -712,8 +712,8 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 			}
 		}
 
-		if !lo.Some(validBridgeInterfaces, []string{link.Attrs().Name}) {
-			fmt.Printf("Deleting stale bridge interface %s and associated vEth pairs\n", link.Attrs().Name)
+		if strings.Index(link.Attrs().Name, "fl-") == 0 && !lo.Some(validBridgeInterfaces, []string{link.Attrs().Name}) {
+			fmt.Printf("Deleting stale bridge interface %s and associated veth pairs\n", link.Attrs().Name)
 			for _, maybeVeth := range links {
 				if maybeVeth.Attrs().MasterIndex == link.Attrs().Index {
 					veth, ok := link.(*netlink.Veth)
