@@ -54,8 +54,8 @@ type network struct {
 	sync.Mutex
 }
 
-func NewNetwork(etcdClient etcd.Client, flannelID string, networkSubnet net.IPNet, hostSubnetSize int, defaultFlannelOptions []string, vni int) (Network, error) {
-	result := &network{
+func NewNetwork(etcdClient etcd.Client, flannelID string, networkSubnet net.IPNet, hostSubnetSize int, defaultFlannelOptions []string, vni int) Network {
+	return &network{
 		flannelID:             flannelID,
 		etcdClient:            etcdClient,
 		networkSubnet:         networkSubnet,
@@ -65,22 +65,32 @@ func NewNetwork(etcdClient etcd.Client, flannelID string, networkSubnet net.IPNe
 		endpointsEtcdClient:   etcdClient.CreateSubClient(flannelID, "endpoints"),
 		vni:                   vni,
 	}
+}
 
-	err := result.Ensure()
+func (n *network) Init(existingLocalEndpoints []string) error {
+	err := n.Ensure()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	endpoints, err := loadEndpointsFromEtcd(result.endpointsEtcdClient, result.bridge)
+	endpoints, err := loadEndpointsFromEtcd(n.endpointsEtcdClient, n.bridge)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	for _, endpoint := range endpoints {
-		result.endpoints[endpoint.GetInfo().ID] = endpoint
+		endpointInfo := endpoint.GetInfo()
+		if lo.Some(existingLocalEndpoints, []string{endpointInfo.ID}) {
+			n.endpoints[endpointInfo.ID] = endpoint
+		} else {
+			if err := endpoint.Delete(); err != nil {
+				log.Printf("Error deleting endpoint %s: %v", endpointInfo.ID, err)
+			}
+		}
 	}
 
-	return result, nil
+	return nil
+
 }
 
 func (n *network) GetInfo() common.FlannelNetworkInfo {
