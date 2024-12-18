@@ -288,16 +288,14 @@ func CleanUpStaleInterfaces(validFlannelNetworkIDs []string) error {
 }
 
 func deleteIptablesRules(interfaceName string) error {
-	// List of tables and chains to check
-	tables := []string{"nat", "filter"}
-	chains := []string{"POSTROUTING", "FORWARD", "DOCKER", "DOCKER-ISOLATION-STAGE-1", "DOCKER-ISOLATION-STAGE-2"}
+	tableChains := map[string][]string{"nat": {"POSTROUTING", "DOCKER"}, "filter": {"FORWARD", "DOCKER-ISOLATION-STAGE-1", "DOCKER-ISOLATION-STAGE-2"}}
 
 	ipt, err := iptables.New()
 	if err != nil {
 		return fmt.Errorf("failed to initialize iptables: %v", err)
 	}
 
-	for _, table := range tables {
+	for table, chains := range tableChains {
 		for _, chain := range chains {
 			// List rules for the given table and chain
 			rules, err := ipt.List(table, chain)

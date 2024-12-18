@@ -715,6 +715,8 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 		}
 	}
 
+	// TODO: Clean up ip tables rules created by flannel
+
 	if err := bridge.CleanUpStaleInterfaces(maps.Values(knownNetworksVNIs)); err != nil {
 		return errors.WithMessage(err, "error cleaning up stale network interfaces")
 	}
