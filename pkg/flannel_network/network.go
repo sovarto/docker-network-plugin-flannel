@@ -27,6 +27,7 @@ import (
 )
 
 type Network interface {
+	Init(existingLocalEndpoints []string) error
 	Ensure() error
 	GetInfo() common.FlannelNetworkInfo
 	Delete() error
@@ -90,7 +91,6 @@ func (n *network) Init(existingLocalEndpoints []string) error {
 	}
 
 	return nil
-
 }
 
 func (n *network) GetInfo() common.FlannelNetworkInfo {
