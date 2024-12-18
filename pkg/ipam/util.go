@@ -63,8 +63,8 @@ func ipToInt(ip net.IP) (uint32, error) {
 	return uint32(ipv4[0])<<24 | uint32(ipv4[1])<<16 | uint32(ipv4[2])<<8 | uint32(ipv4[3]), nil
 }
 
-func getLastReservedIP(reservations map[string]allocation) (net.IP, error) {
-	var lastReserved allocation
+func getLastReservedIP(reservations map[string]Allocation) (net.IP, error) {
+	var lastReserved Allocation
 	var found bool
 
 	for _, res := range reservations {
@@ -113,7 +113,7 @@ func sortIPs(ips []net.IP) ([]net.IP, error) {
 	return sorted, nil
 }
 
-func getNextAvailableIP(availableUnusedIPs []net.IP, reservedIPs map[string]allocation) (net.IP, error) {
+func getNextAvailableIP(availableUnusedIPs []net.IP, reservedIPs map[string]Allocation) (net.IP, error) {
 	if len(availableUnusedIPs) == 0 {
 		return nil, fmt.Errorf("no available unused IPs")
 	}
