@@ -65,5 +65,7 @@ Services
 6. Re-patch DNS into all running containers that are connected to our networks
 
 # TODO
-- Delete network: Make sure flannel interface is gone or at least no longer listens on the IP address
-- 
+- Race conditions:
+  - Restart server: etcd-Container are not found and logged in etcd
+  - Creating network while plugin is still initializing misses it at first and then sometimes starts two flannel processes
+

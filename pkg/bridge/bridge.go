@@ -2,7 +2,9 @@ package bridge
 
 import (
 	"fmt"
+	"github.com/coreos/go-iptables/iptables"
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
 	"github.com/vishvananda/netlink"
@@ -28,7 +30,7 @@ type bridgeInterface struct {
 }
 
 func NewBridgeInterface(network common.FlannelNetworkInfo) BridgeInterface {
-	interfaceName := GetBridgeInterfaceName(network.FlannelID)
+	interfaceName := getBridgeInterfaceName(network.FlannelID)
 	return &bridgeInterface{
 		interfaceName: interfaceName,
 		iptablesRules: getIptablesRules(interfaceName, network.HostSubnet),
@@ -36,7 +38,7 @@ func NewBridgeInterface(network common.FlannelNetworkInfo) BridgeInterface {
 	}
 }
 
-func GetBridgeInterfaceName(flannelNetworkID string) string {
+func getBridgeInterfaceName(flannelNetworkID string) string {
 	return networking.GetInterfaceName("fl", "-", flannelNetworkID)
 }
 
@@ -231,6 +233,90 @@ func patchBridge(bridge netlink.Link) error {
 	_, err := req.Execute(unix.NETLINK_ROUTE, 0)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func CleanUpStaleInterfaces(validFlannelNetworkIDs []string) error {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return errors.WithMessage(err, "error listing network interfaces when cleaning up stale networks")
+	}
+
+	validBridgeInterfaces := lo.Map(validFlannelNetworkIDs, func(item string, index int) string {
+		return getBridgeInterfaceName(item)
+	})
+	for _, link := range links {
+		if strings.Index(link.Attrs().Name, "fl-") == 0 && !lo.Some(validBridgeInterfaces, []string{link.Attrs().Name}) {
+			fmt.Printf("Deleting stale bridge interface %s and associated veth pairs\n", link.Attrs().Name)
+			for _, maybeVeth := range links {
+				if maybeVeth.Attrs().MasterIndex == link.Attrs().Index {
+					veth, ok := maybeVeth.(*netlink.Veth)
+					if !ok {
+						fmt.Printf("Interface %s isn't a veth interface. attr: %+v: %v\n", maybeVeth.Attrs().Name, maybeVeth.Attrs(), err)
+						continue
+					}
+
+					peerLink, err := netlink.LinkByName(veth.PeerName)
+					if err != nil {
+						fmt.Printf("Failed to get peer interface of %s: %v\n", veth.Attrs().Name, err)
+						continue
+					}
+
+					if err := netlink.LinkDel(veth); err != nil {
+						log.Printf("error deleting outside interface of veth pair (%s) of flannel network bridge interface %s: %+v", veth.Attrs().Name, link.Attrs().Name, err)
+					}
+
+					if err := netlink.LinkDel(peerLink); err != nil {
+						log.Printf("error deleting inside interface of veth pair (%s) of flannel network bridge interface %s: %+v", peerLink.Attrs().Name, link.Attrs().Name, err)
+					}
+				}
+			}
+
+			if err := netlink.LinkDel(link); err != nil {
+				log.Printf("error deleting flannel network bridge interface %s: %+v", link.Attrs().Name, err)
+			}
+
+			if err := deleteIptablesRules(link.Attrs().Name); err != nil {
+				log.Printf("error deleting iptables rules for interface %s: %+v", link.Attrs().Name, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func deleteIptablesRules(interfaceName string) error {
+	// List of tables and chains to check
+	tables := []string{"nat", "filter"}
+	chains := []string{"POSTROUTING", "FORWARD", "DOCKER", "DOCKER-ISOLATION-STAGE-1", "DOCKER-ISOLATION-STAGE-2"}
+
+	ipt, err := iptables.New()
+	if err != nil {
+		return fmt.Errorf("failed to initialize iptables: %v", err)
+	}
+
+	for _, table := range tables {
+		for _, chain := range chains {
+			// List rules for the given table and chain
+			rules, err := ipt.List(table, chain)
+			if err != nil {
+				return fmt.Errorf("failed to list iptables rules for table %s, chain %s: %v", table, chain, err)
+			}
+
+			for _, rule := range rules {
+				if strings.Contains(rule, interfaceName) {
+					fields := strings.Fields(rule)
+					if len(fields) > 2 && fields[0] == "-A" {
+						fields = fields[2:]
+					}
+					if err := ipt.Delete(table, chain, fields...); err != nil {
+						return fmt.Errorf("failed to delete rule for table %s, chain %s: %v", table, chain, err)
+					}
+				}
+			}
+		}
 	}
 
 	return nil
