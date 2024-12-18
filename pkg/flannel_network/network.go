@@ -646,19 +646,15 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 			return struct{}{}, errors.WithMessagef(err, "error retrieving existing networks data from etcd")
 		}
 
+		networksToDelete := map[string]struct{}{}
 		for _, kv := range resp.Kvs {
 			key := strings.TrimLeft(strings.TrimLeft(string(kv.Key), etcdClient.GetKey()), "/")
-			fmt.Printf("Found key %s\n", key)
 			keyParts := strings.Split(key, "/")
 			flannelNetworkID := keyParts[0]
 			if !lo.SomeBy(existingNetworks, func(item common.NetworkInfo) bool {
 				return item.FlannelID == flannelNetworkID
 			}) {
-				fmt.Printf("Deleting data of stale network %s\n", flannelNetworkID)
-				_, err := connection.Client.Delete(connection.Ctx, etcdClient.GetKey(flannelNetworkID), clientv3.WithPrefix())
-				if err != nil {
-					log.Printf("error deleting flannel network %s: %v", flannelNetworkID, err)
-				}
+				networksToDelete[flannelNetworkID] = struct{}{}
 				continue
 			}
 			if len(keyParts) == 2 && keyParts[1] == "config" {
@@ -682,6 +678,14 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 				}
 
 				knownNetworksVNIs[configData.BackendData.VNI] = flannelNetworkID
+			}
+		}
+
+		for flannelNetworkID, _ := range networksToDelete {
+			fmt.Printf("Deleting data of stale network %s\n", flannelNetworkID)
+			_, err := connection.Client.Delete(connection.Ctx, etcdClient.GetKey(flannelNetworkID), clientv3.WithPrefix())
+			if err != nil {
+				log.Printf("error deleting flannel network %s: %v", flannelNetworkID, err)
 			}
 		}
 
