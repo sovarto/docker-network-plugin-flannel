@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"golang.org/x/exp/maps"
 	"hash/crc32"
 	"log"
 	"strconv"
@@ -200,4 +202,51 @@ func generateRandomSuffix(length int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+func CleanUpStaleFwmarks(etcdClient etcd.Client, existingServices []string) ([]uint32, error) {
+	return etcd.WithConnection(etcdClient, func(connection *etcd.Connection) ([]uint32, error) {
+		fwmarks := map[string]uint32{}
+		prefix := etcdClient.GetKey()
+		resp, err := connection.Client.Get(connection.Ctx, prefix, clientv3.WithPrefix())
+		if err != nil {
+			return nil, errors.WithMessage(err, "failed to get fwmarks data from etcd")
+		}
+
+		for _, kv := range resp.Kvs {
+			key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
+			keyParts := strings.Split(key, "/")
+			if len(keyParts) == 3 {
+				var serviceID string
+				var fwmarkStr string
+				if keyParts[1] == "by-service" {
+					serviceID = keyParts[2]
+					fwmarkStr = string(kv.Value)
+				} else {
+					serviceID = string(kv.Value)
+					fwmarkStr = keyParts[2]
+				}
+
+				if lo.Some(existingServices, []string{serviceID}) {
+					continue
+				}
+
+				parsedFwmark, err := strconv.ParseUint(fwmarkStr, 10, 32)
+				if err != nil {
+					log.Printf("Failed to parse existing fwmark %s, skipping: %v", string(kv.Key), err)
+					continue
+				}
+				fwmarks[serviceID] = uint32(parsedFwmark)
+
+				_, err = connection.Client.Get(connection.Ctx, string(kv.Key))
+				if err != nil {
+					log.Printf("Failed to delete stale fwmark data at %s: %v", string(kv.Key), err)
+				}
+			} else {
+				fmt.Printf("Ignoring unknown key %s\n", string(kv.Key))
+			}
+		}
+
+		return maps.Values(fwmarks), nil
+	})
 }

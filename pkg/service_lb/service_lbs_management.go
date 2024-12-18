@@ -2,16 +2,20 @@ package service_lb
 
 import (
 	"fmt"
+	"github.com/coreos/go-iptables/iptables"
+	"github.com/moby/ipvs"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/flannel_network"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"golang.org/x/exp/maps"
 	"log"
 	"net"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -328,4 +332,79 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 	service.SetVIPs(data.FrontendIPs)
 
 	return nil
+}
+
+func CleanUpStaleLoadBalancers(etcdClient etcd.Client, existingServices []string) error {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return errors.WithMessage(err, "error getting hostname")
+	}
+	staleFwmarks, err := CleanUpStaleFwmarks(etcdClient.CreateSubClient(hostname, "fwmarks"), existingServices)
+	if err != nil {
+		return errors.WithMessage(err, "error cleaning up stale fwmarks")
+	}
+
+	iptables, err := iptables.New()
+	if err != nil {
+		return errors.WithMessage(err, "Error creating iptables handle")
+	}
+
+	ipvsHandle, err := ipvs.New("")
+	if err != nil {
+		return errors.WithMessage(err, "Error creating IPVS handle")
+	}
+	defer ipvsHandle.Close()
+
+	ipvsServices, err := ipvsHandle.GetServices()
+	if err != nil {
+		return errors.WithMessage(err, "Error getting IPVS services")
+	}
+	iptableRules, err := iptables.List("mangle", "PREROUTING")
+	if err != nil {
+		return errors.WithMessage(err, "Error getting iptables rules")
+	}
+
+	for _, staleFwmark := range staleFwmarks {
+		ipvsServicesForFwmark := lo.Filter(ipvsServices, func(item *ipvs.Service, index int) bool {
+			return item.FWMark == staleFwmark
+		})
+
+		for _, ipvsService := range ipvsServicesForFwmark {
+			if err := ipvsHandle.DelService(ipvsService); err != nil {
+				log.Printf("Error deleting ipvs service for fwmark %d: %v\n", staleFwmark, err)
+			}
+		}
+
+		hexFwmark := fmt.Sprintf("0x%08x", staleFwmark)
+		iptablesRulesForFwmark := lo.Filter(iptableRules, func(item string, index int) bool {
+			return strings.Contains(item, hexFwmark)
+		})
+
+		for _, rule := range iptablesRulesForFwmark {
+			if err := iptables.Delete("mangle", "PREROUTING", rule); err != nil {
+				log.Printf("Error deleting iptables rule: %s, err: %v\n", rule, err)
+			}
+		}
+	}
+	_, err = etcd.WithConnection(etcdClient, func(connection *etcd.Connection) (struct{}, error) {
+		prefix := etcdClient.GetKey("data")
+		resp, err := connection.Client.Get(connection.Ctx, prefix, clientv3.WithPrefix())
+		if err != nil {
+			return struct{}{}, errors.WithMessagef(err, "error retrieving existing networks data from etcd")
+		}
+
+		for _, kv := range resp.Kvs {
+			key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
+			if !lo.Some(existingServices, []string{key}) {
+				_, err = connection.Client.Delete(connection.Ctx, string(kv.Key))
+				if err != nil {
+					log.Printf("Error deleting key %s, err: %v\n", string(kv.Key), err)
+				}
+			}
+		}
+
+		return struct{}{}, nil
+	})
+
+	return err
 }

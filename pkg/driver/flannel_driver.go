@@ -154,6 +154,7 @@ func (d *flannelDriver) Init() error {
 	existingNetworks := maps.Values(dockerData.GetNetworks().GetAll())
 	containersStore := dockerData.GetContainers()
 	existingLocalContainers, shardExists := containersStore.GetShard(containersStore.GetLocalShardKey())
+	existingServices := maps.Values(dockerData.GetServices().GetAll())
 
 	existingLocalEndpoints := make(map[string]string)
 	if shardExists {
@@ -166,6 +167,12 @@ func (d *flannelDriver) Init() error {
 
 	if err := flannel_network.CleanupStaleNetworks(d.etcdClients.networks, existingNetworks); err != nil {
 		return errors.WithMessage(err, "Failed to cleanup stale flannel network data")
+	}
+
+	if err := service_lb.CleanUpStaleLoadBalancers(d.etcdClients.serviceLbs, lo.Map(existingServices, func(item docker.ServiceInfo, index int) string {
+		return item.ID
+	})); err != nil {
+		return errors.WithMessage(err, "Failed to cleanup stale service load balancers")
 	}
 
 	//networkCallbacks.OnAdded(lo.Map(maps.Values(dockerData.GetNetworks().GetAll()),

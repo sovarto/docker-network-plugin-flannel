@@ -57,6 +57,9 @@ func (d *data) getContainersInfosFromDocker() (containerInfos map[string]Contain
 			log.Printf("Error getting container info for container with ID %s. Skipping...\n", container.ID)
 			continue
 		}
+		if len(containerInfo.IPs) == 0 {
+			continue
+		}
 		containerInfos[containerInfo.ID] = *containerInfo
 	}
 
