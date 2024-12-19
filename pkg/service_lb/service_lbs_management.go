@@ -360,10 +360,16 @@ func CleanUpStaleLoadBalancers(etcdClient etcd.Client, existingServices []string
 	if err != nil {
 		return errors.WithMessage(err, "Error getting IPVS services")
 	}
-	iptableRules, err := iptables.List("mangle", "PREROUTING")
+	iptablesRulesMangle, err := iptables.List("mangle", "PREROUTING")
 	if err != nil {
-		return errors.WithMessage(err, "Error getting iptables rules")
+		return errors.WithMessage(err, "Error getting iptables rules for table mangle")
 	}
+	iptablesRulesNat, err := iptables.List("nat", "POSTROUTING")
+	if err != nil {
+		return errors.WithMessage(err, "Error getting iptables rules for table nat")
+	}
+
+	iptablesRules := append(iptablesRulesMangle, iptablesRulesNat...)
 
 	for _, staleFwmark := range staleFwmarks {
 		ipvsServicesForFwmark := lo.Filter(ipvsServices, func(item *ipvs.Service, index int) bool {
@@ -377,7 +383,7 @@ func CleanUpStaleLoadBalancers(etcdClient etcd.Client, existingServices []string
 		}
 
 		hexFwmark := fmt.Sprintf("0x%08x", staleFwmark)
-		iptablesRulesForFwmark := lo.Filter(iptableRules, func(item string, index int) bool {
+		iptablesRulesForFwmark := lo.Filter(iptablesRules, func(item string, index int) bool {
 			return strings.Contains(item, hexFwmark)
 		})
 
