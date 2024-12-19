@@ -102,7 +102,7 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 		}
 		networkID := networkData.NetworkID
 		if networkData.IPAddress == "" {
-			log.Printf("Found network %s without IP", networkID)
+			log.Printf("Container %s had network %s without IP", container.ID, networkID)
 			continue
 		}
 		ip := net.ParseIP(networkData.IPAddress)

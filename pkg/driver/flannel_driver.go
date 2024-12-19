@@ -150,9 +150,11 @@ func (d *flannelDriver) Init() error {
 		return errors.WithMessage(err, "Failed to initialize docker data handler")
 	}
 	fmt.Println("Initialized docker data handler")
-
 	existingNetworks := maps.Values(dockerData.GetNetworks().GetAll())
 	existingServices := maps.Values(dockerData.GetServices().GetAll())
+
+	fmt.Printf("Existing networks: %v\n", existingNetworks
+	fmt.Printf("Existing services: %v\n", existingServices)
 
 	if err := flannel_network.CleanupStaleNetworks(d.etcdClients.networks, existingNetworks); err != nil {
 		return errors.WithMessage(err, "Failed to cleanup stale flannel network data")

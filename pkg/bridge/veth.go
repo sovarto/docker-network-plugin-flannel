@@ -4,6 +4,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/vishvananda/netlink"
+	"log"
 	"net"
 	"strings"
 )
@@ -52,10 +53,11 @@ func (b *bridgeInterface) CreateAttachedVethPair(macAddress string) (VethPair, e
 	linkAttrs.HardwareAddr = parsedMacAddress
 	linkAttrs.MTU = b.network.MTU
 
-	err = netlink.LinkAdd(&netlink.Veth{
+	veth := &netlink.Veth{
 		LinkAttrs: linkAttrs,
 		PeerName:  vethOutsideName,
-	})
+	}
+	err = netlink.LinkAdd(veth)
 
 	if err != nil {
 		return nil, errors.WithMessagef(err, "failed to create veth pair %s / %s for bridge %s", vethOutsideName, vethInsideName, b.interfaceName)
@@ -63,6 +65,10 @@ func (b *bridgeInterface) CreateAttachedVethPair(macAddress string) (VethPair, e
 
 	err = b.attachInterfaceToBridge(vethOutsideName)
 	if err != nil {
+		err2 := netlink.LinkDel(veth)
+		if err2 != nil {
+			log.Printf("Failed to delete veth %s, after attaching it to bridge %s failed, err: %v", vethOutsideName, b.interfaceName, err2)
+		}
 		return nil, errors.WithMessagef(err, "failed to attach veth %s to bridge %s", vethOutsideName, b.interfaceName)
 	}
 
