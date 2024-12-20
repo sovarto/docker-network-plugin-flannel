@@ -705,26 +705,26 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 			}
 			if len(keyParts) == 2 && keyParts[1] == "config" {
 				var configData Config
-				err := json.Unmarshal(resp.Kvs[0].Value, &configData)
+				err := json.Unmarshal(kv.Value, &configData)
 				if err != nil {
 					log.Printf("error deserializing configuration of network %s: %+v", flannelNetworkID, err)
 					continue
 				}
 				knownNetworksVNIs[configData.Backend.VNI] = flannelNetworkID
 			} else if len(keyParts) == 3 && keyParts[1] == "subnets" {
-				var configData SubnetConfig
-				if err := json.Unmarshal(resp.Kvs[0].Value, &configData); err != nil {
+				var subnetConfigData SubnetConfig
+				if err := json.Unmarshal(kv.Value, &subnetConfigData); err != nil {
 					log.Printf("error deserializing subnet %s configuration of network %s: %+v", keyParts[2], flannelNetworkID, err)
 					continue
 				}
 
-				_, isLocalIP := localIPs[configData.PublicIP]
+				_, isLocalIP := localIPs[subnetConfigData.PublicIP]
 				if !isLocalIP {
-					fmt.Printf("Ignoring configuration for IP %s, config: %s\n", configData.PublicIP, string(resp.Kvs[0].Value))
+					fmt.Printf("Ignoring configuration for IP %s, config: %s, key: %s\n", subnetConfigData.PublicIP, string(kv.Value), string(kv.Key))
 					continue
 				}
 
-				knownNetworksVNIs[configData.BackendData.VNI] = flannelNetworkID
+				knownNetworksVNIs[subnetConfigData.BackendData.VNI] = flannelNetworkID
 			} else if !strings.Contains(string(kv.Key), "host-subnets") {
 				fmt.Printf("Ignoring key %s\n", string(kv.Key))
 			}
