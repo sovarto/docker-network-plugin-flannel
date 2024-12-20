@@ -155,11 +155,11 @@ func (f *fwmarks) Release(serviceID, networkID string, fwmark uint32) error {
 	return err
 }
 
-// GenerateFWMARK generates a unique FWMARK based on the serviceID.
-// It checks against existingFWMARKs and appends a random suffix to the serviceID
+// GenerateFWMARK generates a unique FWMARK based on the serviceID and the networkID.
+// It checks against existingFWMARKs and appends a random suffix to the serviceID-networkID combination
 // if a collision is detected. It returns the unique FWMARK, the possibly modified
 // serviceID, and an error if a unique FWMARK cannot be found within the maximum attempts.
-func GenerateFWMARK(serviceID string, existingFWMARKs []uint32) (uint32, error) {
+func GenerateFWMARK(serviceID, networkID string, existingFWMARKs []uint32) (uint32, error) {
 	const maxAttempts = 1000
 	const suffixLength = 4 // Number of random bytes to append
 
@@ -169,11 +169,11 @@ func GenerateFWMARK(serviceID string, existingFWMARKs []uint32) (uint32, error) 
 		fwmarkMap[mark] = struct{}{}
 	}
 
-	currentServiceID := serviceID
+	currentName := fmt.Sprintf("%s-%s", serviceID, networkID)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		// Generate FWMARK using CRC32 checksum
-		fwmark := crc32.ChecksumIEEE([]byte(currentServiceID))
+		fwmark := crc32.ChecksumIEEE([]byte(currentName))
 
 		// Check for collision
 		if _, exists := fwmarkMap[fwmark]; !exists {
@@ -188,7 +188,7 @@ func GenerateFWMARK(serviceID string, existingFWMARKs []uint32) (uint32, error) 
 		}
 
 		// Append the random suffix to the original serviceID
-		currentServiceID = fmt.Sprintf("%s_%s", serviceID, suffix)
+		currentName = fmt.Sprintf("%s_%s", serviceID, suffix)
 	}
 
 	return 0, errors.New("unable to generate a unique FWMARK after maximum attempts")
