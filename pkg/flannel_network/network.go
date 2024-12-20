@@ -720,7 +720,7 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 
 				_, isLocalIP := localIPs[configData.PublicIP]
 				if !isLocalIP {
-					fmt.Printf("Ignoring configuration for IP%s\n", configData.PublicIP)
+					fmt.Printf("Ignoring configuration for IP %s, config: %s\n", configData.PublicIP, string(resp.Kvs[0].Value))
 					continue
 				}
 
