@@ -684,6 +684,7 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 		return err
 	}
 
+	fmt.Printf("Local IPs: %v\n", localIPs)
 	knownNetworksVNIs := map[int]string{}
 	_, err = etcd.WithConnection(etcdClient, func(connection *etcd.Connection) (struct{}, error) {
 		resp, err := connection.Client.Get(connection.Ctx, etcdClient.GetKey(), clientv3.WithPrefix())
@@ -723,6 +724,8 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 				}
 
 				knownNetworksVNIs[configData.BackendData.VNI] = flannelNetworkID
+			} else {
+				fmt.Printf("Ignoring key %s", string(kv.Key))
 			}
 		}
 
