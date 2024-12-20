@@ -720,6 +720,7 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 
 				_, isLocalIP := localIPs[configData.PublicIP]
 				if !isLocalIP {
+					fmt.Printf("Ignoring configuration for IP%s\n", configData.PublicIP)
 					continue
 				}
 
@@ -753,7 +754,7 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 		return fmt.Sprintf("flannel.%d", item)
 	})
 
-	fmt.Printf("Valid flannel network interfaces: %v", validFlannelInterfaces)
+	fmt.Printf("Valid flannel network interfaces: %v\n", validFlannelInterfaces)
 
 	for _, link := range links {
 		if strings.Index(link.Attrs().Name, "flannel") == 0 && !lo.Some(validFlannelInterfaces, []string{link.Attrs().Name}) {
