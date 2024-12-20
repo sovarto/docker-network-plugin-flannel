@@ -724,8 +724,8 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 				}
 
 				knownNetworksVNIs[configData.BackendData.VNI] = flannelNetworkID
-			} else {
-				fmt.Printf("Ignoring key %s", string(kv.Key))
+			} else if !strings.Contains(string(kv.Key), "host-subnets") {
+				fmt.Printf("Ignoring key %s\n", string(kv.Key))
 			}
 		}
 
