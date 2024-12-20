@@ -750,6 +750,8 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 		return fmt.Sprintf("flannel.%d", item)
 	})
 
+	fmt.Printf("Valid flannel network interfaces: %v", validFlannelInterfaces)
+
 	for _, link := range links {
 		if strings.Index(link.Attrs().Name, "flannel") == 0 && !lo.Some(validFlannelInterfaces, []string{link.Attrs().Name}) {
 			fmt.Printf("Deleting stale flannel network interface %s\n", link.Attrs().Name)
