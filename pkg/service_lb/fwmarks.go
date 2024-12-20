@@ -91,7 +91,7 @@ func (f *fwmarks) Get(serviceID, networkID string) (uint32, error) {
 			}
 
 			// TODO: move everything into namespace so that only our fwmarks exist
-			fwmark, err := GenerateFWMARK(serviceID, existingFwmarks)
+			fwmark, err := GenerateFWMARK(serviceID, networkID, existingFwmarks)
 			if err != nil {
 				return 0, err
 			}
