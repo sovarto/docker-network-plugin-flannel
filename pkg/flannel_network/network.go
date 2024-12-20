@@ -684,7 +684,6 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 		return err
 	}
 
-	fmt.Printf("Local IPs: %v\n", localIPs)
 	knownNetworksVNIs := map[int]string{}
 	_, err = etcd.WithConnection(etcdClient, func(connection *etcd.Connection) (struct{}, error) {
 		resp, err := connection.Client.Get(connection.Ctx, etcdClient.GetKey(), clientv3.WithPrefix())
@@ -720,13 +719,10 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 
 				_, isLocalIP := localIPs[subnetConfigData.PublicIP]
 				if !isLocalIP {
-					fmt.Printf("Ignoring configuration for IP %s, config: %s, key: %s\n", subnetConfigData.PublicIP, string(kv.Value), string(kv.Key))
 					continue
 				}
 
 				knownNetworksVNIs[subnetConfigData.BackendData.VNI] = flannelNetworkID
-			} else if !strings.Contains(string(kv.Key), "host-subnets") {
-				fmt.Printf("Ignoring key %s\n", string(kv.Key))
 			}
 		}
 
@@ -753,8 +749,6 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 	validFlannelInterfaces := lo.Map(maps.Keys(knownNetworksVNIs), func(item int, index int) string {
 		return fmt.Sprintf("flannel.%d", item)
 	})
-
-	fmt.Printf("Valid flannel network interfaces: %v\n", validFlannelInterfaces)
 
 	for _, link := range links {
 		if strings.Index(link.Attrs().Name, "flannel") == 0 && !lo.Some(validFlannelInterfaces, []string{link.Attrs().Name}) {
