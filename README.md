@@ -7,7 +7,7 @@ Note:
 - We will start one Flannel process per Docker network
 - To decrease latency, each Docker Swarm Service will get one load balancer per host
 
-This severly limits the number of host and networks in the cluster, because we will need number of
+This severely limits the number of host and networks in the cluster, because we will need number of
 networks x number of hosts subnets, where each of these subnets need to be able to provide an IP for
 each Docker Swarm service that's connected to that network and an IP for each container, that's
 running on that host and is connected to the network.
