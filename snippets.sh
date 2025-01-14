@@ -5,6 +5,8 @@ docker plugin disable --force flannel:dev || true && docker plugin upgrade flann
 
 journalctl -u docker.service --since "5m ago" | grep plugin= | sed -E -e 's/^[a-zA-Z]* [0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} [^ ]+ dockerd\[[^]]*\]: time="([0-9-]*)T([0-9:Z]*)" ((level=(info) msg="?)|(level=(error) msg="?[0-9/: ]*))/\7\1 \2  /' -E -e 's/"? plugin=[a-z0-9]*$//' -E -e 's/\\t/\t/' | awk '{ if (/^error/) { gsub(/^error/, ""); print "\033[31m" $0 "\033[0m";} else {print; } }'  | rg --passthru -p 8a99
 
+CONTAINER=15; nsenter --net=$(docker inspect $CONTAINER --format "{{.NetworkSettings.SandboxKey}}") ip a
+
 docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl get /flannel --prefix
 docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl del /flannel --prefix
 

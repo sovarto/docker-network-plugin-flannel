@@ -4,7 +4,6 @@ import (
 	"fmt"
 	docker_ipam "github.com/docker/go-plugins-helpers/ipam"
 	"github.com/pkg/errors"
-	"golang.org/x/exp/maps"
 	"log"
 	"net"
 	"strings"
@@ -63,9 +62,9 @@ func (d *flannelDriver) RequestAddress(request *docker_ipam.RequestAddressReques
 	defer d.Unlock()
 
 	flannelNetworkID := poolIDtoNetworkID(request.PoolID)
-	network, exists := d.networksByFlannelID[flannelNetworkID]
+	network, exists := d.networksByFlannelID.Get(flannelNetworkID)
 	if !exists {
-		return nil, fmt.Errorf("no network found for pool '%s'. Existing networks by flannel ID: %v; and by docker ID: %v", request.PoolID, maps.Keys(d.networksByFlannelID), maps.Keys(d.networksByFlannelID))
+		return nil, fmt.Errorf("no network found for pool '%s'. Existing networks by flannel ID: %v; and by docker ID: %v", request.PoolID, d.networksByFlannelID.Keys(), d.networksByFlannelID.Keys())
 	}
 
 	networkInfo := network.GetInfo()
@@ -104,7 +103,7 @@ func (d *flannelDriver) ReleaseAddress(request *docker_ipam.ReleaseAddressReques
 	defer d.Unlock()
 
 	flannelNetworkID := poolIDtoNetworkID(request.PoolID)
-	network, exists := d.networksByFlannelID[flannelNetworkID]
+	network, exists := d.networksByFlannelID.Get(flannelNetworkID)
 	if !exists {
 		return fmt.Errorf("no network found for pool '%s'", request.PoolID)
 	}

@@ -43,7 +43,7 @@ func (d *flannelDriver) CreateEndpoint(request *network.CreateEndpointRequest) (
 		return nil, types.InvalidParameterErrorf("Need interface info with IPv4 address and MAC address as input for endpoint %s for network %s.", request.EndpointID, request.NetworkID)
 	}
 
-	flannelNetwork, exists := d.networksByDockerID[request.NetworkID]
+	flannelNetwork, exists := d.networksByDockerID.Get(request.NetworkID)
 	if !exists {
 		return nil, fmt.Errorf("network %s is missing in internal state", request.NetworkID)
 	}
@@ -66,7 +66,7 @@ func (d *flannelDriver) DeleteEndpoint(request *network.DeleteEndpointRequest) e
 	d.Lock()
 	defer d.Unlock()
 
-	flannelNetwork, exists := d.networksByDockerID[request.NetworkID]
+	flannelNetwork, exists := d.networksByDockerID.Get(request.NetworkID)
 	if !exists {
 		return fmt.Errorf("network %s is missing in internal state", request.NetworkID)
 	}
@@ -155,7 +155,7 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 				return err
 			}
 
-			d.nameserversByEndpointID[request.EndpointID] = nameserver
+			d.nameserversByEndpointID.Set(request.EndpointID, nameserver)
 			nameserver.AddValidNetworkID(request.NetworkID)
 
 			return nil
@@ -197,10 +197,9 @@ func (d *flannelDriver) Leave(request *network.LeaveRequest) error {
 		return errors.WithMessagef(err, "failed to leave endpoint %s", request.EndpointID)
 	}
 
-	nameserver, exists := d.nameserversByEndpointID[request.EndpointID]
-	if exists {
+	nameserver, wasRemoved := d.nameserversByEndpointID.TryRemove(request.EndpointID)
+	if wasRemoved {
 		nameserver.RemoveValidNetworkID(request.NetworkID)
-		delete(d.nameserversByEndpointID, request.EndpointID)
 	}
 
 	return nil

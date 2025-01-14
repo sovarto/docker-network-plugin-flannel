@@ -71,7 +71,7 @@ func (d *data) getServicesInfosFromDocker() (servicesInfos map[string]ServiceInf
 	for _, service := range rawServices {
 		serviceInfo, ignored, err := d.getServiceInfoFromDocker(service.ID)
 		if err != nil {
-			log.Printf("Error getting service info for service with ID %s. Skipping...\n", service.ID)
+			log.Printf("Error getting service info for service with ID %s. Skipping... Error: %+v\n", service.ID, err)
 			continue
 		}
 		if ignored {

@@ -36,8 +36,11 @@ func MakeHandlerWithOutput[TResponse any](
 			res, err = process()
 		}
 
-		// Log the response and any errors
-		fmt.Printf("[%s] %s response: %+v; error: %+v\n", commonOptions.Api, method, res, err)
+		if err != nil {
+			log.Printf("[%s] %s response: %+v; error: %+v\n", commonOptions.Api, method, res, err)
+		} else {
+			fmt.Printf("[%s] %s response: %+v; error: %+v\n", commonOptions.Api, method, res, err)
+		}
 
 		// Handle errors
 		if err != nil {
@@ -73,7 +76,11 @@ func MakeHandlerWithInputAndOutput[TRequest any, TResponse any](
 			res, err = process(decodedReq)
 		}
 
-		fmt.Printf("[%s] %s response: %+v; error: %+v\n", commonOptions.Api, method, res, err)
+		if err != nil {
+			log.Printf("[%s] %s response: %+v; error: %+v\n", commonOptions.Api, method, res, err)
+		} else {
+			fmt.Printf("[%s] %s response: %+v; error: %+v\n", commonOptions.Api, method, res, err)
+		}
 
 		if err != nil {
 			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
@@ -105,7 +112,11 @@ func MakeHandlerWithInput[TRequest any](
 			err = process(decodedReq)
 		}
 
-		fmt.Printf("[%s] %s response: %+v\n", commonOptions.Api, method, err)
+		if err != nil {
+			log.Printf("[%s] %s response: %+v\n", commonOptions.Api, method, err)
+		} else {
+			fmt.Printf("[%s] %s response: %+v\n", commonOptions.Api, method, err)
+		}
 
 		if err != nil {
 			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
