@@ -62,9 +62,10 @@ func (d *flannelDriver) RequestAddress(request *docker_ipam.RequestAddressReques
 	defer d.Unlock()
 
 	flannelNetworkID := poolIDtoNetworkID(request.PoolID)
-	network, exists := d.networksByFlannelID.Get(flannelNetworkID)
+	network, exists, _ := d.networks.Get(networkKey{flannelID: flannelNetworkID})
 	if !exists {
-		return nil, fmt.Errorf("no network found for pool '%s'. Existing networks by flannel ID: %v; and by docker ID: %v", request.PoolID, d.networksByFlannelID.Keys(), d.networksByFlannelID.Keys())
+		keys1, keys2 := d.networks.Keys()
+		return nil, fmt.Errorf("no network found for pool '%s'. Existing networks: keys 1: %v, keys 2: %v", request.PoolID, keys1, keys2)
 	}
 
 	networkInfo := network.GetInfo()
@@ -103,7 +104,7 @@ func (d *flannelDriver) ReleaseAddress(request *docker_ipam.ReleaseAddressReques
 	defer d.Unlock()
 
 	flannelNetworkID := poolIDtoNetworkID(request.PoolID)
-	network, exists := d.networksByFlannelID.Get(flannelNetworkID)
+	network, exists, _ := d.networks.Get(networkKey{flannelID: flannelNetworkID})
 	if !exists {
 		return fmt.Errorf("no network found for pool '%s'", request.PoolID)
 	}

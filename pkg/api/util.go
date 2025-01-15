@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/docker/go-plugins-helpers/network"
 	"github.com/docker/go-plugins-helpers/sdk"
 	"log"
@@ -67,7 +68,7 @@ func MakeHandlerWithInputAndOutput[TRequest any, TResponse any](
 			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
-		fmt.Printf("[%s] Received %s, req: %+v\n", commonOptions.Api, method, decodedReq)
+		fmt.Printf("[%s] Received %s, req: %+v\n", commonOptions.Api, method, spew.Sdump(decodedReq))
 
 		var res TResponse
 		if !commonOptions.IsInitialized() {
@@ -104,7 +105,7 @@ func MakeHandlerWithInput[TRequest any](
 			sdk.EncodeResponse(w, network.NewErrorResponse(err.Error()), true)
 			return
 		}
-		fmt.Printf("[%s] Received %s, req: %+v\n", commonOptions.Api, method, decodedReq)
+		fmt.Printf("[%s] Received %s, req: %+v\n", commonOptions.Api, method, spew.Sdump(decodedReq))
 
 		if !commonOptions.IsInitialized() {
 			err = fmt.Errorf("driver is not yet initialized")

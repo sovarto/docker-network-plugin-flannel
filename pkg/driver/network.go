@@ -43,7 +43,7 @@ func (d *flannelDriver) CreateEndpoint(request *network.CreateEndpointRequest) (
 		return nil, types.InvalidParameterErrorf("Need interface info with IPv4 address and MAC address as input for endpoint %s for network %s.", request.EndpointID, request.NetworkID)
 	}
 
-	flannelNetwork, exists := d.networksByDockerID.Get(request.NetworkID)
+	flannelNetwork, exists, _ := d.networks.Get(networkKey{dockerID: request.NetworkID})
 	if !exists {
 		return nil, fmt.Errorf("network %s is missing in internal state", request.NetworkID)
 	}
@@ -66,7 +66,7 @@ func (d *flannelDriver) DeleteEndpoint(request *network.DeleteEndpointRequest) e
 	d.Lock()
 	defer d.Unlock()
 
-	flannelNetwork, exists := d.networksByDockerID.Get(request.NetworkID)
+	flannelNetwork, exists, _ := d.networks.Get(networkKey{dockerID: request.NetworkID})
 	if !exists {
 		return fmt.Errorf("network %s is missing in internal state", request.NetworkID)
 	}
