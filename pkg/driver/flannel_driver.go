@@ -311,7 +311,7 @@ func (d *flannelDriver) getOrCreateNetwork(dockerNetworkID string, flannelNetwor
 func (d *flannelDriver) handleNetworksAdded(added []etcd.Item[common.NetworkInfo]) {
 	for _, addedItem := range added {
 		networkInfo := addedItem.Value
-		fmt.Printf("Handling added network %s (%s / %s)", networkInfo.Name, networkInfo.DockerID, networkInfo.FlannelID)
+		fmt.Printf("Handling added network %s (%s / %s)\n", networkInfo.Name, networkInfo.DockerID, networkInfo.FlannelID)
 		d.dnsResolver.AddNetwork(networkInfo)
 		_, err := d.getOrCreateNetwork(networkInfo.DockerID, networkInfo.FlannelID)
 		if err != nil {
@@ -333,7 +333,7 @@ func (d *flannelDriver) handleNetworksChanged(changed []etcd.ItemChange[common.N
 func (d *flannelDriver) handleNetworksRemoved(removed []etcd.Item[common.NetworkInfo]) {
 	for _, removedItem := range removed {
 		networkInfo := removedItem.Value
-		fmt.Printf("Handling removed network %s (%s / %s)", networkInfo.Name, networkInfo.DockerID, networkInfo.FlannelID)
+		fmt.Printf("Handling removed network %s (%s / %s)\n", networkInfo.Name, networkInfo.DockerID, networkInfo.FlannelID)
 		d.dnsResolver.RemoveNetwork(networkInfo)
 		if err := d.serviceLbsManagement.DeleteNetwork(networkInfo.DockerID); err != nil {
 			log.Printf("Error handling deleted network %s, err: %v", networkInfo.FlannelID, err)
@@ -358,7 +358,7 @@ func (d *flannelDriver) handleNetworksRemoved(removed []etcd.Item[common.Network
 func (d *flannelDriver) handleContainersAdded(added []etcd.ShardItem[docker.ContainerInfo]) {
 	for _, addedItem := range added {
 		containerInfo := addedItem.Value
-		fmt.Printf("Handling added container %s (%s)", containerInfo.Name, containerInfo.ID)
+		fmt.Printf("Handling added container %s (%s)\n", containerInfo.Name, containerInfo.ID)
 		d.dnsResolver.AddContainer(containerInfo.ContainerInfo)
 		for dockerNetworkID, ipamIP := range containerInfo.IpamIPs {
 			network, exists, _ := d.networks.Get(networkKey{dockerID: dockerNetworkID})

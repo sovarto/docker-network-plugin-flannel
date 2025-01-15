@@ -187,7 +187,7 @@ func (as *etcdAddressSpace) subnetUsageChangeHandler(watcher clientv3.WatchChan,
 					as.Lock()
 					_, wasUpdated := as.pools.AddOrUpdate(poolID, *subnet, func(existing net.IPNet) net.IPNet {
 						if existing.String() != subnet.String() {
-							fmt.Printf("found new subnet '%s' for pool '%s'. It was '%s' so far. This shouldn't happen.\n ", subnet.String(), poolID, existing.String())
+							fmt.Printf("found new subnet '%s' for pool '%s'. It was '%s' so far. This shouldn't happen.\n", subnet.String(), poolID, existing.String())
 						} else {
 							// found subnet and in memory subnet are the same, so nothing to do
 						}

@@ -129,7 +129,7 @@ func (p *etcdPool) AllocateContainerIP(preferredIP, mac string, random bool) (*n
 		if result.Success {
 			_, has := p.allocatedIPs[preferredIP]
 			if !has {
-				fmt.Printf("reserved IP %s wasn't previously reserved. This shouldn't happen.", preferredIP)
+				fmt.Printf("reserved IP %s wasn't previously reserved. This shouldn't happen.\n", preferredIP)
 				delete(p.unusedIPs, preferredIP)
 			}
 
@@ -165,7 +165,7 @@ func (p *etcdPool) AllocateServiceVIP(ipamVIP, serviceID string, random bool) (*
 		if result.Success {
 			_, has := p.allocatedIPs[ipamVIP]
 			if !has {
-				fmt.Printf("IPAM VIP %s wasn't previously reserved. This shouldn't happen.", ipamVIP)
+				fmt.Printf("IPAM VIP %s wasn't previously reserved. This shouldn't happen.\n", ipamVIP)
 				delete(p.unusedIPs, ipamVIP)
 			}
 
@@ -346,10 +346,10 @@ func (p *etcdPool) watchForIPUsageChanges(etcdClient etcd.Client) (clientv3.Watc
 					}
 
 					if has && (existingReservation.allocationType != r.allocationType || existingReservation.allocatedAt != r.allocatedAt || existingReservation.data != r.data) {
-						fmt.Printf("found change in allocation data of ip %s from %+v to %+v. This shouldn't happen", ipStr, existingReservation, r)
+						fmt.Printf("found change in allocation data of ip %s from %+v to %+v. This shouldn't happen\n", ipStr, existingReservation, r)
 						p.allocatedIPs[ipStr] = *r
 					} else if !has {
-						fmt.Printf("found new reserved IP %s for pool %s. This shouldn't happen", ipStr, p.poolID)
+						fmt.Printf("found new reserved IP %s for pool %s. This shouldn't happen\n", ipStr, p.poolID)
 						delete(p.unusedIPs, ipStr)
 						p.allocatedIPs[ipStr] = *r
 					} else {

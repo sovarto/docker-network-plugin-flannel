@@ -145,7 +145,7 @@ func (m *serviceLbManagement) CreateLoadBalancer(service common.Service) error {
 	unsubscribeFromOnNetworksChanged := service.Events().OnNetworksChanged.Subscribe(func(s common.Service) {
 		err := m.createOrUpdateLoadBalancer(s)
 		if err != nil {
-			log.Printf("error ensuring load balancer for service %s after network changes\n", service.GetInfo().ID)
+			log.Printf("error ensuring load balancer for service %s after network changes. Error: %v\n", service.GetInfo().ID, err)
 		}
 	})
 
@@ -153,7 +153,7 @@ func (m *serviceLbManagement) CreateLoadBalancer(service common.Service) error {
 		serviceID := service.GetInfo().ID
 		err := m.addBackendIPsToLoadBalancer(serviceID, data.Container.IPs)
 		if err != nil {
-			log.Printf("error adding backend IPs to load balancer for service %s\n", serviceID)
+			log.Printf("error adding backend IPs to load balancer for service %s. Error: %v\n", serviceID, err)
 		}
 	})
 
@@ -162,7 +162,7 @@ func (m *serviceLbManagement) CreateLoadBalancer(service common.Service) error {
 		serviceID := service.GetInfo().ID
 		err := m.removeBackendIPsFromLoadBalancer(serviceID, data.Container.IPs)
 		if err != nil {
-			log.Printf("error removing backend IPs from load balancer for service %s\n", serviceID)
+			log.Printf("error removing backend IPs from load balancer for service %s. Error: %v\n", serviceID, err)
 		}
 	})
 
@@ -292,7 +292,9 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 			return NewNetworkSpecificServiceLb(link, dockerNetworkID, serviceInfo.ID, fwmark), nil
 		})
 
-		return err
+		if err != nil {
+			return err
+		}
 	}
 
 	for _, deletedNetworkID := range deleted {
