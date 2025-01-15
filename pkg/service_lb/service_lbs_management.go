@@ -11,7 +11,6 @@ import (
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/flannel_network"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"golang.org/x/exp/maps"
 	"log"
 	"net"
 	"os"
@@ -44,12 +43,12 @@ func (d loadBalancerData) Equals(other common.Equaler) bool {
 }
 
 type serviceLbManagement struct {
-	services                    map[string]common.Service
-	servicesEventsUnsubscribers map[string]func()
-	loadBalancers               map[string]map[string]NetworkSpecificServiceLb
+	services                    *common.ConcurrentMap[string, common.Service]
+	servicesEventsUnsubscribers *common.ConcurrentMap[string, func()]
+	loadBalancers               *common.ConcurrentMap[string, *common.ConcurrentMap[string, NetworkSpecificServiceLb]]
 	loadBalancersData           etcd.WriteOnlyStore[loadBalancerData]
 	fwmarksManagement           FwmarksManagement
-	networksByDockerID          map[string]flannel_network.Network
+	networksByDockerID          *common.ConcurrentMap[string, flannel_network.Network]
 	hostname                    string
 	sync.Mutex
 }
@@ -66,13 +65,13 @@ func NewServiceLbManagement(etcdClient etcd.Client) (ServiceLbsManagement, error
 	}
 
 	return &serviceLbManagement{
-		loadBalancers:               make(map[string]map[string]NetworkSpecificServiceLb),
+		loadBalancers:               common.NewConcurrentMap[string, *common.ConcurrentMap[string, NetworkSpecificServiceLb]](),
 		loadBalancersData:           loadBalancerData,
 		fwmarksManagement:           NewFwmarksManagement(etcdClient.CreateSubClient(hostname, "fwmarks")),
-		networksByDockerID:          make(map[string]flannel_network.Network),
+		networksByDockerID:          common.NewConcurrentMap[string, flannel_network.Network](),
 		hostname:                    hostname,
-		services:                    make(map[string]common.Service),
-		servicesEventsUnsubscribers: make(map[string]func()),
+		services:                    common.NewConcurrentMap[string, common.Service](),
+		servicesEventsUnsubscribers: common.NewConcurrentMap[string, func()](),
 	}, nil
 }
 
@@ -80,7 +79,7 @@ func (m *serviceLbManagement) SetNetwork(dockerNetworkID string, network flannel
 	if dockerNetworkID == "" {
 		return fmt.Errorf("error adding network: docker network id is empty for network %s", network.GetInfo().FlannelID)
 	}
-	m.networksByDockerID[dockerNetworkID] = network
+	m.networksByDockerID.Set(dockerNetworkID, network)
 	return nil
 }
 
@@ -88,7 +87,7 @@ func (m *serviceLbManagement) DeleteNetwork(dockerNetworkID string) error {
 	if dockerNetworkID == "" {
 		return fmt.Errorf("error removing network: docker network id is empty")
 	}
-	delete(m.networksByDockerID, dockerNetworkID)
+	m.networksByDockerID.Remove(dockerNetworkID)
 	return nil
 }
 
@@ -96,12 +95,15 @@ func (m *serviceLbManagement) addBackendIPsToLoadBalancer(serviceID string, ips 
 	m.Lock()
 	defer m.Unlock()
 
-	lbs, exists := m.loadBalancers[serviceID]
+	lbs, exists := m.loadBalancers.Get(serviceID)
 	if !exists {
 		return fmt.Errorf("no load balancer for service %s found. This is a bug", serviceID)
 	}
 	for dockerNetworkID, ip := range ips {
-		lb := lbs[dockerNetworkID]
+		lb, exists := lbs.Get(dockerNetworkID)
+		if !exists {
+			return fmt.Errorf("no load balancer for network %s for service %s found. This is a bug", dockerNetworkID, serviceID)
+		}
 		err := lb.AddBackend(ip)
 		if err != nil {
 			return errors.WithMessagef(err, "error adding backend ip %s to load balancer for service %s and network %s", ip, serviceID, dockerNetworkID)
@@ -115,13 +117,16 @@ func (m *serviceLbManagement) removeBackendIPsFromLoadBalancer(serviceID string,
 	m.Lock()
 	defer m.Unlock()
 
-	lbs, exists := m.loadBalancers[serviceID]
+	lbs, exists := m.loadBalancers.Get(serviceID)
 	if !exists {
 		return fmt.Errorf("no load balancer for service %s found. This is a bug", serviceID)
 	}
 
 	for dockerNetworkID, ip := range ips {
-		lb := lbs[dockerNetworkID]
+		lb, exists := lbs.Get(dockerNetworkID)
+		if !exists {
+			return fmt.Errorf("no load balancer for network %s for service %s found. This is a bug", dockerNetworkID, serviceID)
+		}
 		err := lb.RemoveBackend(ip)
 		if err != nil {
 			return errors.WithMessagef(err, "error removing backend ip %s to load balancer for service %s and network %s", ip, serviceID, dockerNetworkID)
@@ -161,11 +166,11 @@ func (m *serviceLbManagement) CreateLoadBalancer(service common.Service) error {
 		}
 	})
 
-	m.servicesEventsUnsubscribers[service.GetInfo().ID] = func() {
+	m.servicesEventsUnsubscribers.Set(service.GetInfo().ID, func() {
 		unsubscribeFromOnNetworksChanged()
 		unsubscribeFromOnContainerAdded()
 		unsubscribeFromOnContainerRemoved()
-	}
+	})
 
 	service.Events().OnEndpointModeChanged.Subscribe(func(s common.Service) {
 		info := s.GetInfo()
@@ -194,29 +199,34 @@ func (m *serviceLbManagement) DeleteLoadBalancer(serviceID string) error {
 	m.Lock()
 	defer m.Unlock()
 	fmt.Printf("Deleting load balancer for service %s...\n", serviceID)
-	unsubscriber, exists := m.servicesEventsUnsubscribers[serviceID]
+	unsubscriber, exists := m.servicesEventsUnsubscribers.TryRemove(serviceID)
 	if !exists {
 		log.Printf("no events unsubscriber for service %s. This is a bug\n", serviceID)
 	} else {
-		delete(m.servicesEventsUnsubscribers, serviceID)
 		unsubscriber()
 	}
 
-	lbs, exists := m.loadBalancers[serviceID]
+	lbs, exists := m.loadBalancers.TryRemove(serviceID)
 	if !exists {
 		return fmt.Errorf("no load balancer found for service %s.\n", serviceID)
 	}
 
-	serviceInfo := m.services[serviceID].GetInfo()
+	service, exists := m.services.TryRemove(serviceID)
+	if !exists {
+		return fmt.Errorf("no service found for ID %s.\n", serviceID)
+	}
+	serviceInfo := service.GetInfo()
 
-	for dockerNetworkID, lb := range lbs {
+	for _, dockerNetworkID := range lbs.Keys() {
+		lb, exists := lbs.Get(dockerNetworkID)
+		if !exists {
+			continue
+		}
 		err := m.deleteForNetwork(serviceInfo, lb, dockerNetworkID)
 		if err != nil {
 			return err
 		}
 	}
-	delete(m.loadBalancers, serviceID)
-	delete(m.services, serviceID)
 	err := m.loadBalancersData.DeleteItem(serviceID)
 	if err != nil {
 		return errors.WithMessagef(err, "failed to delete load balancer data for service %s", serviceID)
@@ -233,7 +243,10 @@ func (m *serviceLbManagement) deleteForNetwork(serviceInfo common.ServiceInfo, l
 
 	// Only release VIP if we allocated it - that's the case when IpamVIP and actual VIP differ
 	if lb.GetFrontendIP() != nil && !serviceInfo.IpamVIPs[dockerNetworkID].Equal(serviceInfo.VIPs[dockerNetworkID]) {
-		network := m.networksByDockerID[dockerNetworkID]
+		network, exists := m.networksByDockerID.Get(dockerNetworkID)
+		if !exists {
+			return fmt.Errorf("no network found for docker network ID %s", dockerNetworkID)
+		}
 		err = network.GetPool().ReleaseIP(lb.GetFrontendIP().String())
 		if err != nil {
 			return errors.WithMessagef(err, "failed to release IP for service %s and network %s", serviceInfo.ID, dockerNetworkID)
@@ -251,17 +264,15 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 	defer m.Unlock()
 
 	serviceInfo := service.GetInfo()
-	m.services[serviceInfo.ID] = service
-	lbs, exists := m.loadBalancers[serviceInfo.ID]
-	if !exists {
-		lbs = make(map[string]NetworkSpecificServiceLb)
-		m.loadBalancers[serviceInfo.ID] = lbs
-	}
+	m.services.Set(serviceInfo.ID, service)
+	lbs, exists, _ := m.loadBalancers.GetOrAdd(serviceInfo.ID, func() (*common.ConcurrentMap[string, NetworkSpecificServiceLb], error) {
+		return common.NewConcurrentMap[string, NetworkSpecificServiceLb](), nil
+	})
 
-	deleted, _ := lo.Difference(maps.Keys(lbs), serviceInfo.Networks)
+	deleted, _ := lo.Difference(lbs.Keys(), serviceInfo.Networks)
 
 	for _, dockerNetworkID := range serviceInfo.Networks {
-		network, exists := m.networksByDockerID[dockerNetworkID]
+		network, exists := m.networksByDockerID.Get(dockerNetworkID)
 		if !exists {
 			return fmt.Errorf("network %s missing in internal state of service load balancer management", dockerNetworkID)
 		}
@@ -273,23 +284,25 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 			return errors.WithMessagef(err, "failed to create interface %s for network: %s", interfaceName, dockerNetworkID)
 		}
 
-		_, exists = lbs[dockerNetworkID]
-		if !exists {
+		_, err = lbs.TryAdd(dockerNetworkID, func() (NetworkSpecificServiceLb, error) {
 			fwmark, err := m.fwmarksManagement.Get(serviceInfo.ID, dockerNetworkID)
 			if err != nil {
-				return errors.WithMessagef(err, "failed to get fwmark for service %s and network: %s", serviceInfo.ID, dockerNetworkID)
+				return nil, errors.WithMessagef(err, "failed to get fwmark for service %s and network: %s", serviceInfo.ID, dockerNetworkID)
 			}
+			return NewNetworkSpecificServiceLb(link, dockerNetworkID, serviceInfo.ID, fwmark), nil
+		})
 
-			lbs[dockerNetworkID] = NewNetworkSpecificServiceLb(link, dockerNetworkID, serviceInfo.ID, fwmark)
-		}
+		return err
 	}
 
 	for _, deletedNetworkID := range deleted {
-		err := m.deleteForNetwork(serviceInfo, lbs[deletedNetworkID], deletedNetworkID)
-		if err != nil {
-			return errors.WithMessagef(err, "failed to delete load balancer for service %s and network %s", serviceInfo.ID, deletedNetworkID)
+		lb, wasRemoved := lbs.TryRemove(deletedNetworkID)
+		if wasRemoved {
+			err := m.deleteForNetwork(serviceInfo, lb, deletedNetworkID)
+			if err != nil {
+				return errors.WithMessagef(err, "failed to delete load balancer for service %s and network %s", serviceInfo.ID, deletedNetworkID)
+			}
 		}
-		delete(lbs, deletedNetworkID)
 	}
 
 	data := loadBalancerData{
@@ -301,7 +314,6 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 	fmt.Printf("Service %s has IPAM VIPs %v\n", serviceInfo.ID, serviceInfo.IpamVIPs)
 	// Assumption: for every network we also have an IPAM VIP
 	for dockerNetworkID, ipamVip := range serviceInfo.IpamVIPs {
-		network := m.networksByDockerID[dockerNetworkID]
 		var ip net.IP
 		ipExists := false
 		if exists {
@@ -309,6 +321,11 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 		}
 
 		if !ipExists {
+			network, exists := m.networksByDockerID.Get(dockerNetworkID)
+			if !exists {
+				return fmt.Errorf("network %s missing in internal state of service load balancer management", dockerNetworkID)
+			}
+
 			allocatedIP, err := network.GetPool().AllocateServiceVIP(ipamVip.String(), serviceInfo.ID, true)
 			if err != nil {
 				return errors.WithMessagef(err, "error allocating ip for service %s and network %s", serviceInfo.ID, serviceInfo.ID)
@@ -316,7 +333,10 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 
 			ip = *allocatedIP
 		}
-		lb := lbs[dockerNetworkID]
+		lb, exists := lbs.Get(dockerNetworkID)
+		if !exists {
+			return fmt.Errorf("load balancer for network %s does not exist in internal state. This is a bug", dockerNetworkID)
+		}
 		err := lb.UpdateFrontendIP(ip)
 		if err != nil {
 			return errors.WithMessagef(err, "error updating frontend IP to %s for load balancer for service %s and network %s", ip, serviceInfo.ID, dockerNetworkID)

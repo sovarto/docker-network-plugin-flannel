@@ -81,7 +81,7 @@ func (f *fwmarks) Get(serviceID, networkID string) (uint32, error) {
 
 			for _, kv := range resp.Kvs {
 				key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), listKey), "/")
-				existingFwmark := string(key)
+				existingFwmark := key
 				parsedFwmark, err := strconv.ParseUint(existingFwmark, 10, 32)
 				if err != nil {
 					log.Printf("Failed to parse existing fwmark %s, skipping: %v", existingFwmark, err)

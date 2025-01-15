@@ -58,7 +58,7 @@ func (slb *serviceLb) UpdateFrontendIP(ip net.IP) error {
 		return errors.WithMessagef(err, "error creating frontend of service load balancer for service %s and network %s", slb.serviceID, slb.dockerNetworkID)
 	}
 
-	if oldFrontendIP != nil {
+	if oldFrontendIP != nil && oldFrontendIP.String() != slb.frontendIP.String() {
 		err = networking.StopListeningOnAddress(slb.link, oldFrontendIP.String())
 		if err != nil {
 			return errors.WithMessagef(err, "error stopping interface %s listening on %s", slb.link.Attrs().Name, oldFrontendIP.String())
