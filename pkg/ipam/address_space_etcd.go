@@ -17,15 +17,15 @@ func subnetKey(e etcd.Client, subnet string) string {
 	return e.GetKey(common.SubnetToKey(subnet))
 }
 
-func getUsedSubnets(client etcd.Client) (map[string]net.IPNet, error) {
-	return etcd.WithConnection(client, func(connection *etcd.Connection) (map[string]net.IPNet, error) {
+func getUsedSubnets(client etcd.Client) (*common.ConcurrentMap[string, net.IPNet], error) {
+	return etcd.WithConnection(client, func(connection *etcd.Connection) (*common.ConcurrentMap[string, net.IPNet], error) {
 		prefix := subnetsKey(client)
 		resp, err := connection.Client.Get(connection.Ctx, prefix, clientv3.WithPrefix())
 		if err != nil {
 			return nil, err
 		}
 
-		result := make(map[string]net.IPNet)
+		result := common.NewConcurrentMap[string, net.IPNet]()
 		for _, kv := range resp.Kvs {
 			key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), prefix), "/")
 			if strings.Contains(key, "/") {
@@ -39,7 +39,7 @@ func getUsedSubnets(client etcd.Client) (map[string]net.IPNet, error) {
 				continue
 			}
 
-			result[networkID] = *ipNet
+			result.Set(networkID, *ipNet)
 		}
 
 		return result, nil

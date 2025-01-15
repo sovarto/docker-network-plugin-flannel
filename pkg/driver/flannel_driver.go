@@ -219,9 +219,16 @@ func (d *flannelDriver) getEndpoint(dockerNetworkID, endpointID string) (flannel
 func (d *flannelDriver) handleServicesAdded(added []etcd.Item[docker.ServiceInfo]) {
 	for _, addedItem := range added {
 		serviceInfo := addedItem.Value
-		service := d.createService(serviceInfo.ID, serviceInfo.Name)
-		service.SetEndpointMode(serviceInfo.EndpointMode)
-		service.SetNetworks(serviceInfo.Networks, serviceInfo.IpamVIPs)
+		wasAdded, _ := d.services.TryAdd(serviceInfo.ID, func() (common.Service, error) {
+			service := d.createService(serviceInfo.ID, serviceInfo.Name)
+			service.SetEndpointMode(serviceInfo.EndpointMode)
+			service.SetNetworks(serviceInfo.Networks, serviceInfo.IpamVIPs)
+			return service, nil
+		})
+
+		if !wasAdded {
+			log.Printf("Service %s (%s) already existed. This shouldn't happen", serviceInfo.ID, serviceInfo.Name)
+		}
 	}
 }
 
@@ -456,8 +463,6 @@ func (d *flannelDriver) createService(id, name string) common.Service {
 			}
 		}
 	})
-
-	d.services.Set(id, service)
 
 	return service
 }

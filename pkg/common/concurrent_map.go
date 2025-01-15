@@ -41,6 +41,11 @@ func (cm *ConcurrentMap[K, V]) Remove(key K) {
 	delete(cm.m, key)
 }
 
+func (cm *ConcurrentMap[K, V]) TryAdd(key K, factory func() (V, error)) (wasAdded bool, errorInFactory error) {
+	_, wasSet, errorInFactory := cm.GetOrAdd(key, factory)
+	return wasSet, errorInFactory
+}
+
 func (cm *ConcurrentMap[K, V]) TryRemove(key K) (value V, wasRemoved bool) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -99,4 +104,10 @@ func (cm *ConcurrentMap[K, V]) Keys() []K {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return maps.Keys(cm.m)
+}
+
+func (cm *ConcurrentMap[K, V]) Values() []V {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+	return maps.Values(cm.m)
 }

@@ -104,9 +104,12 @@ func (d *data) getServiceInfoFromDocker(serviceID string) (serviceInfo *ServiceI
 	}
 
 	for _, endpoint := range service.Endpoint.VirtualIPs {
+		if endpoint.Addr == "" { // This is the case for an attachment to the host network
+			continue
+		}
 		ip, _, err := net.ParseCIDR(endpoint.Addr)
 		if err != nil {
-			return nil, false, errors.WithMessagef(err, "error parsing IP address %s for service %s", endpoint.Addr, serviceID)
+			return nil, false, errors.WithMessagef(err, "error parsing IP address %s on network %s for service %s", endpoint.Addr, endpoint.NetworkID, serviceID)
 		}
 		serviceInfo.IpamVIPs[endpoint.NetworkID] = ip
 	}

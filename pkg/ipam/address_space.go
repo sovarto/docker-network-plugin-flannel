@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -27,7 +28,7 @@ type etcdAddressSpace struct {
 	poolSize      int
 	allSubnets    []net.IPNet
 	unusedSubnets []net.IPNet
-	pools         map[string]net.IPNet // poolID (flannel network ID) -> subnet of the pool
+	pools         *common.ConcurrentMap[string, net.IPNet] // poolID (flannel network ID) -> subnet of the pool
 	etcdClient    etcd.Client
 	sync.Mutex
 }
@@ -44,7 +45,7 @@ func NewEtcdBasedAddressSpace(completeSpace []net.IPNet, poolSize int, etcdClien
 		return nil, errors.WithMessage(err, "error getting used subnets")
 	}
 
-	usedSubnets := lo.Values(pools)
+	usedSubnets := pools.Values()
 	unusedSubnets := make([]net.IPNet, len(allSubnets))
 	copy(unusedSubnets, allSubnets)
 
@@ -54,7 +55,7 @@ func NewEtcdBasedAddressSpace(completeSpace []net.IPNet, poolSize int, etcdClien
 		})
 	}
 
-	fmt.Printf("%d total available subnets (= docker swarm networks), of which %d are already used\n", len(allSubnets), len(pools))
+	fmt.Printf("%d total available subnets (= docker swarm networks), of which %d are already used\n", len(allSubnets), pools.Count())
 
 	space := &etcdAddressSpace{
 		completeSpace: completeSpace,
@@ -76,15 +77,16 @@ func NewEtcdBasedAddressSpace(completeSpace []net.IPNet, poolSize int, etcdClien
 func (as *etcdAddressSpace) GetCompleteAddressSpace() []net.IPNet { return as.completeSpace }
 func (as *etcdAddressSpace) GetPoolSize() int                     { return as.poolSize }
 func (as *etcdAddressSpace) GetNewOrExistingPool(id string) (*net.IPNet, error) {
-	pool, has := as.pools[id]
-	if has {
-		return &pool, nil
-	}
-	return as.GetNewPool(id)
+	as.Lock()
+	defer as.Unlock()
+
+	pool, _, err := as.getOrAddPool(id)
+
+	return pool, err
 }
 
 func (as *etcdAddressSpace) GetPoolById(id string) *net.IPNet {
-	pool, has := as.pools[id]
+	pool, has := as.pools.Get(id)
 	if has {
 		return &pool
 	}
@@ -95,40 +97,59 @@ func (as *etcdAddressSpace) GetNewPool(id string) (*net.IPNet, error) {
 	as.Lock()
 	defer as.Unlock()
 
-	if _, has := as.pools[id]; has {
+	pool, wasAdded, err := as.getOrAddPool(id)
+	if !wasAdded {
 		return nil, fmt.Errorf("address pool '%s' already exists", id)
 	}
-	for {
-		if len(as.unusedSubnets) == 0 {
-			return nil, fmt.Errorf("unable to get new pool with id '%s': there are no unused subnets left", id)
+
+	return pool, err
+}
+
+func (as *etcdAddressSpace) getOrAddPool(id string) (subnet *net.IPNet, isNewPool bool, err error) {
+	foundPoolReservations := make(map[string]*net.IPNet)
+
+	value, wasAdded, err := as.pools.GetOrAdd(id, func() (net.IPNet, error) {
+		for {
+			if len(as.unusedSubnets) == 0 {
+				return net.IPNet{}, fmt.Errorf("unable to get new pool with id '%s': there are no unused subnets left", id)
+			}
+
+			subnet := as.unusedSubnets[0]
+
+			result, err := reservePoolSubnet(as.etcdClient, subnet.String(), id)
+			if err != nil {
+				return net.IPNet{}, errors.WithMessagef(err, "error reserving subnet %s for pool %s", subnet.String(), id)
+			}
+
+			as.unusedSubnets = as.unusedSubnets[1:]
+
+			if result.Success {
+				fmt.Printf("reserved subnet %s for pool %s\n", subnet.String(), id)
+				return subnet, nil
+			}
+
+			foundPoolReservations[result.PoolID] = &subnet
+			fmt.Printf("couldn't reserve subnet %s for pool %s. It has been reserved by pool '%s' in the meantime. Trying next available subnet...\n", subnet.String(), id, result.PoolID)
 		}
+	})
 
-		subnet := as.unusedSubnets[0]
-
-		result, err := reservePoolSubnet(as.etcdClient, subnet.String(), id)
-		if err != nil {
-			return nil, errors.WithMessagef(err, "error reserving subnet %s for pool %s", subnet.String(), id)
-		}
-
-		as.unusedSubnets = as.unusedSubnets[1:]
-
-		if result.Success {
-			fmt.Printf("reserved subnet %s for pool %s\n", subnet.String(), id)
-			as.pools[id] = subnet
-			return &subnet, nil
-		}
-
-		as.pools[result.PoolID] = subnet
-		fmt.Printf("couldn't reserve subnet %s for pool %s. It has been reserved by pool '%s' in the meantime. Trying next available subnet...\n", subnet.String(), id, result.PoolID)
+	for id, subnet := range foundPoolReservations {
+		as.pools.Set(id, *subnet)
 	}
+
+	if err != nil {
+		return nil, false, err
+	}
+
+	return &value, wasAdded, nil
 }
 
 func (as *etcdAddressSpace) ReleasePool(id string) error {
 	as.Lock()
 	defer as.Unlock()
 
-	subnet, has := as.pools[id]
-	if !has {
+	subnet, wasRemoved := as.pools.TryRemove(id)
+	if !wasRemoved {
 		return fmt.Errorf("address pool '%s' does not exist", id)
 	}
 
@@ -139,11 +160,10 @@ func (as *etcdAddressSpace) ReleasePool(id string) error {
 	}
 
 	if !result.Success {
-		as.pools[result.PoolID] = subnet
+		as.pools.Set(result.PoolID, subnet)
 		return fmt.Errorf("couldn't release subnet %s for pool %s. It has since been registered for different pool %s. This shouldn't happen.\n", subnet.String(), id, result.PoolID)
 	}
 
-	delete(as.pools, id)
 	as.unusedSubnets = append(as.unusedSubnets, subnet)
 
 	return nil
@@ -165,10 +185,17 @@ func (as *etcdAddressSpace) subnetUsageChangeHandler(watcher clientv3.WatchChan,
 						continue
 					}
 					as.Lock()
-					if existingSubnet, has := as.pools[poolID]; has && existingSubnet.String() != subnet.String() {
-						fmt.Printf("found new subnet '%s' for pool '%s'. It was '%s' so far. This shouldn't happen.\n ", subnet.String(), poolID, existingSubnet.String())
-					} else if !has {
-						as.pools[poolID] = *subnet
+					_, wasUpdated := as.pools.AddOrUpdate(poolID, *subnet, func(existing net.IPNet) net.IPNet {
+						if existing.String() != subnet.String() {
+							fmt.Printf("found new subnet '%s' for pool '%s'. It was '%s' so far. This shouldn't happen.\n ", subnet.String(), poolID, existing.String())
+						} else {
+							// found subnet and in memory subnet are the same, so nothing to do
+						}
+
+						return existing
+					})
+
+					if !wasUpdated {
 						as.unusedSubnets = lo.Filter(as.unusedSubnets, func(item net.IPNet, index int) bool {
 							return item.String() != subnet.String()
 						})
@@ -187,10 +214,8 @@ func (as *etcdAddressSpace) subnetUsageChangeHandler(watcher clientv3.WatchChan,
 					}
 
 					as.Lock()
-					if _, has := as.pools[poolID]; !has {
-						// the subnet has already been deleted in our in-memory data
-					} else {
-						delete(as.pools, poolID)
+					_, wasRemoved := as.pools.TryRemove(poolID)
+					if wasRemoved {
 						as.unusedSubnets = append(as.unusedSubnets, *subnet)
 					}
 					as.Unlock()
