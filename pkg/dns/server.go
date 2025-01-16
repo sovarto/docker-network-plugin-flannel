@@ -60,8 +60,7 @@ func (n *nameserver) Activate() error {
 
 	fmt.Printf("Starting nameserver in namespace %s\n", n.networkNamespace)
 	go func() {
-		err := n.startDnsServersInNamespace()
-		if err != nil {
+		if err := n.startDnsServersInNamespace(); err != nil {
 			log.Printf("Error listening in namespace %s: %+v\n", n.networkNamespace, err)
 		}
 	}()
@@ -148,23 +147,9 @@ func (n *nameserver) startDnsServersInNamespace() error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	origNS, err := netns.Get()
-	if err != nil {
-		return errors.WithMessage(err, "Failed to get original namespace")
+	if err := setNamespace(n.networkNamespace); err != nil {
+		return errors.WithMessagef(err, "Error setting namespace to %s", n.networkNamespace)
 	}
-	defer origNS.Close()
-
-	// Switch to the target network namespace
-	targetNS, err := setNetworkNamespace(n.networkNamespace)
-	if err != nil {
-		return errors.WithMessagef(err, "Failed to set namespace for %s", n.networkNamespace)
-	}
-	defer targetNS.Close()
-
-	if err := netns.Set(targetNS); err != nil {
-		return errors.WithMessagef(err, "Failed to set namespace %s", n.networkNamespace)
-	}
-	defer netns.Set(origNS)
 
 	fmt.Printf("Starting DNS server TCP in namespace %s\n", n.networkNamespace)
 	portTCP, err := n.startDNSServer("tcp")
@@ -442,11 +427,32 @@ func waitForChainsWithRules(ipt *iptables.IPTables, table string, chainsGroups [
 	}
 }
 
-// setNetworkNamespace switches the current thread to the specified network namespace
-func setNetworkNamespace(nsPath string) (netns.NsHandle, error) {
-	ns, err := netns.GetFromPath(nsPath)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open namespace %s: %v", nsPath, err)
+const maxRetries = 5
+
+func setNamespace(nsPath string) error {
+	// Ensure namespace file exists
+	if _, err := os.Stat(nsPath); os.IsNotExist(err) {
+		return errors.Errorf("Namespace file does not exist: %s", nsPath)
 	}
-	return ns, nil
+
+	// Open target namespace
+	targetNS, err := netns.GetFromPath(nsPath)
+	if err != nil {
+		return errors.WithMessagef(err, "Failed to open namespace %s", nsPath)
+	}
+	defer targetNS.Close()
+
+	// Retry mechanism for setting namespace
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		if err := netns.Set(targetNS); err == nil {
+			return nil // Success
+		} else {
+			lastErr = err
+			time.Sleep(time.Millisecond * 50) // Short backoff
+		}
+	}
+
+	// If we reach here, all retries failed
+	return errors.WithMessagef(lastErr, "Failed to set namespace %s after retries", nsPath)
 }
