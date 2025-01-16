@@ -104,6 +104,8 @@ func (slb *serviceLb) AddBackend(ip net.IP) error {
 			Weight:          1,
 			ConnectionFlags: 0,
 		})
+
+		return errors.WithMessagef(err, "Error updating IPVS")
 	}
 
 	slb.backendIPs = append(slb.backendIPs, ip)
