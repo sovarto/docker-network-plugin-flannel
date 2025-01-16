@@ -51,6 +51,7 @@ type serviceLbManagement struct {
 	networksByDockerID          *common.ConcurrentMap[string, flannel_network.Network]
 	hostname                    string
 	networksChanged             *sync.Cond
+	networksChangedMutex        *sync.Mutex
 	sync.Mutex
 }
 
@@ -73,9 +74,10 @@ func NewServiceLbManagement(etcdClient etcd.Client) (ServiceLbsManagement, error
 		hostname:                    hostname,
 		services:                    common.NewConcurrentMap[string, common.Service](),
 		servicesEventsUnsubscribers: common.NewConcurrentMap[string, func()](),
+		networksChangedMutex:        &sync.Mutex{},
 	}
 
-	result.networksChanged = sync.NewCond(result)
+	result.networksChanged = sync.NewCond(result.networksChangedMutex)
 
 	return result, nil
 }

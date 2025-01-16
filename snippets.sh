@@ -13,7 +13,7 @@ docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl del /fla
 docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=flannel-id=$(uuidgen) f1
 docker service create --name s1_1 --network f1 --mode global traefik/whoami
 
-docker plugin disable --force flannel:dev || true && docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev && docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=flannel-id=$(uuidgen) f$i && docker service create --name s${i}_1 --network f$i --mode global traefik/whoami && docker run --rm -it --network f$i fedora curl s${i}_1
+docker plugin disable --force flannel:dev || true &&  docker plugin upgrade flannel:dev --grant-all-permissions && docker plugin enable flannel:dev && docker network create --attachable=true --driver=flannel:dev --ipam-driver=flannel:dev --ipam-opt=flannel-id=$(uuidgen) f$i && docker service create --name s${i}_1 --network f$i --mode global traefik/whoami && docker run --rm -it --network f$i fedora curl s${i}_1
 
 wget https://github.com/flannel-io/flannel/releases/latest/download/flanneld-amd64 && chmod +x flanneld-amd64
 docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl --endpoints=http://172.16.0.2:2379,http://172.16.0.3:2379,http://172.16.0.4:2379 put /manual-flannel/config '{ "Network": "10.200.0.0/16", "SubnetLen": 24, "Backend": {"Type": "vxlan"}}'
