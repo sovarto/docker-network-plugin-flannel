@@ -8,6 +8,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 func main() {
@@ -46,8 +48,13 @@ func main() {
 		etcdEndPoints, etcdPrefix, defaultFlannelOptions, availableSubnets, networkSubnetSize,
 		defaultHostSubnetSize, vniStart, dnsDockerCompatibilityMode)
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	ready := make(chan struct{})
 	// In a go-routine because it may take a while and docker marks us as disabled if our startup takes too long
 	go func() {
+		defer wg.Done()
 		fmt.Println("Initializing Flannel plugin...")
 
 		err := flannelDriver.Init()
@@ -56,8 +63,15 @@ func main() {
 		}
 
 		fmt.Println("Flannel plugin is ready")
+		close(ready)
 	}()
-
+	select {
+	case <-ready:
+		// Initialization completed within timeout
+	case <-time.After(5 * time.Second):
+		// Timeout reached, continuing asynchronously
+		fmt.Println("Flannel plugin initialization is still in progress, continuing startup...")
+	}
 	err := flannelDriver.Serve()
 	if err != nil {
 		log.Fatalf("ERROR: %s start flannel plugin failed: %v", "flannel-np", err)

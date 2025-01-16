@@ -338,7 +338,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 
 		existingData, exists := m.loadBalancersData.GetItem(serviceInfo.ID)
 
-		fmt.Printf("Service %s has IPAM VIPs %v\n", serviceInfo.ID, serviceInfo.IpamVIPs)
+		fmt.Printf("Service %s (%s) has IPAM VIPs %v\n", serviceInfo.Name, serviceInfo.ID, serviceInfo.IpamVIPs)
 		// Assumption: for every network we also have an IPAM VIP
 		for dockerNetworkID, ipamVip := range serviceInfo.IpamVIPs {
 			var ip net.IP
@@ -381,6 +381,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 			return
 		}
 
+		fmt.Printf("Service %s (%s) got these local VIPs: %v\n", serviceInfo.Name, serviceInfo.ID, data.FrontendIPs)
 		service.SetVIPs(data.FrontendIPs)
 
 		done <- nil

@@ -23,20 +23,32 @@ func generateAllSubnets(availableSubnets []net.IPNet, poolSize int) ([]net.IPNet
 	return allSubnets, nil
 }
 
-func ipsInSubnet(subnet net.IPNet, excludeGateway bool) []net.IP {
+func getBroadcastIP(subnet net.IPNet) net.IP {
+	broadcast := append(net.IP(nil), subnet.IP...) // Copy base IP
+	for i := range broadcast {
+		broadcast[i] |= ^subnet.Mask[i] // Invert mask and OR with network IP
+	}
+	return broadcast
+}
+
+func ipsInSubnet(subnet net.IPNet, excludeGateway bool, excludeBroadcast bool) []net.IP {
 	var ips []net.IP
 	gatewayIP := nextIP(subnet.IP)
+	broadcastIP := getBroadcastIP(subnet)
 	ip := subnet.IP.Mask(subnet.Mask)
 	for {
 		ip = nextIP(ip)
 		if !subnet.Contains(ip) {
 			break
 		}
-		// Exclude network and broadcast addresses
+		// Exclude network address
 		if ip.Equal(subnet.IP) {
 			continue
 		}
 		if excludeGateway && ip.Equal(gatewayIP) {
+			continue
+		}
+		if excludeBroadcast && ip.Equal(broadcastIP) {
 			continue
 		}
 		ips = append(ips, append(net.IP(nil), ip...))

@@ -7,6 +7,8 @@ journalctl -u docker.service --since "5m ago" | grep plugin= | sed -E -e 's/^[a-
 
 CONTAINER=15; nsenter --net=$(docker inspect $CONTAINER --format "{{.NetworkSettings.SandboxKey}}") ip a
 
+ip="10.1.5.68"; mark=$(iptables -t mangle -L PREROUTING -n -v --line-numbers | awk -v ip="$ip" '$0 ~ ip {print $NF; exit}') && [ -z "$mark" ] && echo "No entry in iptables" || (mark_dec=$(printf "%d" $mark); [ $mark_dec -gt 2147483647 ] && mark_dec=$((mark_dec - 4294967296)); echo $mark_dec; backends=$(ipvsadm -L -n --persistent-conn | awk -v mark="$mark_dec" '$1 == "FWM" && $2 == mark {flag=1; next} flag && $1 == "->" {print $2} flag && $1 != "->" {flag=0}'); [ -z "$backends" ] && echo "No entry in ipvsadm" || echo "$backends")
+
 docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl get /flannel --prefix
 docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl del /flannel --prefix
 

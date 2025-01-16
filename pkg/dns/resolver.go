@@ -187,8 +187,6 @@ func (r *resolver) ResolveName(query string, validNetworkIDs []string) []dns.RR 
 	r.Lock()
 	defer r.Unlock()
 
-	fmt.Printf("Received request to resolve %s in networks %v\n", query, validNetworkIDs)
-
 	queryParts := strings.Split(strings.TrimSuffix(query, "."), ".") // Remove trailing . in queries
 	namePartsCount := len(queryParts)
 
@@ -216,7 +214,7 @@ func (r *resolver) ResolveName(query string, validNetworkIDs []string) []dns.RR 
 		}
 	}
 
-	return lo.Map(result, func(item net.IP, index int) dns.RR {
+	dnsRecords := lo.Map(result, func(item net.IP, index int) dns.RR {
 		return &dns.A{
 			Hdr: dns.RR_Header{
 				Name:     query,
@@ -228,6 +226,10 @@ func (r *resolver) ResolveName(query string, validNetworkIDs []string) []dns.RR 
 			A: item,
 		}
 	})
+
+	fmt.Printf("Received request to resolve %s in networks %v. Resolved to %v\n", query, validNetworkIDs, dnsRecords)
+
+	return dnsRecords
 }
 
 func (r *resolver) ResolveIP(query string, validNetworkIDs []string) []dns.RR {
