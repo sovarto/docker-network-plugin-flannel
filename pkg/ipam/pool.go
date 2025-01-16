@@ -74,7 +74,7 @@ var (
 
 func NewEtcdBasedAddressPool(poolID string, poolSubnet net.IPNet, etcdClient etcd.Client) (AddressPool, error) {
 
-	allIPs := ipsInSubnet(poolSubnet, true)
+	allIPs := ipsInSubnet(poolSubnet, true, true)
 
 	pool := &etcdPool{
 		poolID:     poolID,
