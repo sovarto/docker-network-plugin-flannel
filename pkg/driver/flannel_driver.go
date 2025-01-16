@@ -451,12 +451,13 @@ func (d *flannelDriver) createService(id, name string) common.Service {
 	service.Events().OnInitialized.Subscribe(func(s common.Service) {
 		d.dnsResolver.AddService(s)
 		if s.GetInfo().EndpointMode == common.ServiceEndpointModeVip {
-			err := d.serviceLbsManagement.CreateLoadBalancer(s)
-			if err != nil {
-				log.Printf("Failed to create load balancer of service %s: %v\n", name, err)
-			} else {
-				fmt.Printf("Created load balancer of service %s\n", name)
-			}
+			go func() {
+				if err := <-d.serviceLbsManagement.CreateLoadBalancer(s); err != nil {
+					log.Printf("Failed to create load balancer of service %s: %v\n", name, err)
+				} else {
+					fmt.Printf("Created load balancer of service %s\n", name)
+				}
+			}()
 		}
 	})
 
