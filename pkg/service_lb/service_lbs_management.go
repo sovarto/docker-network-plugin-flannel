@@ -51,7 +51,6 @@ type serviceLbManagement struct {
 	networksByDockerID          *common.ConcurrentMap[string, flannel_network.Network]
 	hostname                    string
 	networksChanged             *sync.Cond
-	networksChangedMutex        *sync.Mutex
 	sync.Mutex
 }
 
@@ -66,7 +65,7 @@ func NewServiceLbManagement(etcdClient etcd.Client) (ServiceLbsManagement, error
 		return nil, errors.WithMessage(err, "error initializing load balancer data store")
 	}
 
-	result := &serviceLbManagement{
+	return &serviceLbManagement{
 		loadBalancers:               common.NewConcurrentMap[string, *common.ConcurrentMap[string, NetworkSpecificServiceLb]](),
 		loadBalancersData:           loadBalancerData,
 		fwmarksManagement:           NewFwmarksManagement(etcdClient.CreateSubClient(hostname, "fwmarks")),
@@ -74,12 +73,8 @@ func NewServiceLbManagement(etcdClient etcd.Client) (ServiceLbsManagement, error
 		hostname:                    hostname,
 		services:                    common.NewConcurrentMap[string, common.Service](),
 		servicesEventsUnsubscribers: common.NewConcurrentMap[string, func()](),
-		networksChangedMutex:        &sync.Mutex{},
-	}
-
-	result.networksChanged = sync.NewCond(result.networksChangedMutex)
-
-	return result, nil
+		networksChanged:             sync.NewCond(&sync.Mutex{}),
+	}, nil
 }
 
 func (m *serviceLbManagement) SetNetwork(dockerNetworkID string, network flannel_network.Network) error {
@@ -280,9 +275,11 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 	done := make(chan error, 1)
 	go func() {
 		defer close(done)
+		m.networksChanged.L.Lock()
 		for m.hasMissingNetworks(service) {
 			m.networksChanged.Wait()
 		}
+		m.networksChanged.L.Unlock()
 
 		m.Lock()
 		defer m.Unlock()
