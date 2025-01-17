@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
 )
 
 func poolIDtoNetworkID(poolID string) string {
@@ -58,7 +59,9 @@ func (d *flannelDriver) ReleasePool(request *docker_ipam.ReleasePoolRequest) err
 }
 
 func (d *flannelDriver) RequestAddress(request *docker_ipam.RequestAddressRequest) (*docker_ipam.RequestAddressResponse, error) {
+	start := time.Now()
 	d.Lock()
+	fmt.Printf("Wait time for lock: %s\n", time.Since(start))
 	defer d.Unlock()
 
 	flannelNetworkID := poolIDtoNetworkID(request.PoolID)

@@ -147,8 +147,7 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 		err := WaitForSandboxAndConfigure(sandboxKey, 10*time.Second, func() error {
 			start := time.Now()
 			defer func() {
-				elapsed := time.Since(start)
-				fmt.Printf("Execution time: %s\n", elapsed)
+				fmt.Printf("Execution time: %s\n", time.Since(start))
 			}()
 			nameserver, err := d.getOrAddNameserver(sandboxKey)
 			if err != nil {

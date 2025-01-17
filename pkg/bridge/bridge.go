@@ -61,6 +61,7 @@ func (b *bridgeInterface) GetNetworkInfo() common.FlannelNetworkInfo {
 
 func (b *bridgeInterface) Ensure() error {
 
+	fmt.Printf("Ensuring bridge interface %s\n", b.interfaceName)
 	bridge, err := networking.EnsureInterface(b.interfaceName, "bridge", b.network.MTU, true)
 	if err != nil {
 		log.Printf("Error ensuring bridge interface exists %s: %v", b.interfaceName, err)
