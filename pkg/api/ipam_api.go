@@ -27,8 +27,9 @@ type IpamDriver interface {
 func InitIpamMux(h *sdk.Handler, i IpamDriver) {
 	o := CommonHandlerOptions{Api: "IPAM", IsInitialized: func() bool { return true }}
 	h.HandleFunc(ipamCapabilitiesPath, MakeHandlerWithOutput(o, i.GetIpamCapabilities))
-	o = CommonHandlerOptions{Api: "IPAM", IsInitialized: i.IsInitialized}
 	h.HandleFunc(addressSpacesPath, MakeHandlerWithOutput(o, i.GetDefaultAddressSpaces))
+
+	o = CommonHandlerOptions{Api: "IPAM", IsInitialized: i.IsInitialized}
 	h.HandleFunc(requestPoolPath, MakeHandlerWithInputAndOutput(o, i.RequestPool))
 	h.HandleFunc(releasePoolPath, MakeHandlerWithInput(o, i.ReleaseAddress))
 	h.HandleFunc(requestAddressPath, MakeHandlerWithInputAndOutput(o, i.RequestAddress))
