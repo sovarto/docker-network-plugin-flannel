@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/vishvananda/netlink"
@@ -85,7 +86,7 @@ func (b *bridgeInterface) attachInterfaceToBridge(interfaceName string) error {
 		if err2 != nil {
 			return errors.WithMessagef(err, "failed to find bridge interface %s. Error when trying to get list of all interfaces: %v", b.interfaceName, err2)
 		}
-		return errors.WithMessagef(err, "failed to find bridge interface %s. Available interfaces: %+v", b.interfaceName, links)
+		return errors.WithMessagef(err, "failed to find bridge interface %s. Available interfaces: %s", b.interfaceName, spew.Sdump(links))
 	}
 
 	iface, err := netlink.LinkByName(interfaceName)
