@@ -8,7 +8,6 @@ import (
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"golang.org/x/exp/maps"
 	"log"
 	"strings"
 	"sync"
@@ -56,22 +55,22 @@ type shardedDistributedStore[T common.Equaler] struct {
 	client         Client
 	localShardKey  string
 	handlers       ShardItemsHandlers[T]
-	shardedData    map[string]map[string]T // shardKey -> itemID -> item
-	data           map[string]T            // itemID -> item
-	itemToShardKey map[string]string       // itemID -> shardKey
+	shardedData    *common.ConcurrentMap[string, *common.ConcurrentMap[string, T]] // shardKey -> itemID -> item
+	data           *common.ConcurrentMap[string, T]                                // itemID -> item
+	itemToShardKey *common.ConcurrentMap[string, string]                           // itemID -> shardKey
 	sync.Mutex
 }
 
 func NewShardedDistributedStore[T common.Equaler](client Client, localShardKey string, handlers ShardItemsHandlers[T]) ShardedDistributedStore[T] {
-	shardedData := make(map[string]map[string]T)
-	shardedData[localShardKey] = make(map[string]T)
+	shardedData := common.NewConcurrentMap[string, *common.ConcurrentMap[string, T]]()
+	shardedData.Set(localShardKey, common.NewConcurrentMap[string, T]())
 	return &shardedDistributedStore[T]{
 		client:         client,
 		localShardKey:  localShardKey,
 		handlers:       handlers,
 		shardedData:    shardedData,
-		data:           make(map[string]T),
-		itemToShardKey: make(map[string]string),
+		data:           common.NewConcurrentMap[string, T](),
+		itemToShardKey: common.NewConcurrentMap[string, string](),
 	}
 }
 
@@ -89,23 +88,40 @@ func (s *shardedDistributedStore[T]) Init(localShardItems map[string]T) error {
 	return nil
 }
 
-func (s *shardedDistributedStore[T]) GetAll() map[string]map[string]T { return s.shardedData }
-func (s *shardedDistributedStore[T]) GetLocalShardKey() string        { return s.localShardKey }
+func (s *shardedDistributedStore[T]) GetAll() map[string]map[string]T {
+	result := make(map[string]map[string]T)
+	for _, key := range s.shardedData.Keys() {
+		result[key] = make(map[string]T)
+		item, _ := s.shardedData.Get(key)
+		for _, subKey := range item.Keys() {
+			subItem, _ := item.Get(subKey)
+			result[key][subKey] = subItem
+		}
+	}
+	return result
+}
+
+func (s *shardedDistributedStore[T]) GetLocalShardKey() string { return s.localShardKey }
 
 func (s *shardedDistributedStore[T]) GetShard(key string) (shardItems map[string]T, shardExists bool) {
-	s.Lock()
-	defer s.Unlock()
-
-	shardItems, shardExists = s.shardedData[key]
-	return
+	item, exists := s.shardedData.Get(key)
+	if !exists {
+		return nil, false
+	}
+	result := make(map[string]T)
+	for _, subKey := range item.Keys() {
+		subItem, _ := item.Get(subKey)
+		result[subKey] = subItem
+	}
+	return result, true
 }
 
 func (s *shardedDistributedStore[T]) GetItem(itemID string) (shardKey string, item T, itemExists bool) {
 	s.Lock()
 	defer s.Unlock()
 
-	item, itemExists = s.data[itemID]
-	shardKey = s.itemToShardKey[itemID]
+	item, itemExists = s.data.Get(itemID)
+	shardKey, _ = s.itemToShardKey.Get(itemID)
 	return
 }
 
@@ -114,13 +130,13 @@ func (s *shardedDistributedStore[T]) AddOrUpdateItem(itemID string, item T) erro
 	defer s.Unlock()
 
 	shardKey := s.localShardKey
-	shardItems := s.shardedData[shardKey]
+	shardItems, _ := s.shardedData.Get(shardKey)
 
-	previousItem, exists := shardItems[itemID]
+	previousItem, exists := shardItems.Get(itemID)
 
-	shardItems[itemID] = item
-	s.data[itemID] = item
-	s.itemToShardKey[itemID] = shardKey
+	shardItems.Set(itemID, item)
+	s.data.Set(itemID, item)
+	s.itemToShardKey.Set(itemID, shardKey)
 
 	_, err := WithConnection(s.client, func(connection *Connection) (struct{}, error) {
 		_, err := s.storeItem(connection, shardKey, itemID, item)
@@ -155,12 +171,11 @@ func (s *shardedDistributedStore[T]) DeleteItem(itemID string) error {
 	defer s.Unlock()
 
 	shardKey := s.localShardKey
-	shardItems := s.shardedData[shardKey]
+	shardItems, _ := s.shardedData.Get(shardKey)
 
-	previousItem, exists := shardItems[itemID]
-	delete(shardItems, itemID)
-	delete(s.data, itemID)
-	delete(s.itemToShardKey, itemID)
+	previousItem, exists := shardItems.TryRemove(itemID)
+	s.data.Remove(itemID)
+	s.itemToShardKey.Remove(itemID)
 
 	_, err := WithConnection(s.client, func(connection *Connection) (struct{}, error) {
 		key := s.client.GetKey(shardKey, itemID)
@@ -252,10 +267,10 @@ func (s *shardedDistributedStore[T]) syncToInternalState(shardKey string, truth 
 	added = []ShardItem[T]{}
 	removed = []ShardItem[T]{}
 
-	shardItems := s.shardedData[shardKey]
+	shardItems, _ := s.shardedData.Get(shardKey)
 
 	for id, item := range truth {
-		previousItem, exists := shardItems[id]
+		previousItem, exists := shardItems.Get(id)
 		if exists {
 			if !previousItem.Equals(item) {
 				changes = append(changes, ShardItemChange[T]{
@@ -274,18 +289,24 @@ func (s *shardedDistributedStore[T]) syncToInternalState(shardKey string, truth 
 		}
 	}
 
-	toBeDeletedFromInternalState, _ := lo.Difference(lo.Keys(shardItems), lo.Keys(truth))
+	toBeDeletedFromInternalState, _ := lo.Difference(shardItems.Keys(), lo.Keys(truth))
 	for _, id := range toBeDeletedFromInternalState {
-		previousItem := shardItems[id]
+		previousItem, _ := shardItems.Get(id)
 		removed = append(removed, ShardItem[T]{ID: id, Value: previousItem, ShardKey: shardKey})
 	}
 
-	s.shardedData[shardKey] = maps.Clone(truth)
-	s.data = map[string]T{}
-	for shardKey, shardItems := range s.shardedData {
-		for id, item := range shardItems {
-			s.data[id] = item
-			s.itemToShardKey[id] = shardKey
+	clonedTruth := common.NewConcurrentMap[string, T]()
+	for key, value := range truth {
+		clonedTruth.Set(key, value)
+	}
+	s.shardedData.Set(shardKey, clonedTruth)
+	s.data = common.NewConcurrentMap[string, T]()
+	for _, shardKey := range s.shardedData.Keys() {
+		shardItems, _ := s.shardedData.Get(shardKey)
+		for _, id := range shardItems.Keys() {
+			item, _ := shardItems.Get(id)
+			s.data.Set(id, item)
+			s.itemToShardKey.Set(id, shardKey)
 		}
 	}
 
@@ -367,13 +388,14 @@ func (s *shardedDistributedStore[T]) handleWatchEvents(watcher clientv3.WatchCha
 				// - if not: print error message as this shouldn't happen
 			} else {
 				if ev.Type == mvccpb.DELETE {
-					shardedItems, exists := s.shardedData[shardKey]
+					s.Lock()
+					shardedItems, exists := s.shardedData.Get(shardKey)
 					if exists {
-						delete(shardedItems, itemID)
+						shardedItems.Remove(itemID)
 					}
-					item, exists := s.data[itemID]
-					delete(s.data, itemID)
-					delete(s.itemToShardKey, itemID)
+					item, exists := s.data.TryRemove(itemID)
+					s.itemToShardKey.Remove(itemID)
+					s.Unlock()
 					if exists && s.handlers.OnRemoved != nil {
 						s.handlers.OnRemoved([]ShardItem[T]{{ID: itemID, Value: item, ShardKey: shardKey}})
 					} else {
@@ -386,14 +408,16 @@ func (s *shardedDistributedStore[T]) handleWatchEvents(watcher clientv3.WatchCha
 						continue
 					}
 
-					shardedItems, shardExists := s.shardedData[shardKey]
+					s.Lock()
+					shardedItems, shardExists := s.shardedData.Get(shardKey)
 					if !shardExists {
-						shardedItems = make(map[string]T)
-						s.shardedData[shardKey] = shardedItems
+						shardedItems = common.NewConcurrentMap[string, T]()
+						s.shardedData.Set(shardKey, shardedItems)
 					}
-					previousItem, exists := shardedItems[itemID]
-					shardedItems[itemID] = item
-					s.data[itemID] = item
+					previousItem, exists := shardedItems.Get(itemID)
+					shardedItems.Set(itemID, item)
+					s.data.Set(itemID, item)
+					s.Unlock()
 					if exists {
 						if s.handlers.OnChanged != nil && !previousItem.Equals(item) {
 							s.handlers.OnChanged([]ShardItemChange[T]{{
