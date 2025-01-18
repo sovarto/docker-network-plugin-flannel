@@ -145,7 +145,6 @@ func (n *nameserver) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 // startDnsServersInNamespace sets up DNS servers within the specified network namespace
 func (n *nameserver) startDnsServersInNamespace() error {
 	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 
 	if err := setNamespace(n.networkNamespace); err != nil {
 		return errors.WithMessagef(err, "Error setting namespace to %s", n.networkNamespace)
