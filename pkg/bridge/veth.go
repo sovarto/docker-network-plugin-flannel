@@ -81,7 +81,11 @@ func (b *bridgeInterface) CreateAttachedVethPair(macAddress string) (VethPair, e
 func (b *bridgeInterface) attachInterfaceToBridge(interfaceName string) error {
 	bridge, err := netlink.LinkByName(b.interfaceName)
 	if err != nil {
-		return errors.WithMessagef(err, "failed to find bridge interface %s", b.interfaceName)
+		links, err2 := netlink.LinkList()
+		if err2 != nil {
+			return errors.WithMessagef(err, "failed to find bridge interface %s. Error when trying to get list of all interfaces: %v", b.interfaceName, err2)
+		}
+		return errors.WithMessagef(err, "failed to find bridge interface %s. Available interfaces: %+v", b.interfaceName, links)
 	}
 
 	iface, err := netlink.LinkByName(interfaceName)
