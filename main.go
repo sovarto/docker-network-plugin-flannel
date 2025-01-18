@@ -68,7 +68,7 @@ func main() {
 	select {
 	case <-ready:
 		// Initialization completed within timeout
-	case <-time.After(5 * time.Second):
+	case <-time.After(5 * time.Minute):
 		// Timeout reached, continuing asynchronously
 		fmt.Println("Flannel plugin initialization is still in progress, continuing startup...")
 	}
