@@ -440,7 +440,7 @@ func (d *flannelDriver) getOrAddNameserver(sandboxKey string) (dns.Nameserver, <
 
 	nameserver = dns.NewNameserver(sandboxKey, d.dnsResolver)
 	d.nameserversBySandboxKey.Set(sandboxKey, nameserver)
-	return nil, nameserver.Activate()
+	return nameserver, nameserver.Activate()
 }
 
 func (d *flannelDriver) createService(id, name string) common.Service {
