@@ -454,5 +454,5 @@ func setNamespace(nsPath string) error {
 	}
 
 	// Log final error details before returning.
-	return errors.Wrapf(lastErr, "failed to set namespace %s after %d retries", nsPath, maxRetries)
+	return errors.WithMessagef(lastErr, "failed to set namespace %s after %d retries", nsPath, maxRetries)
 }

@@ -103,7 +103,7 @@ func writeToEtcd(endpoint *endpoint, create bool) error {
 			}
 
 			if !resp.Succeeded {
-				return struct{}{}, errors.Errorf("endpoint key already exists: %s", endpointKey)
+				return struct{}{}, fmt.Errorf("endpoint key already exists: %s", endpointKey)
 			}
 
 		} else {
@@ -190,7 +190,7 @@ func (e *endpoint) Delete() error {
 		}
 
 		if !resp.Succeeded {
-			return struct{}{}, errors.Errorf("endpoint key %s doesn't exist with IP %s", endpointKey, e.ipAddress)
+			return struct{}{}, fmt.Errorf("endpoint key %s doesn't exist with IP %s", endpointKey, e.ipAddress)
 		}
 
 		return struct{}{}, nil

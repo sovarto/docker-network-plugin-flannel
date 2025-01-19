@@ -623,7 +623,7 @@ func (n *network) AddEndpoint(id string, ip net.IP, mac string) (Endpoint, error
 func (n *network) DeleteEndpoint(id string) error {
 	endpoint, exists := n.endpoints[id]
 	if !exists {
-		return errors.Errorf("endpoint %s does not exist", id)
+		return fmt.Errorf("endpoint %s does not exist", id)
 	}
 
 	err := endpoint.Delete()
