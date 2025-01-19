@@ -243,17 +243,6 @@ func (n *nameserver) replaceDNATSNATRules() error {
 	}
 
 	table := "nat"
-	// We wait for either:
-	// - The docker chains to have any rules in them. Scenario: A container is started while the plugin runs
-	// - or, our own output chain to have any rules in them. Scenario: The plugin was restarted and needs to re-inject the nameserver into already running containers
-	dockerChains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
-	err = waitForChainsWithRules(ipt, table, [][]string{dockerChains, {"FLANNEL_DNS_OUTPUT"}}, 30*time.Second)
-
-	if err != nil {
-		return err
-	} else {
-		fmt.Println("Chains exist and have at least one rule")
-	}
 
 	rulesToDelete := map[string][]string{}
 	flannelDnsOutputExists, err := ipt.ChainExists(table, "FLANNEL_DNS_OUTPUT")
@@ -341,6 +330,15 @@ func (n *nameserver) replaceDNATSNATRules() error {
 		}
 	}
 
+	dockerChains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
+
+	start := time.Now()
+	if err := waitForChainsWithRules(ipt, table, [][]string{dockerChains}, 30*time.Second); err != nil {
+		return err
+	} else {
+		fmt.Printf("Chains exist and have at least one rule in namespace %s after %s\n", n.networkNamespace, time.Since(start))
+	}
+
 	for _, chain := range dockerChains {
 		rules, err := ipt.List("nat", chain)
 		if err != nil {
@@ -384,7 +382,8 @@ func createChainIfNecessary(ipt *iptables.IPTables, table, chain string) error {
 
 // Waits until at least one chains group has rules for each chain in the group
 func waitForChainsWithRules(ipt *iptables.IPTables, table string, chainsGroups [][]string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
+	start := time.Now()
+	deadline := start.Add(timeout)
 
 	for {
 		for _, chainsGroup := range chainsGroups {
