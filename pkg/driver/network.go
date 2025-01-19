@@ -122,7 +122,6 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 		// are of form /var/run/docker/netns/<key>
 		sandboxKey := adjustSandboxKey(request.SandboxKey)
 		start := time.Now()
-		fmt.Printf("Wait time until sandbox %s file exists: %s\n", sandboxKey, time.Since(start))
 		nameserver, errChan := d.getOrAddNameserver(sandboxKey)
 		nameserver.AddValidNetworkID(request.NetworkID)
 		if err := <-errChan; err != nil {

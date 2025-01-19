@@ -146,6 +146,10 @@ func (n *nameserver) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 func (n *nameserver) startDnsServersInNamespace() error {
 	runtime.LockOSThread()
 
+	if err := setNamespace(n.networkNamespace); err != nil {
+		return errors.WithMessagef(err, "Error setting namespace to %s", n.networkNamespace)
+	}
+
 	portTCP, err := n.startDNSServer("tcp")
 	if err != nil {
 		return errors.WithMessagef(err, "Failed to start DNS server TCP in namespace %s", n.networkNamespace)
@@ -157,10 +161,6 @@ func (n *nameserver) startDnsServersInNamespace() error {
 	}
 
 	fmt.Printf("Both servers for %s have been started\n", n.networkNamespace)
-
-	if err := setNamespace(n.networkNamespace); err != nil {
-		return errors.WithMessagef(err, "Error setting namespace to %s", n.networkNamespace)
-	}
 
 	err = n.replaceDNATSNATRules()
 	if err != nil {
@@ -420,39 +420,42 @@ func waitForChainsWithRules(ipt *iptables.IPTables, table string, chainsGroups [
 				return errors.New("timeout waiting for chains with rules")
 			}
 		}
-		time.Sleep(5 * time.Millisecond) // Wait before retrying
+		time.Sleep(1 * time.Millisecond) // Wait before retrying
 	}
 }
 
 func setNamespace(nsPath string) error {
 	// Retry mechanism for setting namespace
-	// Wait for 4 seconds max
+	// Wait for 6 seconds max
 	// TODO: And then what? Shouldn't we wait indefinitely? Or somehow crash the
 	//   container if we can't set the namespace and therefore the DNS server?)
 	var lastErr error
-	maxWaitTime := 4 * time.Second
-	delayBetweenRetries := 5 * time.Millisecond
-	maxRetries := int(maxWaitTime.Milliseconds() / delayBetweenRetries.Milliseconds())
-	for i := 0; i < maxRetries; i++ {
+	maxWaitTime := 6 * time.Second
+	deadline := time.Now().Add(maxWaitTime)
+	for {
 		targetNS, err := netns.GetFromPath(nsPath)
 		if err != nil {
 			lastErr = err
 			log.Printf("Attempt %d: failed to open namespace %s: %v", i+1, nsPath, err)
-			time.Sleep(delayBetweenRetries)
+			time.Sleep(1 * time.Millisecond)
 			continue
 		}
 		if err := netns.Set(targetNS); err == nil {
 			targetNS.Close()
-			fmt.Printf("Successfully set namespace on attempt %d\n", i+1)
+			fmt.Printf("Successfully set namespace %s on attempt %d\n", nsPath, i+1)
 			return nil // Success
 		} else {
 			targetNS.Close()
 			lastErr = err
 			log.Printf("Attempt %d: failed to set namespace %s: %v", i+1, nsPath, err)
-			time.Sleep(delayBetweenRetries)
+			time.Sleep(1 * time.Millisecond)
+		}
+
+		if time.Now().After(deadline) {
+			break
 		}
 	}
 
 	// Log final error details before returning.
-	return errors.WithMessagef(lastErr, "failed to set namespace %s after %d retries", nsPath, maxRetries)
+	return errors.WithMessagef(lastErr, "failed to set namespace %s after %s", nsPath, maxWaitTime)
 }
