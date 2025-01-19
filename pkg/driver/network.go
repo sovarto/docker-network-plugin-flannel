@@ -150,8 +150,8 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 			defer func() {
 				fmt.Printf("Wait time until nameserver in namespace was setup or failed: %s\n", time.Since(start))
 			}()
-			nameserver, err := d.getOrAddNameserver(sandboxKey)
-			if err != nil {
+			nameserver, errChan := d.getOrAddNameserver(sandboxKey)
+			if err := <-errChan; err != nil {
 				return err
 			}
 
