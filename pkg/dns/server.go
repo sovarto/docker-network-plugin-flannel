@@ -19,7 +19,7 @@ import (
 )
 
 type Nameserver interface {
-	Activate() error
+	Activate() <-chan error
 	DeactivateAndCleanup() error
 	AddValidNetworkID(validNetworkID string)
 	RemoveValidNetworkID(validNetworkID string)
@@ -50,22 +50,24 @@ func NewNameserver(networkNamespace string, resolver Resolver) Nameserver {
 	}
 }
 
-func (n *nameserver) Activate() error {
+func (n *nameserver) Activate() <-chan error {
 	n.Lock()
 	defer n.Unlock()
 
+	errCh := make(chan error, 1)
 	if _, err := os.Stat(n.networkNamespace); os.IsNotExist(err) {
-		return fmt.Errorf("namespace path does not exist: %s", n.networkNamespace)
+		errCh <- fmt.Errorf("namespace path does not exist: %s", n.networkNamespace)
+		return errCh
 	}
 
 	fmt.Printf("Starting nameserver in namespace %s\n", n.networkNamespace)
 	go func() {
 		if err := n.startDnsServersInNamespace(); err != nil {
-			log.Printf("Error listening in namespace %s: %+v\n", n.networkNamespace, err)
+			errCh <- errors.WithMessagef(err, "Error listening in namespace %s", n.networkNamespace)
 		}
 	}()
 
-	return nil
+	return errCh
 }
 
 func (n *nameserver) DeactivateAndCleanup() error {
@@ -449,14 +451,17 @@ func setNamespace(nsPath string) error {
 	// TODO: And then what? Shouldn't we wait indefinitely? Or somehow crash the
 	//   container if we can't set the namespace and therefore the DNS server?)
 	var lastErr error
-	for i := 0; i < 160; i++ {
+	maxWaitTime := 4 * time.Second
+	delayBetweenRetries := 10 * time.Millisecond
+	maxRetries := int(maxWaitTime.Milliseconds() / delayBetweenRetries.Milliseconds())
+	for i := 0; i < maxRetries; i++ {
 		if err := netns.Set(targetNS); err == nil {
 			log.Printf("Successfully set namespace on attempt %d", i+1)
 			return nil // Success
 		} else {
 			lastErr = err
 			log.Printf("Attempt %d: failed to set namespace %s: %v", i+1, nsPath, err)
-			time.Sleep(25 * time.Millisecond)
+			time.Sleep(delayBetweenRetries)
 		}
 	}
 

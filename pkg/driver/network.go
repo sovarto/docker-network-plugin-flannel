@@ -144,10 +144,11 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 		// The node path /var/run/docker is mounted to /hostfs/var/run/docker and the sandbox keys
 		// are of form /var/run/docker/netns/<key>
 		sandboxKey := adjustSandboxKey(request.SandboxKey)
+		start := time.Now()
 		err := WaitForSandboxAndConfigure(sandboxKey, 10*time.Second, func() error {
-			start := time.Now()
+			fmt.Printf("Wait time until sandbox file exists: %s\n", time.Since(start))
 			defer func() {
-				fmt.Printf("Execution time: %s\n", time.Since(start))
+				fmt.Printf("Wait time until nameserver in namespace was setup or failed: %s\n", time.Since(start))
 			}()
 			nameserver, err := d.getOrAddNameserver(sandboxKey)
 			if err != nil {
