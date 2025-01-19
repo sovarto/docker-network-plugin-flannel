@@ -146,10 +146,6 @@ func (n *nameserver) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 func (n *nameserver) startDnsServersInNamespace() error {
 	runtime.LockOSThread()
 
-	if err := setNamespace(n.networkNamespace); err != nil {
-		return errors.WithMessagef(err, "Error setting namespace to %s", n.networkNamespace)
-	}
-
 	portTCP, err := n.startDNSServer("tcp")
 	if err != nil {
 		return errors.WithMessagef(err, "Failed to start DNS server TCP in namespace %s", n.networkNamespace)
@@ -161,6 +157,10 @@ func (n *nameserver) startDnsServersInNamespace() error {
 	}
 
 	fmt.Printf("Both servers for %s have been started\n", n.networkNamespace)
+
+	if err := setNamespace(n.networkNamespace); err != nil {
+		return errors.WithMessagef(err, "Error setting namespace to %s", n.networkNamespace)
+	}
 
 	err = n.replaceDNATSNATRules()
 	if err != nil {
