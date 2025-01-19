@@ -106,3 +106,25 @@ ip link set $IFACE mtu 1450
 nsenter --net=/var/run/docker/netns/0db87c43d694 netstat -tulpn
 
 latestTag=$(git tag --list 'v0.0.*' | sort -V | tail -n1 | sed -n 's/^v0\.0\.\([0-9]\+\)$/\1/p');i=${i:-$((latestTag+1))} && git add . || true && git commit -m "x" || true && git tag v0.0.$i && git push && git push origin refs/tags/v0.0.$i && sleep 5 && run_id=$(gh run list --json databaseId,headBranch --jq '.[] | select(.headBranch=="'"v0.0.$i"'") | .databaseId') && gh run watch $run_id && i=$((i+1))
+
+
+
+export CONTAINER=82e8eec586be
+export NS=$(docker inspect --format '{{.NetworkSettings.SandboxKey}}' $CONTAINER)
+ip a > interfaces.log
+ip route show > routes.log
+iptables -L -n -t nat > iptables.nat.log
+iptables -L -n -t filter > iptables.filter.log
+iptables -L -n -t mangle > iptables.mangle.log
+ipvsadm -L -n > ipvsadm.log
+nsenter --net=$NS ip a > container.interfaces.log
+nsenter --net=$NS ip route show > container.routes.log
+nsenter --net=$NS iptables -L -n -t nat > container.iptables.nat.log
+nsenter --net=$NS iptables -L -n -t filter > container.iptables.filter.log
+nsenter --net=$NS iptables -L -n -t mangle > container.iptables.mangle.log
+nsenter --net=$NS ipvsadm -L -n > container.ipvsadm.log
+journalctl -u docker.service --since "5m ago" | grep plugin= | sed -E -e 's/^[a-zA-Z]* [0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} [^ ]+ dockerd\[[^]]*\]: time="([0-9-]*)T([0-9:Z]*)" ((level=(info) msg="?)|(level=(error) msg="?[0-9/: ]*))/\7\1 \2  /' -E -e 's/"? plugin=[a-z0-9]*$//' -E -e 's/\\t/\t/' | awk '{ if (/^error/) { gsub(/^error/, ""); print "\033[31m" $0 "\033[0m";} else {print; } }' > log
+docker inspect $CONTAINER > inspect.log
+
+
+cat log | rg --passthru -p $CONTAINER | less -R

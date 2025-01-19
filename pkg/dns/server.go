@@ -426,7 +426,7 @@ func waitForChainsWithRules(ipt *iptables.IPTables, table string, chainsGroups [
 	}
 }
 
-const maxRetries = 5
+const maxRetries = 20
 
 func setNamespace(nsPath string) error {
 	// Ensure namespace file exists
@@ -448,7 +448,7 @@ func setNamespace(nsPath string) error {
 			return nil // Success
 		} else {
 			lastErr = err
-			time.Sleep(time.Millisecond * 50) // Short backoff
+			time.Sleep(time.Millisecond * 25) // Short backoff
 		}
 	}
 
