@@ -65,6 +65,7 @@ func (n *nameserver) Activate() <-chan error {
 		if err := n.startDnsServersInNamespace(); err != nil {
 			errCh <- errors.WithMessagef(err, "Error listening in namespace %s", n.networkNamespace)
 		}
+		close(errCh)
 	}()
 
 	return errCh
@@ -436,7 +437,7 @@ func setNamespace(nsPath string) error {
 	if err != nil {
 		return errors.Wrapf(err, "failed to stat namespace file %s", nsPath)
 	}
-	log.Printf("Namespace file found: %s; size=%d, mode=%s, modtime=%s",
+	fmt.Printf("Namespace file found: %s; size=%d, mode=%s, modtime=%s",
 		nsPath, fi.Size(), fi.Mode(), fi.ModTime())
 
 	// Open target namespace.
@@ -452,11 +453,11 @@ func setNamespace(nsPath string) error {
 	//   container if we can't set the namespace and therefore the DNS server?)
 	var lastErr error
 	maxWaitTime := 4 * time.Second
-	delayBetweenRetries := 10 * time.Millisecond
+	delayBetweenRetries := 5 * time.Millisecond
 	maxRetries := int(maxWaitTime.Milliseconds() / delayBetweenRetries.Milliseconds())
 	for i := 0; i < maxRetries; i++ {
 		if err := netns.Set(targetNS); err == nil {
-			log.Printf("Successfully set namespace on attempt %d", i+1)
+			fmt.Printf("Successfully set namespace on attempt %d", i+1)
 			return nil // Success
 		} else {
 			lastErr = err
