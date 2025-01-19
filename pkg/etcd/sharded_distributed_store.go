@@ -267,7 +267,9 @@ func (s *shardedDistributedStore[T]) syncToInternalState(shardKey string, truth 
 	added = []ShardItem[T]{}
 	removed = []ShardItem[T]{}
 
-	shardItems, _ := s.shardedData.Get(shardKey)
+	shardItems, _, _ := s.shardedData.GetOrAdd(shardKey, func() (*common.ConcurrentMap[string, T], error) {
+		return common.NewConcurrentMap[string, T](), nil
+	})
 
 	for id, item := range truth {
 		previousItem, exists := shardItems.Get(id)

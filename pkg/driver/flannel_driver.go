@@ -430,17 +430,17 @@ func countPoolSizeSubnets(completeSpace []net.IPNet, poolSize int) int {
 	return total
 }
 
-func (d *flannelDriver) getOrAddNameserver(sandboxKey string) (dns.Nameserver, error) {
-	nameserver, _, err := d.nameserversBySandboxKey.GetOrAdd(sandboxKey, func() (dns.Nameserver, error) {
-		nameserver := dns.NewNameserver(sandboxKey, d.dnsResolver)
-		err := <-nameserver.Activate()
-		if err != nil {
-			return nil, errors.WithMessagef(err, "failed to activate nameserver in namespace %s", sandboxKey)
-		}
+func (d *flannelDriver) getOrAddNameserver(sandboxKey string) (dns.Nameserver, <-chan error) {
+	d.Lock()
+	defer d.Unlock()
+	nameserver, exists := d.nameserversBySandboxKey.Get(sandboxKey)
+	if exists {
 		return nameserver, nil
-	})
+	}
 
-	return nameserver, err
+	nameserver = dns.NewNameserver(sandboxKey, d.dnsResolver)
+	d.nameserversBySandboxKey.Set(sandboxKey, nameserver)
+	return nil, nameserver.Activate()
 }
 
 func (d *flannelDriver) createService(id, name string) common.Service {
@@ -474,8 +474,8 @@ func (d *flannelDriver) injectNameserverIntoAlreadyRunningContainers() {
 		for _, container := range shardContainers {
 			if lo.Some(ourNetworkIDs, maps.Keys(container.IPs)) {
 				go func() {
-					nameserver, err := d.getOrAddNameserver(adjustSandboxKey(container.SandboxKey))
-					if err != nil {
+					nameserver, errChan := d.getOrAddNameserver(adjustSandboxKey(container.SandboxKey))
+					if err := <-errChan; err != nil {
 						log.Printf("Error getting nameserver for container %s: %v\n", container, err)
 						return
 					}
