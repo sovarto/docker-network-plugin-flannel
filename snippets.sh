@@ -128,3 +128,23 @@ docker inspect $CONTAINER > inspect.log
 
 
 cat log | rg --passthru -p $CONTAINER | less -R
+
+
+$serverIP = "168.119.224.80"
+
+scp `
+  root@${serverIP}:/root/interfaces.log `
+  root@${serverIP}:/root/routes.log `
+  root@${serverIP}:/root/iptables.nat.log `
+  root@${serverIP}:/root/iptables.filter.log `
+  root@${serverIP}:/root/iptables.mangle.log `
+  root@${serverIP}:/root/ipvsadm.log `
+  root@${serverIP}:/root/container.interfaces.log `
+  root@${serverIP}:/root/container.routes.log `
+  root@${serverIP}:/root/container.iptables.nat.log `
+  root@${serverIP}:/root/container.iptables.filter.log `
+  root@${serverIP}:/root/container.iptables.mangle.log `
+  root@${serverIP}:/root/container.ipvsadm.log `
+  root@${serverIP}:/root/log `
+  root@${serverIP}:/root/inspect.log `
+  .
