@@ -431,23 +431,19 @@ func setNamespace(nsPath string) error {
 	//   container if we can't set the namespace and therefore the DNS server?)
 	var lastErr error
 	maxWaitTime := 6 * time.Second
-	deadline := time.Now().Add(maxWaitTime)
+	start := time.Now()
+	deadline := start.Add(maxWaitTime)
 	for {
 		targetNS, err := netns.GetFromPath(nsPath)
-		if err != nil {
-			lastErr = err
-			log.Printf("Attempt %d: failed to open namespace %s: %v", i+1, nsPath, err)
-			time.Sleep(1 * time.Millisecond)
-			continue
-		}
-		if err := netns.Set(targetNS); err == nil {
+		if err == nil {
+			err = netns.Set(targetNS)
 			targetNS.Close()
-			fmt.Printf("Successfully set namespace %s on attempt %d\n", nsPath, i+1)
+		}
+		if err == nil {
+			fmt.Printf("Successfully set namespace %s after %s\n", nsPath, time.Since(start))
 			return nil // Success
 		} else {
-			targetNS.Close()
 			lastErr = err
-			log.Printf("Attempt %d: failed to set namespace %s: %v", i+1, nsPath, err)
 			time.Sleep(1 * time.Millisecond)
 		}
 
