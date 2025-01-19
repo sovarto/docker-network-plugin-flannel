@@ -110,6 +110,8 @@ func (n *nameserver) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	// Iterate through all questions (usually one)
 	for _, q := range r.Question {
 		if q.Qtype == dns.TypeA {
+			// TODO: This results in a parse error on the DNS client side if more than a single result
+			//   is being returned. Can be tested by creating a service with a fixed hostname
 			msg.Answer = append(msg.Answer, n.resolver.ResolveName(q.Name, n.validNetworkIDs)...)
 		} else if q.Qtype == dns.TypePTR {
 			msg.Answer = append(msg.Answer, n.resolver.ResolveIP(q.Name, n.validNetworkIDs)...)
@@ -426,32 +428,38 @@ func waitForChainsWithRules(ipt *iptables.IPTables, table string, chainsGroups [
 	}
 }
 
-const maxRetries = 20
-
 func setNamespace(nsPath string) error {
-	// Ensure namespace file exists
-	if _, err := os.Stat(nsPath); os.IsNotExist(err) {
-		return errors.Errorf("Namespace file does not exist: %s", nsPath)
+	// Ensure namespace file exists and log file details.
+	fi, err := os.Stat(nsPath)
+	if err != nil {
+		return errors.Wrapf(err, "failed to stat namespace file %s", nsPath)
 	}
+	log.Printf("Namespace file found: %s; size=%d, mode=%s, modtime=%s",
+		nsPath, fi.Size(), fi.Mode(), fi.ModTime())
 
-	// Open target namespace
+	// Open target namespace.
 	targetNS, err := netns.GetFromPath(nsPath)
 	if err != nil {
-		return errors.WithMessagef(err, "Failed to open namespace %s", nsPath)
+		return errors.Wrapf(err, "failed to open namespace %s", nsPath)
 	}
 	defer targetNS.Close()
 
 	// Retry mechanism for setting namespace
+	// Wait for 4 seconds max
+	// TODO: And then what? Shouldn't we wait indefinitely? Or somehow crash the
+	//   container if we can't set the namespace and therefore the DNS server?)
 	var lastErr error
-	for i := 0; i < maxRetries; i++ {
+	for i := 0; i < 160; i++ {
 		if err := netns.Set(targetNS); err == nil {
+			log.Printf("Successfully set namespace on attempt %d", i+1)
 			return nil // Success
 		} else {
 			lastErr = err
-			time.Sleep(time.Millisecond * 25) // Short backoff
+			log.Printf("Attempt %d: failed to set namespace %s: %v", i+1, nsPath, err)
+			time.Sleep(25 * time.Millisecond)
 		}
 	}
 
-	// If we reach here, all retries failed
-	return errors.WithMessagef(lastErr, "Failed to set namespace %s after retries", nsPath)
+	// Log final error details before returning.
+	return errors.Wrapf(lastErr, "failed to set namespace %s after retries", nsPath)
 }
