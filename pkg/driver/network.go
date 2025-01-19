@@ -7,7 +7,6 @@ import (
 	"github.com/pkg/errors"
 	"log"
 	"net"
-	"os"
 	"time"
 )
 
@@ -100,29 +99,7 @@ func (d *flannelDriver) EndpointInfo(request *network.InfoRequest) (*network.Inf
 
 	return resp, nil
 }
-func WaitForSandboxAndConfigure(sandboxKey string, timeout time.Duration, configure func() error) error {
-	start := time.Now()
 
-	for {
-		// Check if the sandbox key file exists
-		if _, err := os.Stat(sandboxKey); err == nil {
-			// File exists, apply the configuration
-			if configureErr := configure(); configureErr != nil {
-				return fmt.Errorf("failed to configure namespace: %w", configureErr)
-			}
-			fmt.Println("Sandbox configured successfully")
-			return nil
-		}
-
-		// Check if timeout has been reached
-		if time.Since(start) > timeout {
-			return fmt.Errorf("timeout reached while waiting for sandbox key: %s", sandboxKey)
-		}
-
-		// Sleep briefly before retrying
-		time.Sleep(5 * time.Millisecond)
-	}
-}
 func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinResponse, error) {
 	d.Lock()
 	defer d.Unlock()
@@ -145,23 +122,15 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 		// are of form /var/run/docker/netns/<key>
 		sandboxKey := adjustSandboxKey(request.SandboxKey)
 		start := time.Now()
-		err := WaitForSandboxAndConfigure(sandboxKey, 10*time.Second, func() error {
-			fmt.Printf("Wait time until sandbox file exists: %s\n", time.Since(start))
-			defer func() {
-				fmt.Printf("Wait time until nameserver in namespace was setup or failed: %s\n", time.Since(start))
-			}()
-			nameserver, errChan := d.getOrAddNameserver(sandboxKey)
-			if err := <-errChan; err != nil {
-				return err
-			}
+		fmt.Printf("Wait time until sandbox %s file exists: %s\n", sandboxKey, time.Since(start))
+		nameserver, errChan := d.getOrAddNameserver(sandboxKey)
+		nameserver.AddValidNetworkID(request.NetworkID)
+		if err := <-errChan; err != nil {
+			log.Printf("Error patching DNS server in sandbox %s. Wait time %s. Error: %v\n", sandboxKey, time.Since(start), err)
+		} else {
 
 			d.nameserversByEndpointID.Set(request.EndpointID, nameserver)
-			nameserver.AddValidNetworkID(request.NetworkID)
-
-			return nil
-		})
-		if err != nil {
-			log.Printf("Error patching DNS server in sandbox %s: %v\n", sandboxKey, err)
+			fmt.Printf("Wait time until nameserver in namespace %s was setup: %s\n", sandboxKey, time.Since(start))
 		}
 	}()
 

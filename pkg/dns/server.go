@@ -57,15 +57,16 @@ func (n *nameserver) Activate() <-chan error {
 	errCh := make(chan error, 1)
 	if _, err := os.Stat(n.networkNamespace); os.IsNotExist(err) {
 		errCh <- fmt.Errorf("namespace path does not exist: %s", n.networkNamespace)
+		close(errCh)
 		return errCh
 	}
 
 	fmt.Printf("Starting nameserver in namespace %s\n", n.networkNamespace)
 	go func() {
+		defer close(errCh)
 		if err := n.startDnsServersInNamespace(); err != nil {
 			errCh <- errors.WithMessagef(err, "Error listening in namespace %s", n.networkNamespace)
 		}
-		close(errCh)
 	}()
 
 	return errCh
@@ -155,13 +156,11 @@ func (n *nameserver) startDnsServersInNamespace() error {
 		return errors.WithMessagef(err, "Error setting namespace to %s", n.networkNamespace)
 	}
 
-	fmt.Printf("Starting DNS server TCP in namespace %s\n", n.networkNamespace)
 	portTCP, err := n.startDNSServer("tcp")
 	if err != nil {
 		return errors.WithMessagef(err, "Failed to start DNS server TCP in namespace %s", n.networkNamespace)
 	}
 
-	fmt.Printf("Starting DNS server UDP in namespace %s\n", n.networkNamespace)
 	portUDP, err := n.startDNSServer("udp")
 	if err != nil {
 		return errors.WithMessagef(err, "Failed to start DNS server UDP in namespace %s", n.networkNamespace)
@@ -432,21 +431,6 @@ func waitForChainsWithRules(ipt *iptables.IPTables, table string, chainsGroups [
 }
 
 func setNamespace(nsPath string) error {
-	// Ensure namespace file exists and log file details.
-	fi, err := os.Stat(nsPath)
-	if err != nil {
-		return errors.Wrapf(err, "failed to stat namespace file %s", nsPath)
-	}
-	fmt.Printf("Namespace file found: %s; size=%d, mode=%s, modtime=%s",
-		nsPath, fi.Size(), fi.Mode(), fi.ModTime())
-
-	// Open target namespace.
-	targetNS, err := netns.GetFromPath(nsPath)
-	if err != nil {
-		return errors.Wrapf(err, "failed to open namespace %s", nsPath)
-	}
-	defer targetNS.Close()
-
 	// Retry mechanism for setting namespace
 	// Wait for 4 seconds max
 	// TODO: And then what? Shouldn't we wait indefinitely? Or somehow crash the
@@ -456,10 +440,19 @@ func setNamespace(nsPath string) error {
 	delayBetweenRetries := 5 * time.Millisecond
 	maxRetries := int(maxWaitTime.Milliseconds() / delayBetweenRetries.Milliseconds())
 	for i := 0; i < maxRetries; i++ {
+		targetNS, err := netns.GetFromPath(nsPath)
+		if err != nil {
+			lastErr = err
+			log.Printf("Attempt %d: failed to open namespace %s: %v", i+1, nsPath, err)
+			time.Sleep(delayBetweenRetries)
+			continue
+		}
 		if err := netns.Set(targetNS); err == nil {
-			fmt.Printf("Successfully set namespace on attempt %d", i+1)
+			targetNS.Close()
+			fmt.Printf("Successfully set namespace on attempt %d\n", i+1)
 			return nil // Success
 		} else {
+			targetNS.Close()
 			lastErr = err
 			log.Printf("Attempt %d: failed to set namespace %s: %v", i+1, nsPath, err)
 			time.Sleep(delayBetweenRetries)
@@ -467,5 +460,5 @@ func setNamespace(nsPath string) error {
 	}
 
 	// Log final error details before returning.
-	return errors.Wrapf(lastErr, "failed to set namespace %s after retries", nsPath)
+	return errors.Wrapf(lastErr, "failed to set namespace %s after %d retries", nsPath, maxRetries)
 }

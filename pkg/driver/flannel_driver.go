@@ -435,7 +435,9 @@ func (d *flannelDriver) getOrAddNameserver(sandboxKey string) (dns.Nameserver, <
 	defer d.Unlock()
 	nameserver, exists := d.nameserversBySandboxKey.Get(sandboxKey)
 	if exists {
-		return nameserver, nil
+		errCh := make(chan error, 1)
+		close(errCh)
+		return nameserver, errCh
 	}
 
 	nameserver = dns.NewNameserver(sandboxKey, d.dnsResolver)
