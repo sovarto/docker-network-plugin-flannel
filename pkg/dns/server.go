@@ -11,7 +11,6 @@ import (
 	"github.com/vishvananda/netns"
 	"log"
 	"net"
-	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -55,11 +54,6 @@ func (n *nameserver) Activate() <-chan error {
 	defer n.Unlock()
 
 	errCh := make(chan error, 1)
-	if _, err := os.Stat(n.networkNamespace); os.IsNotExist(err) {
-		errCh <- fmt.Errorf("namespace path does not exist: %s", n.networkNamespace)
-		close(errCh)
-		return errCh
-	}
 
 	fmt.Printf("Starting nameserver in namespace %s\n", n.networkNamespace)
 	go func() {
