@@ -1,7 +1,11 @@
 package driver
 
 import (
+	"context"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
+	"github.com/docker/docker/api/types/events"
+	"github.com/docker/docker/client"
 	"github.com/docker/docker/libnetwork/types"
 	"github.com/docker/go-plugins-helpers/sdk"
 	"github.com/pkg/errors"
@@ -195,6 +199,32 @@ func (d *flannelDriver) Init() error {
 	//	}))
 
 	d.injectNameserverIntoAlreadyRunningContainers()
+
+	dockerClient, err := client.NewClientWithOpts(
+		client.WithHost("unix:///var/run/docker.sock"),
+		client.WithAPIVersionNegotiation(),
+	)
+	go func() {
+		eventsCh, errCh := dockerClient.Events(context.Background(), events.ListOptions{})
+		for {
+			select {
+			case err := <-errCh:
+				log.Printf("Unable to connect to docker events channel, reconnecting..., err: %+v\n", err)
+				time.Sleep(5 * time.Second)
+				eventsCh, errCh = dockerClient.Events(context.Background(), events.ListOptions{})
+			case event := <-eventsCh:
+				if event.Type == events.ContainerEventType && event.Action == events.ActionCreate {
+					fmt.Printf("Container event received: %+v\n", spew.Sdump(event))
+					container, err := dockerClient.ContainerInspect(context.Background(), event.Actor.ID)
+					if err != nil {
+						fmt.Printf("Failed to inspect docker container %s: %+v\n", event.Actor.ID, err)
+					} else {
+						fmt.Printf("Data of container %s: %s\n", spew.Sdump(container))
+					}
+				}
+			}
+		}
+	}()
 
 	d.isInitialized = true
 
