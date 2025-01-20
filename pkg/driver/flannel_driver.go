@@ -1,11 +1,7 @@
 package driver
 
 import (
-	"context"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
-	"github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/client"
 	"github.com/docker/docker/libnetwork/types"
 	"github.com/docker/go-plugins-helpers/sdk"
 	"github.com/pkg/errors"
@@ -22,7 +18,7 @@ import (
 	"log"
 	"math"
 	"net"
-	"strings"
+	"os"
 	"sync"
 	"time"
 )
@@ -60,13 +56,14 @@ type flannelDriver struct {
 	nameserversByEndpointID *common.ConcurrentMap[string, dns.Nameserver]
 	dnsResolver             dns.Resolver
 	etcdClients             etcdClients
+	isHookAvailable         bool
 	sync.Mutex
-	dockerClient *client.Client
 }
 
 func NewFlannelDriver(
 	etcdEndPoints []string, etcdPrefix string, defaultFlannelOptions []string, completeSpace []net.IPNet,
-	networkSubnetSize int, defaultHostSubnetSize int, vniStart int, dnsDockerCompatibilityMode bool) FlannelDriver {
+	networkSubnetSize int, defaultHostSubnetSize int, vniStart int, dnsDockerCompatibilityMode bool,
+	isHookAvailable bool) FlannelDriver {
 
 	driver := &flannelDriver{
 		defaultFlannelOptions:   defaultFlannelOptions,
@@ -75,6 +72,7 @@ func NewFlannelDriver(
 		services:                common.NewConcurrentMap[string, common.Service](),
 		vniStart:                vniStart,
 		isInitialized:           false,
+		isHookAvailable:         isHookAvailable,
 		completeAddressSpace:    completeSpace,
 		networkSubnetSize:       networkSubnetSize,
 		nameserversBySandboxKey: common.NewConcurrentMap[string, dns.Nameserver](),
@@ -88,7 +86,14 @@ func NewFlannelDriver(
 			networks:     getEtcdClient(etcdPrefix, "networks", etcdEndPoints),
 		},
 	}
-
+	if isHookAvailable {
+		if err := os.MkdirAll(dns.SandboxesPath, 0755); err != nil {
+			log.Fatalf("Error creating folder %s", dns.SandboxesPath)
+		}
+		if err := os.MkdirAll(dns.ReadyPath, 0755); err != nil {
+			log.Fatalf("Error creating folder %s", dns.ReadyPath)
+		}
+	}
 	numNetworks := countPoolSizeSubnets(completeSpace, networkSubnetSize)
 	numIPsPerNode := int(math.Pow(2, float64(32-defaultHostSubnetSize)))
 	numNodesPerNetwork := int(math.Pow(2, float64(defaultHostSubnetSize-networkSubnetSize)))
@@ -200,38 +205,6 @@ func (d *flannelDriver) Init() error {
 	//	}))
 
 	d.injectNameserverIntoAlreadyRunningContainers()
-
-	dockerClient, err := client.NewClientWithOpts(
-		client.WithHost("unix:///var/run/docker.sock"),
-		client.WithAPIVersionNegotiation(),
-	)
-	d.dockerClient = dockerClient
-	go func() {
-		eventsCh, errCh := dockerClient.Events(context.Background(), events.ListOptions{})
-		for {
-			select {
-			case err := <-errCh:
-				log.Printf("Unable to connect to docker events channel, reconnecting..., err: %+v\n", err)
-				time.Sleep(5 * time.Second)
-				eventsCh, errCh = dockerClient.Events(context.Background(), events.ListOptions{})
-			case event := <-eventsCh:
-				var containerID string
-				if event.Type == events.ContainerEventType && event.Action == events.ActionCreate || event.Action == events.ActionUpdate {
-					containerID = event.Actor.ID
-				} else if event.Type == events.NetworkEventType && event.Action == events.ActionConnect {
-					containerID = event.Actor.Attributes["container"]
-				}
-				if containerID != "" {
-					container, err := dockerClient.ContainerInspect(context.Background(), containerID)
-					if err != nil {
-						fmt.Printf("Failed to inspect docker container %s: %+v\n", event.Actor.ID, err)
-					} else {
-						fmt.Printf("Data of container %s: %s\n", event.Actor.ID, spew.Sdump(container))
-					}
-				}
-			}
-		}
-	}()
 
 	d.isInitialized = true
 
@@ -477,7 +450,13 @@ func (d *flannelDriver) getOrAddNameserver(sandboxKey string) (dns.Nameserver, <
 		return nameserver, errCh
 	}
 
-	nameserver = dns.NewNameserver(sandboxKey, d.dnsResolver)
+	nameserver, err := dns.NewNameserver(sandboxKey, d.dnsResolver, d.isHookAvailable)
+	if err != nil {
+		errCh := make(chan error, 1)
+		errCh <- err
+		close(errCh)
+		return nameserver, errCh
+	}
 	d.nameserversBySandboxKey.Set(sandboxKey, nameserver)
 	return nameserver, nameserver.Activate()
 }
@@ -513,7 +492,7 @@ func (d *flannelDriver) injectNameserverIntoAlreadyRunningContainers() {
 		for _, container := range shardContainers {
 			if lo.Some(ourNetworkIDs, maps.Keys(container.IPs)) {
 				go func() {
-					nameserver, errChan := d.getOrAddNameserver(adjustSandboxKey(container.SandboxKey))
+					nameserver, errChan := d.getOrAddNameserver(container.SandboxKey)
 					if err := <-errChan; err != nil {
 						log.Printf("Error getting nameserver for container %s: %v\n", container, err)
 						return
@@ -527,12 +506,4 @@ func (d *flannelDriver) injectNameserverIntoAlreadyRunningContainers() {
 			}
 		}
 	}
-}
-
-func adjustSandboxKey(sandboxKey string) string {
-	if strings.Index(sandboxKey, "/hostfs") == 0 {
-		return sandboxKey
-	}
-
-	return "/hostfs" + sandboxKey
 }

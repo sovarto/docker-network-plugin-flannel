@@ -11,10 +11,17 @@ import (
 	"github.com/vishvananda/netns"
 	"log"
 	"net"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
+)
+
+const (
+	SandboxesPath = "/hostfs/var/run/flannel-np/sandboxes"
+	ReadyPath     = "/hostfs/var/run/flannel-np/ready"
 )
 
 type Nameserver interface {
@@ -33,6 +40,8 @@ type nameserver struct {
 	tcpServer        *dns.Server
 	udpServer        *dns.Server
 	validNetworkIDs  []string
+	isHookAvailable  bool
+	readyFile        string
 	sync.Mutex
 }
 
@@ -40,13 +49,28 @@ type nameserver struct {
 // TODO: Add support for host resolver ???
 // TODO: Check domainname config of containers whether it's relevant
 
-func NewNameserver(networkNamespace string, resolver Resolver) Nameserver {
-	return &nameserver{
-		networkNamespace: networkNamespace,
+// NewNameserver
+// - networkNamespace: This is expected to be a docker sandbox key of the form /var/run/docker/netns/<key>
+func NewNameserver(networkNamespace string, resolver Resolver, isHookAvailable bool) (Nameserver, error) {
+	result := &nameserver{
+		networkNamespace: adjustNamespacePath(networkNamespace),
 		resolver:         resolver,
 		listenIP:         "127.0.0.33",
 		validNetworkIDs:  make([]string, 0),
+		isHookAvailable:  isHookAvailable,
 	}
+
+	if isHookAvailable {
+		parts := strings.Split(networkNamespace, "/")
+		namespaceKey := parts[len(parts)-1]
+		sandboxFile := filepath.Join(SandboxesPath, namespaceKey)
+		if err := os.WriteFile(sandboxFile, []byte{}, 0755); err != nil {
+			return nil, errors.WithMessagef(err, "Error creating sandbox file %s", sandboxFile)
+		}
+		result.readyFile = filepath.Join(ReadyPath, namespaceKey)
+	}
+
+	return result, nil
 }
 
 func (n *nameserver) Activate() <-chan error {
@@ -60,6 +84,12 @@ func (n *nameserver) Activate() <-chan error {
 		defer close(errCh)
 		if err := n.startDnsServersInNamespace(); err != nil {
 			errCh <- errors.WithMessagef(err, "Error listening in namespace %s", n.networkNamespace)
+		}
+		if n.isHookAvailable {
+			if err := os.WriteFile(n.readyFile, []byte{}, 0755); err != nil {
+				log.Printf("Error creating ready file for namespace %s: %+v", n.networkNamespace, err)
+				return
+			}
 		}
 	}()
 
@@ -146,7 +176,7 @@ func (n *nameserver) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 func (n *nameserver) startDnsServersInNamespace() error {
 	runtime.LockOSThread()
 
-	if err := setNamespace(n.networkNamespace); err != nil {
+	if err := n.setNamespace(); err != nil {
 		return errors.WithMessagef(err, "Error setting namespace to %s", n.networkNamespace)
 	}
 
@@ -421,11 +451,11 @@ func waitForChainsWithRules(ipt *iptables.IPTables, table string, chainsGroups [
 				return errors.New("timeout waiting for chains with rules")
 			}
 		}
-		time.Sleep(1 * time.Millisecond) // Wait before retrying
+		time.Sleep(5 * time.Millisecond) // Wait before retrying
 	}
 }
 
-func setNamespace(nsPath string) error {
+func (n *nameserver) setNamespace() error {
 	// Retry mechanism for setting namespace
 	// Wait for 6 seconds max
 	// TODO: And then what? Shouldn't we wait indefinitely? Or somehow crash the
@@ -434,18 +464,22 @@ func setNamespace(nsPath string) error {
 	maxWaitTime := 6 * time.Second
 	start := time.Now()
 	deadline := start.Add(maxWaitTime)
+	delay := 10 * time.Millisecond
+	if !n.isHookAvailable {
+		delay = 1 * time.Millisecond
+	}
 	for {
-		targetNS, err := netns.GetFromPath(nsPath)
+		targetNS, err := netns.GetFromPath(n.networkNamespace)
 		if err == nil {
 			err = netns.Set(targetNS)
 			targetNS.Close()
 		}
 		if err == nil {
-			fmt.Printf("Successfully set namespace %s after %s\n", nsPath, time.Since(start))
+			fmt.Printf("Successfully set namespace %s after %s\n", n.networkNamespace, time.Since(start))
 			return nil // Success
 		} else {
 			lastErr = err
-			time.Sleep(1 * time.Millisecond)
+			time.Sleep(delay)
 		}
 
 		if time.Now().After(deadline) {
@@ -454,5 +488,15 @@ func setNamespace(nsPath string) error {
 	}
 
 	// Log final error details before returning.
-	return errors.WithMessagef(lastErr, "failed to set namespace %s after %s", nsPath, maxWaitTime)
+	return errors.WithMessagef(lastErr, "failed to set namespace %s after %s", n.networkNamespace, maxWaitTime)
+}
+
+// The node path /var/run/docker is mounted to /hostfs/var/run/docker and the sandbox keys
+// are of form /var/run/docker/netns/<key>
+func adjustNamespacePath(namespacePath string) string {
+	if strings.Index(namespacePath, "/hostfs") == 0 {
+		return namespacePath
+	}
+
+	return "/hostfs" + namespacePath
 }

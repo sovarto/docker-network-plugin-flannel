@@ -15,12 +15,12 @@
       "type": "bind"
     },
     {
-      "destination": "/hostfs/var/run/docker/",
+      "destination": "/hostfs/var/run/",
       "name": "var_run_docker",
       "options": [
         "rbind"
       ],
-      "source": "/var/run/docker/",
+      "source": "/var/run/",
       "type": "bind"
     },
     {
@@ -89,6 +89,13 @@
         "value"
       ],
       "value": "true"
+    },
+    {
+      "name": "IS_HOOK_AVAILABLE",
+      "settable": [
+        "value"
+      ],
+      "value": "false"
     }
   ],
   "network": {

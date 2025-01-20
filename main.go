@@ -30,6 +30,7 @@ func main() {
 	networkSubnetSize := getEnvAsInt("NETWORK_SUBNET_SIZE", 20)
 	defaultHostSubnetSize := getEnvAsInt("DEFAULT_HOST_SUBNET_SIZE", 25)
 	vniStart := getEnvAsInt("VNI_START", 6514)
+	isHookAvailable := getEnvAsBool("IS_HOOK_AVAILABLE", false)
 	dnsDockerCompatibilityMode := strings.ToLower(os.Getenv("DNS_DOCKER_COMPATIBILITY_MODE")) == "true"
 
 	availableSubnets := []net.IPNet{}
@@ -44,7 +45,7 @@ func main() {
 
 	flannelDriver := driver.NewFlannelDriver(
 		etcdEndPoints, etcdPrefix, defaultFlannelOptions, availableSubnets, networkSubnetSize,
-		defaultHostSubnetSize, vniStart, dnsDockerCompatibilityMode)
+		defaultHostSubnetSize, vniStart, dnsDockerCompatibilityMode, isHookAvailable)
 
 	fmt.Println("Initializing Flannel plugin...")
 
@@ -66,6 +67,17 @@ func getEnvAsInt(name string, defaultVal int) int {
 			return value
 		} else {
 			log.Printf("Invalid %s, using default value %d: %v", name, defaultVal, err)
+		}
+	}
+	return defaultVal
+}
+
+func getEnvAsBool(name string, defaultVal bool) bool {
+	if valueStr := os.Getenv(name); valueStr != "" {
+		if strings.ToLower(valueStr) == "true" {
+			return true
+		} else {
+			return false
 		}
 	}
 	return defaultVal

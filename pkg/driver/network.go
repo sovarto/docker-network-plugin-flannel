@@ -1,10 +1,7 @@
 package driver
 
 import (
-	"context"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
-	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/libnetwork/types"
 	"github.com/docker/go-plugins-helpers/network"
 	"github.com/pkg/errors"
@@ -107,13 +104,6 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 	d.Lock()
 	defer d.Unlock()
 
-	containers, err := d.dockerClient.ContainerList(context.Background(), container.ListOptions{All: true})
-	if err != nil {
-		log.Printf("failed to list containers: %v", err)
-	} else {
-		fmt.Printf("Found %d containers:\n%s\n", len(containers), spew.Sdump(containers))
-	}
-
 	flannelNetwork, endpoint, err := d.getEndpoint(request.NetworkID, request.EndpointID)
 
 	if err != nil {
@@ -127,19 +117,16 @@ func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinRespons
 	networkInfo := flannelNetwork.GetInfo()
 	endpointInfo := endpoint.GetInfo()
 
-	go func() {
-		// The node path /var/run/docker is mounted to /hostfs/var/run/docker and the sandbox keys
-		// are of form /var/run/docker/netns/<key>
-		sandboxKey := adjustSandboxKey(request.SandboxKey)
-		start := time.Now()
-		nameserver, errChan := d.getOrAddNameserver(sandboxKey)
-		nameserver.AddValidNetworkID(request.NetworkID)
-		if err := <-errChan; err != nil {
-			log.Printf("Error patching DNS server in sandbox %s. Wait time %s. Error: %v\n", sandboxKey, time.Since(start), err)
-		} else {
+	start := time.Now()
+	nameserver, errChan := d.getOrAddNameserver(request.SandboxKey)
+	nameserver.AddValidNetworkID(request.NetworkID)
 
+	go func() {
+		if err := <-errChan; err != nil {
+			log.Printf("Error patching DNS server in sandbox %s. Wait time %s. Error: %v\n", request.SandboxKey, time.Since(start), err)
+		} else {
 			d.nameserversByEndpointID.Set(request.EndpointID, nameserver)
-			fmt.Printf("Wait time until nameserver in namespace %s was setup: %s\n", sandboxKey, time.Since(start))
+			fmt.Printf("Wait time until nameserver in namespace %s was setup: %s\n", request.SandboxKey, time.Since(start))
 		}
 	}()
 
