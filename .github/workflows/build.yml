@@ -28,10 +28,11 @@ jobs:
           cd plugin
           ./build-all.sh $TAG
 
-      - name: Build hook and push
+      - name: Build hook
         run: |
           cd hook
-          CGO_ENABLED=0 GOOS=linux go build -o flannel-network-plugin-hook
+          CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o flannel-network-plugin-hook
+          chmod +x flannel-network-plugin-hook
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
