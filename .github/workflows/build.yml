@@ -30,8 +30,8 @@ jobs:
 
       - name: Build hook and push
         run: |
-          cd ../hook
-          CGO_ENABLED=0 GOOS=linux go build -o
+          cd hook
+          CGO_ENABLED=0 GOOS=linux go build -o flannel-network-plugin-hook
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
