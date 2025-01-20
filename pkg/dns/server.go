@@ -330,21 +330,23 @@ func (n *nameserver) replaceDNATSNATRules() error {
 		}
 	}
 
-	dockerChains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
+	if !flannelDnsOutputExists {
+		dockerChains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
 
-	start := time.Now()
-	if err := waitForChainsWithRules(ipt, table, [][]string{dockerChains}, 30*time.Second); err != nil {
-		return err
-	} else {
-		fmt.Printf("Chains exist and have at least one rule in namespace %s after %s\n", n.networkNamespace, time.Since(start))
-	}
-
-	for _, chain := range dockerChains {
-		rules, err := ipt.List("nat", chain)
-		if err != nil {
-			log.Printf("Error listing iptables rules in namespace %s, table %s, chain %s", n.networkNamespace, table, chain)
+		start := time.Now()
+		if err := waitForChainsWithRules(ipt, table, [][]string{dockerChains}, 30*time.Second); err != nil {
+			return err
+		} else {
+			fmt.Printf("Chains exist and have at least one rule in namespace %s after %s\n", n.networkNamespace, time.Since(start))
 		}
-		rulesToDelete[chain] = rules
+
+		for _, chain := range dockerChains {
+			rules, err := ipt.List("nat", chain)
+			if err != nil {
+				log.Printf("Error listing iptables rules in namespace %s, table %s, chain %s", n.networkNamespace, table, chain)
+			}
+			rulesToDelete[chain] = rules
+		}
 	}
 
 	for chain, rules := range rulesToDelete {

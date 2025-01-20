@@ -213,13 +213,18 @@ func (d *flannelDriver) Init() error {
 				time.Sleep(5 * time.Second)
 				eventsCh, errCh = dockerClient.Events(context.Background(), events.ListOptions{})
 			case event := <-eventsCh:
-				if event.Type == events.ContainerEventType && event.Action == events.ActionCreate {
-					fmt.Printf("Container event received: %+v\n", spew.Sdump(event))
-					container, err := dockerClient.ContainerInspect(context.Background(), event.Actor.ID)
+				var containerID string
+				if event.Type == events.ContainerEventType && event.Action == events.ActionCreate || event.Action == events.ActionUpdate {
+					containerID = event.Actor.ID
+				} else if event.Type == events.NetworkEventType && event.Action == events.ActionConnect {
+					containerID = event.Actor.Attributes["container"]
+				}
+				if containerID != "" {
+					container, err := dockerClient.ContainerInspect(context.Background(), containerID)
 					if err != nil {
 						fmt.Printf("Failed to inspect docker container %s: %+v\n", event.Actor.ID, err)
 					} else {
-						fmt.Printf("Data of container %s: %s\n", spew.Sdump(container))
+						fmt.Printf("Data of container %s: %s\n", event.Actor.ID, spew.Sdump(container))
 					}
 				}
 			}
