@@ -24,11 +24,13 @@ jobs:
         run: docker login -u ${{ vars.DOCKER_USER }} -p ${{ secrets.DOCKER_TOKEN}}
 
       - name: Build plugin and push
-        run: ./plugin/build-all.sh $TAG
+        run: |
+          cd plugin
+          build-all.sh $TAG
 
       - name: Build hook and push
         run: |
-          cd hook
+          cd ../hook
           CGO_ENABLED=0 GOOS=linux go build -o
 
       - name: Create GitHub Release
