@@ -61,6 +61,7 @@ type flannelDriver struct {
 	dnsResolver             dns.Resolver
 	etcdClients             etcdClients
 	sync.Mutex
+	dockerClient *client.Client
 }
 
 func NewFlannelDriver(
@@ -204,6 +205,7 @@ func (d *flannelDriver) Init() error {
 		client.WithHost("unix:///var/run/docker.sock"),
 		client.WithAPIVersionNegotiation(),
 	)
+	d.dockerClient = dockerClient
 	go func() {
 		eventsCh, errCh := dockerClient.Events(context.Background(), events.ListOptions{})
 		for {

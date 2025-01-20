@@ -1,7 +1,10 @@
 package driver
 
 import (
+	"context"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/libnetwork/types"
 	"github.com/docker/go-plugins-helpers/network"
 	"github.com/pkg/errors"
@@ -103,6 +106,13 @@ func (d *flannelDriver) EndpointInfo(request *network.InfoRequest) (*network.Inf
 func (d *flannelDriver) Join(request *network.JoinRequest) (*network.JoinResponse, error) {
 	d.Lock()
 	defer d.Unlock()
+
+	containers, err := d.dockerClient.ContainerList(context.Background(), container.ListOptions{All: true})
+	if err != nil {
+		log.Printf("failed to list containers: %v", err)
+	} else {
+		fmt.Printf("Found %d containers:\n%s\n", len(containers), spew.Sdump(containers))
+	}
 
 	flannelNetwork, endpoint, err := d.getEndpoint(request.NetworkID, request.EndpointID)
 
