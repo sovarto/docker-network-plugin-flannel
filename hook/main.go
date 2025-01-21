@@ -16,6 +16,7 @@ const (
 	readyDir      = "/var/run/flannel-np/ready"
 	netnsDir      = "/var/run/docker/netns"
 	sleepInterval = 100 * time.Millisecond
+	maxWaitTime   = 20 * time.Second
 )
 
 // logMessage writes log messages to a file and stdout
@@ -84,11 +85,11 @@ func main() {
 		sandboxID := sandboxFile.Name()
 		sandboxNetNS, err := getSandboxNetNS(sandboxID)
 		if err != nil {
-			logMessage(fmt.Sprintf("Skipping sandbox %s: %v", sandboxID, err))
+			//logMessage(fmt.Sprintf("Skipping sandbox %s: %v", sandboxID, err))
 			continue
 		}
 
-		logMessage(fmt.Sprintf("Sandbox %s has network namespace %s.", sandboxID, sandboxNetNS))
+		//logMessage(fmt.Sprintf("Sandbox %s has network namespace %s.", sandboxID, sandboxNetNS))
 
 		// Compare namespace IDs
 		if currentNetNS == sandboxNetNS {
@@ -102,6 +103,10 @@ func main() {
 					break
 				}
 				time.Sleep(sleepInterval)
+				if time.Since(startTime) > maxWaitTime {
+					logMessage(fmt.Sprintf("Timeout while waiting for %s. Exiting hook anyway, to prevent deadlock", readyFile))
+					os.Exit(0)
+				}
 			}
 
 			duration := time.Since(startTime)
