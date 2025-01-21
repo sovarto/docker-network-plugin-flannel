@@ -22,8 +22,7 @@ const (
 // logMessage writes log messages to a file and stdout
 func logMessage(message string) {
 	journal.Send(message, journal.PriDebug, map[string]string{
-		"SYSLOG_IDENTIFIER": "flannel-network-plugin-hook",
-		"UNIT":              "docker.service",
+		"SYSLOG_IDENTIFIER": "flannel-network-plugin-hook"
 	})
 }
 
@@ -64,6 +63,9 @@ func getSandboxNetNS(sandboxID string) (string, error) {
 
 func main() {
 	startTime := time.Now()
+
+	os.MkdirAll(sandboxesDir, 0755)
+	os.MkdirAll(readyDir, 0755)
 
 	// Get current network namespace ID
 	currentNetNS, err := getCurrentNetNS()
