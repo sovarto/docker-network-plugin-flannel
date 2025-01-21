@@ -22,7 +22,7 @@ const (
 // logMessage writes log messages to a file and stdout
 func logMessage(message string) {
 	journal.Send(message, journal.PriDebug, map[string]string{
-		"SYSLOG_IDENTIFIER": "flannel-network-plugin-hook"
+		"SYSLOG_IDENTIFIER": "flannel-network-plugin-hook",
 	})
 }
 
