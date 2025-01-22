@@ -14,7 +14,7 @@ FROM alpine:3.19
 
 RUN apk add -U --no-cache iptables
 
-RUN wget https://github.com/flannel-io/flannel/releases/download/v0.26.1/flanneld-amd64 && \
+RUN wget https://github.com/flannel-io/flannel/releases/download/v0.26.3/flanneld-amd64 && \
     mv flanneld-amd64 /flanneld && \
     chmod +x /flanneld
 
