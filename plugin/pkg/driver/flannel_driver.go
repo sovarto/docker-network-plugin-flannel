@@ -442,7 +442,7 @@ func countPoolSizeSubnets(completeSpace []net.IPNet, poolSize int) int {
 }
 
 func (d *flannelDriver) getOrAddNameserver(sandboxKey string) (dns.Nameserver, <-chan error) {
-	nameserver, exists, err := d.nameserversBySandboxKey.GetOrAdd(sandboxKey, func() (dns.Nameserver, error) {
+	nameserver, wasAdded, err := d.nameserversBySandboxKey.GetOrAdd(sandboxKey, func() (dns.Nameserver, error) {
 		return dns.NewNameserver(sandboxKey, d.dnsResolver, d.isHookAvailable)
 	})
 	if err != nil {
@@ -451,7 +451,7 @@ func (d *flannelDriver) getOrAddNameserver(sandboxKey string) (dns.Nameserver, <
 		close(errCh)
 		return nameserver, errCh
 	}
-	if exists {
+	if !wasAdded {
 		errCh := make(chan error, 1)
 		close(errCh)
 		return nameserver, errCh

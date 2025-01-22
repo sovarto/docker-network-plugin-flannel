@@ -161,6 +161,6 @@ func main() {
 	}
 
 	// If no match was found, exit immediately
-	logMessage("No matching sandbox found. Exiting.")
+	logMessage("No request for handling this container found. Exiting.")
 	os.Exit(0)
 }
