@@ -199,8 +199,8 @@ func (r *resolver) ResolveName(query string, validNetworkIDs []string) []dns.RR 
 	result := []net.IP{}
 
 	for i := 0; i < len(queryParts); i++ {
-		requestedName := strings.Join(queryParts[:namePartsCount], ".")
-		requestedNetworkName := strings.Join(queryParts[namePartsCount:], ".")
+		requestedName := strings.Join(queryParts[:namePartsCount-i], ".")
+		requestedNetworkName := strings.Join(queryParts[namePartsCount-i:], ".")
 
 		for _, networkID := range sortedNetworkIDs {
 			result = append(result, r.resolveName(requestedName, requestedNetworkName, networkID)...)
