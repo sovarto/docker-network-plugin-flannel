@@ -76,8 +76,10 @@ func (cm *ConcurrentMap[K, V]) GetOrAdd(key K, factory func() (V, error)) (value
 	}
 
 	v, err := factory()
-	cm.m[key] = v
-	return v, err != nil, err
+	if err == nil {
+		cm.m[key] = v
+	}
+	return v, err == nil, err
 }
 
 // AddOrUpdate either adds a new key/value if the key does not exist,
