@@ -115,11 +115,11 @@ func (v *vethPair) GetInside() string {
 func (v *vethPair) Delete() error {
 	iface, err := netlink.LinkByName(v.outsideName)
 	if err != nil {
-		return err
+		return errors.WithMessagef(err, "failed to find interface %s", v.outsideName)
 	}
 
 	if err := netlink.LinkDel(iface); err != nil {
-		return err
+		return errors.WithMessagef(err, "failed to delete interface %s", v.outsideName)
 	}
 
 	return nil

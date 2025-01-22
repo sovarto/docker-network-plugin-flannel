@@ -85,6 +85,8 @@ func (n *network) Init(dockerData docker.Data) error {
 	existingLocalEndpoints := []string{}
 	existingLocalContainerIPs := []net.IP{}
 	if shardExists {
+		fmt.Printf("Existing Local Containers: %v\n", existingLocalContainers)
+
 		for _, container := range existingLocalContainers {
 			for _, endpointID := range container.Endpoints {
 				existingLocalEndpoints = append(existingLocalEndpoints, endpointID)
@@ -93,6 +95,10 @@ func (n *network) Init(dockerData docker.Data) error {
 				existingLocalContainerIPs = append(existingLocalContainerIPs, containerIP)
 			}
 		}
+
+		fmt.Printf("Existing Local Endpoints: %v\n", existingLocalEndpoints)
+	} else {
+		log.Printf("local shard %s in container data not found", containersStore.GetLocalShardKey())
 	}
 
 	for _, endpoint := range endpoints {
