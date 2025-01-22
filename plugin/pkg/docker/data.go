@@ -11,6 +11,7 @@ import (
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	"os"
 	"sync"
+	"time"
 )
 
 type Data interface {
@@ -47,6 +48,7 @@ func NewData(etcdClient etcd.Client,
 	dockerClient, err := client.NewClientWithOpts(
 		client.WithHost("unix:///var/run/docker.sock"),
 		client.WithAPIVersionNegotiation(),
+		client.WithTimeout(time.Second*5),
 	)
 
 	if err != nil {
