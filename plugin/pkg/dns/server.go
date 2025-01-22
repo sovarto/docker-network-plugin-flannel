@@ -7,6 +7,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
 	"github.com/vishvananda/netns"
 	"log"
@@ -42,6 +43,7 @@ type nameserver struct {
 	validNetworkIDs  []string
 	isHookAvailable  bool
 	readyFile        string
+	initManager      *common.InitManager
 	sync.Mutex
 }
 
@@ -70,6 +72,8 @@ func NewNameserver(networkNamespace string, resolver Resolver, isHookAvailable b
 		result.readyFile = filepath.Join(ReadyPath, namespaceKey)
 	}
 
+	result.initManager = common.NewInitManager(result.startDnsServersInNamespace)
+
 	return result, nil
 }
 
@@ -82,7 +86,8 @@ func (n *nameserver) Activate() <-chan error {
 	fmt.Printf("Starting nameserver in namespace %s\n", n.networkNamespace)
 	go func() {
 		defer close(errCh)
-		if err := n.startDnsServersInNamespace(); err != nil {
+		n.initManager.Init()
+		if err := n.initManager.Wait(); err != nil {
 			errCh <- errors.WithMessagef(err, "Error listening in namespace %s", n.networkNamespace)
 		}
 		if n.isHookAvailable {
@@ -100,14 +105,28 @@ func (n *nameserver) DeactivateAndCleanup() error {
 	n.Lock()
 	defer n.Unlock()
 
-	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
-	err := n.udpServer.ShutdownContext(ctx)
-	if err != nil {
-		return errors.WithMessagef(err, "Error shutting down UDP DNS server of namespace %s", n.networkNamespace)
+	fmt.Printf("Stopping nameserver in namespace %s\n", n.networkNamespace)
+	if !n.initManager.IsDone() {
+		fmt.Printf("Nameserver initialization in namespace %s not yet finished. Cancelling initialization...\n", n.networkNamespace)
+		n.initManager.Cancel()
+		n.initManager.Wait()
 	}
-	err = n.tcpServer.ShutdownContext(ctx)
-	if err != nil {
-		return errors.WithMessagef(err, "Error shutting down TCP DNS server of namespace %s", n.networkNamespace)
+
+	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
+
+	if n.udpServer != nil {
+		if err := n.udpServer.ShutdownContext(ctx); err != nil {
+			return errors.WithMessagef(err, "Error shutting down UDP DNS server of namespace %s", n.networkNamespace)
+		}
+	} else {
+		fmt.Printf("No UDP DNS server of namespace %s.\n", n.networkNamespace)
+	}
+	if n.tcpServer != nil {
+		if err := n.tcpServer.ShutdownContext(ctx); err != nil {
+			return errors.WithMessagef(err, "Error shutting down TCP DNS server of namespace %s", n.networkNamespace)
+		}
+	} else {
+		fmt.Printf("No TCP DNS server of namespace %s.\n", n.networkNamespace)
 	}
 
 	return nil
@@ -173,26 +192,26 @@ func (n *nameserver) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 }
 
 // startDnsServersInNamespace sets up DNS servers within the specified network namespace
-func (n *nameserver) startDnsServersInNamespace() error {
+func (n *nameserver) startDnsServersInNamespace(ctx context.Context) error {
 	runtime.LockOSThread()
 
-	if err := n.setNamespace(); err != nil {
+	if err := n.setNamespace(ctx); err != nil {
 		return errors.WithMessagef(err, "Error setting namespace to %s", n.networkNamespace)
 	}
 
-	portTCP, err := n.startDNSServer("tcp")
+	portTCP, err := n.startDNSServer("tcp", ctx)
 	if err != nil {
 		return errors.WithMessagef(err, "Failed to start DNS server TCP in namespace %s", n.networkNamespace)
 	}
 
-	portUDP, err := n.startDNSServer("udp")
+	portUDP, err := n.startDNSServer("udp", ctx)
 	if err != nil {
 		return errors.WithMessagef(err, "Failed to start DNS server UDP in namespace %s", n.networkNamespace)
 	}
 
 	fmt.Printf("Both servers for %s have been started\n", n.networkNamespace)
 
-	err = n.replaceDNATSNATRules()
+	err = n.replaceDNATSNATRules(ctx)
 	if err != nil {
 		return errors.WithMessagef(err, "Failed to replace DNAT SNAT rules in namespace %s", n.networkNamespace)
 	}
@@ -202,18 +221,11 @@ func (n *nameserver) startDnsServersInNamespace() error {
 }
 
 // startDNSServer initializes and starts the DNS server for either TCP or UDP
-func (n *nameserver) startDNSServer(connType string) (int, error) {
-
-	onStarted := func() {
-		fmt.Printf("Started DNS server %s on %s\n", connType, n.listenIP)
-	}
+func (n *nameserver) startDNSServer(connType string, ctx context.Context) (int, error) {
 
 	listenAddr := fmt.Sprintf("%s:0", n.listenIP)
 
-	server := &dns.Server{
-		Handler:           n,
-		NotifyStartedFunc: onStarted,
-	}
+	server := &dns.Server{Handler: n}
 	var port int
 
 	switch connType {
@@ -232,6 +244,12 @@ func (n *nameserver) startDNSServer(connType string) (int, error) {
 
 		// Initialize DNS server with the UDP connection
 		server.PacketConn = udpConn
+		select {
+		case <-ctx.Done():
+			udpConn.Close()
+			return 0, ctx.Err()
+		default:
+		}
 		n.udpServer = server
 		n.portUDP = port
 	case "tcp":
@@ -249,6 +267,12 @@ func (n *nameserver) startDNSServer(connType string) (int, error) {
 
 		// Initialize DNS server with the TCP listener
 		server.Listener = tcpListener
+		select {
+		case <-ctx.Done():
+			tcpListener.Close()
+			return 0, ctx.Err()
+		default:
+		}
 		n.tcpServer = server
 		n.portTCP = port
 	default:
@@ -266,7 +290,7 @@ func (n *nameserver) startDNSServer(connType string) (int, error) {
 
 // replaceDNATSNATRules replaces existing DNAT and SNAT iptables rules with new ones
 // that route DNS traffic to the specified ports of the DNS servers.
-func (n *nameserver) replaceDNATSNATRules() error {
+func (n *nameserver) replaceDNATSNATRules(ctx context.Context) error {
 	ipt, err := iptables.New()
 	if err != nil {
 		return errors.WithMessage(err, "Error initializing iptables")
@@ -358,13 +382,18 @@ func (n *nameserver) replaceDNATSNATRules() error {
 		if err := ipt.Insert(table, rule.Chain, 1, rule.RuleSpec...); err != nil {
 			return errors.WithMessagef(err, "Error applying iptables rule in namespace %s, table %s, chain %s", n.networkNamespace, rule.Table, rule.Chain)
 		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 	}
 
 	if !flannelDnsOutputExists {
 		dockerChains := []string{"DOCKER_OUTPUT", "DOCKER_POSTROUTING"}
 
 		start := time.Now()
-		if err := waitForChainsWithRules(ipt, table, [][]string{dockerChains}, 30*time.Second); err != nil {
+		if err := waitForChainsWithRules(ipt, table, [][]string{dockerChains}, 30*time.Second, ctx); err != nil {
 			return err
 		} else {
 			fmt.Printf("Chains exist and have at least one rule in namespace %s after %s\n", n.networkNamespace, time.Since(start))
@@ -381,6 +410,11 @@ func (n *nameserver) replaceDNATSNATRules() error {
 
 	for chain, rules := range rulesToDelete {
 		for _, rawRule := range rules {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
 			rule := strings.Fields(rawRule)[2:]
 			if len(rule) == 0 {
 				continue
@@ -413,7 +447,7 @@ func createChainIfNecessary(ipt *iptables.IPTables, table, chain string) error {
 }
 
 // Waits until at least one chains group has rules for each chain in the group
-func waitForChainsWithRules(ipt *iptables.IPTables, table string, chainsGroups [][]string, timeout time.Duration) error {
+func waitForChainsWithRules(ipt *iptables.IPTables, table string, chainsGroups [][]string, timeout time.Duration, ctx context.Context) error {
 	start := time.Now()
 	deadline := start.Add(timeout)
 
@@ -422,6 +456,11 @@ func waitForChainsWithRules(ipt *iptables.IPTables, table string, chainsGroups [
 			allChainsReady := true
 
 			for _, chain := range chainsGroup {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
 				// Check if the chain exists
 				chainExists, err := ipt.ChainExists(table, chain)
 				if err != nil {
@@ -455,7 +494,7 @@ func waitForChainsWithRules(ipt *iptables.IPTables, table string, chainsGroups [
 	}
 }
 
-func (n *nameserver) setNamespace() error {
+func (n *nameserver) setNamespace(ctx context.Context) error {
 	// Retry mechanism for setting namespace
 	// Wait for 6 seconds max
 	// TODO: And then what? Shouldn't we wait indefinitely? Or somehow crash the
@@ -476,10 +515,15 @@ func (n *nameserver) setNamespace() error {
 		}
 		if err == nil {
 			fmt.Printf("Successfully set namespace %s after %s\n", n.networkNamespace, time.Since(start))
-			return nil // Success
+			return nil
 		} else {
 			lastErr = err
 			time.Sleep(delay)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
 		}
 
 		if time.Now().After(deadline) {

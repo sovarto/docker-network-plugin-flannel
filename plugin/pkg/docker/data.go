@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"fmt"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
@@ -44,7 +43,6 @@ func NewData(etcdClient etcd.Client,
 		return nil, errors.WithMessage(err, "error getting hostname")
 	}
 
-	fmt.Println("Before creating docker client")
 	dockerClient, err := client.NewClientWithOpts(
 		client.WithHost("unix:///var/run/docker.sock"),
 		client.WithAPIVersionNegotiation(),
@@ -53,7 +51,6 @@ func NewData(etcdClient etcd.Client,
 	if err != nil {
 		return nil, errors.WithMessage(err, "error creating docker client")
 	}
-	fmt.Println("Before getting docker info")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
