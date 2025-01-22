@@ -245,7 +245,6 @@ func (r *resolver) ResolveIP(query string, validNetworkIDs []string) []dns.RR {
 // If the endpoint mode is "dnsrr" it returns the IP of the first valid network for each container
 // of the matching service
 func (r *resolver) resolveName(requestedName string, requestedNetworkName string, validNetworkID string) []net.IP {
-	fmt.Printf("Resolving name %s and network name %s in network %s\n", requestedName, requestedNetworkName, validNetworkID)
 	result := []net.IP{}
 	if requestedNetworkName != "" {
 		networkID, exists := r.networkNameToID[requestedNetworkName]
@@ -282,7 +281,6 @@ func (r *resolver) resolveContainerName(requestedName string, validNetworkID str
 
 	containers, exists := r.containerData.byName[requestedName]
 	if exists {
-		fmt.Printf("Found %d containers by name %s in network %s\n", len(containers), requestedName, validNetworkID)
 		for _, container := range containers {
 			result = append(result, filterIPsByNetwork(container.IPs, validNetworkID)...)
 		}
@@ -309,7 +307,6 @@ func (r *resolver) resolveServiceName(requestedName string, validNetworkID strin
 }
 
 func filterIPsByNetwork(ips map[string]net.IP, validNetworkID string) []net.IP {
-	fmt.Printf("Filtering IPs %v by network %s\n", ips, validNetworkID)
 	result := []net.IP{}
 	for networkID, ip := range ips {
 		if validNetworkID == networkID {

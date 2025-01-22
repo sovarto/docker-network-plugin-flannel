@@ -57,6 +57,8 @@ type network struct {
 }
 
 func NewNetwork(etcdClient etcd.Client, flannelID string, networkSubnet net.IPNet, hostSubnetSize int, defaultFlannelOptions []string, vni int) Network {
+	hostname, _ := os.Hostname()
+
 	return &network{
 		flannelID:             flannelID,
 		etcdClient:            etcdClient,
@@ -64,7 +66,7 @@ func NewNetwork(etcdClient etcd.Client, flannelID string, networkSubnet net.IPNe
 		defaultFlannelOptions: defaultFlannelOptions,
 		hostSubnetSize:        hostSubnetSize,
 		endpoints:             make(map[string]Endpoint),
-		endpointsEtcdClient:   etcdClient.CreateSubClient(flannelID, "endpoints"),
+		endpointsEtcdClient:   etcdClient.CreateSubClient(flannelID, hostname, "endpoints"),
 		vni:                   vni,
 	}
 }

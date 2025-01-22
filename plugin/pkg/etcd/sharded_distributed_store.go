@@ -75,7 +75,7 @@ func NewShardedDistributedStore[T common.Equaler](client Client, localShardKey s
 }
 
 func (s *shardedDistributedStore[T]) Init(localShardItems map[string]T) error {
-	err := s.sync(localShardItems, true)
+	err := s.sync(localShardItems, false)
 	if err != nil {
 		return err
 	}
