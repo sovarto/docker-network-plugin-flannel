@@ -22,6 +22,7 @@ type AddressPool interface {
 	AllocateServiceVIP(ipamVIP, serviceID string, random bool) (*net.IP, error)
 	ReserveIP(random bool) (*net.IP, error)
 	ReleaseIP(ip string) error
+	ReleaseIPIfReserved(ip string) (wasReserved bool, err error)
 	ReleaseAllIPs() error
 	GetAllocations() []Allocation
 }
@@ -215,15 +216,25 @@ func (p *etcdPool) allocateFreeIP(random bool, allocator func(ip net.IP) (IPAllo
 }
 
 func (p *etcdPool) ReleaseIP(ip string) error {
+	wasReleased, err := p.ReleaseIPIfReserved(ip)
+	if err != nil {
+		return err
+	}
+	if !wasReleased {
+		return fmt.Errorf("IP %s is not reserved in pool %s. Can't release it", ip, p.poolID)
+	}
+
+	return nil
+}
+
+func (p *etcdPool) ReleaseIPIfReserved(ip string) (wasReserved bool, err error) {
 	p.Lock()
 	defer p.Unlock()
-
-	fmt.Printf("Releasing IP %s for pool %s...\n", ip, p.poolID)
 
 	allocation, has := p.allocatedIPs[ip]
 
 	if !has {
-		return fmt.Errorf("IP %s is not reserved in pool %s. Can't release it", ip, p.poolID)
+		return false, nil
 	} else {
 		fmt.Printf("Releasing allocation Allocation Type: %s; IP: %s; %s %s, Reserved At: %s for pool %s...\n", allocation.allocationType, allocation.ip.String(), allocation.dataKey, allocation.data, allocation.allocatedAt.Format(time.RFC3339), p.poolID)
 	}
@@ -231,18 +242,18 @@ func (p *etcdPool) ReleaseIP(ip string) error {
 	result, err := releaseAllocation(p.etcdClient, allocation)
 
 	if err != nil {
-		return errors.WithMessagef(err, "error releasing ip %s for pool %s", ip, p.poolID)
+		return true, errors.WithMessagef(err, "error releasing ip %s for pool %s", ip, p.poolID)
 	}
 
 	if !result.Success {
 		p.allocatedIPs[ip] = result.Allocation
-		return fmt.Errorf("couldn't release ip %s for pool %s. It has since been allocated like this: Allocation Type: %s; IP: %s; %s %s, Reserved At: %s. This shouldn't happen.\n", ip, p.poolID, result.Allocation.allocationType, result.Allocation.ip.String(), result.Allocation.dataKey, result.Allocation.data, result.Allocation.allocatedAt.Format(time.RFC3339))
+		return true, fmt.Errorf("couldn't release ip %s for pool %s. It has since been allocated like this: Allocation Type: %s; IP: %s; %s %s, Reserved At: %s. This shouldn't happen.\n", ip, p.poolID, result.Allocation.allocationType, result.Allocation.ip.String(), result.Allocation.dataKey, result.Allocation.data, result.Allocation.allocatedAt.Format(time.RFC3339))
 	}
 
 	delete(p.allocatedIPs, ip)
 	p.unusedIPs[ip] = time.Now()
 
-	return nil
+	return true, nil
 }
 
 func (p *etcdPool) ReleaseAllIPs() error {
