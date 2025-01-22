@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/coreos/go-systemd/v22/journal"
+	"github.com/fsnotify/fsnotify"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,7 +16,7 @@ const (
 	sandboxesDir  = "/var/run/flannel-np/sandboxes"
 	readyDir      = "/var/run/flannel-np/ready"
 	netnsDir      = "/var/run/docker/netns"
-	sleepInterval = 100 * time.Millisecond
+	sleepInterval = 50 * time.Millisecond
 	maxWaitTime   = 20 * time.Second
 )
 
@@ -61,6 +62,43 @@ func getSandboxNetNS(sandboxID string) (string, error) {
 	return strconv.FormatUint(uint64(fileInfo.Sys().(*syscall.Stat_t).Ino), 10), nil
 }
 
+func watchForFile(filePath string, timeout time.Duration) bool {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		logMessage(fmt.Sprintf("Failed to create watcher: %v", err))
+		return false
+	}
+	defer watcher.Close()
+
+	dir := filepath.Dir(filePath)
+	if err := watcher.Add(dir); err != nil {
+		logMessage(fmt.Sprintf("Failed to watch directory %s: %v", dir, err))
+		return false
+	}
+
+	timeoutChan := time.After(timeout)
+	ticker := time.NewTicker(sleepInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case event := <-watcher.Events:
+			if event.Op&(fsnotify.Create|fsnotify.Write) != 0 && event.Name == filePath {
+				return true
+			}
+		case err := <-watcher.Errors:
+			logMessage(fmt.Sprintf("Watcher error: %v", err))
+			return false
+		case <-timeoutChan:
+			return false
+		case <-ticker.C:
+			if _, err := os.Stat(filePath); err == nil {
+				return true
+			}
+		}
+	}
+}
+
 func main() {
 	startTime := time.Now()
 
@@ -100,15 +138,9 @@ func main() {
 			logMessage(fmt.Sprintf("Waiting for network initialization for %s: Waiting for existence of file %s...", sandboxID, readyFile))
 
 			// Wait for the ready file to be created
-			for {
-				if _, err := os.Stat(readyFile); err == nil {
-					break
-				}
-				time.Sleep(sleepInterval)
-				if time.Since(startTime) > maxWaitTime {
-					logMessage(fmt.Sprintf("Timeout while waiting for %s. Exiting hook anyway, to prevent deadlock", readyFile))
-					os.Exit(0)
-				}
+			if !watchForFile(readyFile, maxWaitTime) {
+				logMessage(fmt.Sprintf("Timeout while waiting for %s. Exiting hook anyway to prevent deadlock.", readyFile))
+				os.Exit(0)
 			}
 
 			duration := time.Since(startTime)

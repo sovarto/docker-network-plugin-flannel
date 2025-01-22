@@ -210,17 +210,18 @@ func getInterfaceName(networkID string) string {
 func (m *serviceLbManagement) DeleteLoadBalancer(serviceID string) error {
 	m.Lock()
 	defer m.Unlock()
-	fmt.Printf("Deleting load balancer for service %s...\n", serviceID)
-	unsubscriber, exists := m.servicesEventsUnsubscribers.TryRemove(serviceID)
-	if !exists {
-		log.Printf("no events unsubscriber for service %s. This is a bug\n", serviceID)
-	} else {
-		unsubscriber()
-	}
 
 	lbs, exists := m.loadBalancers.TryRemove(serviceID)
 	if !exists {
 		return fmt.Errorf("no load balancer found for service %s.\n", serviceID)
+	}
+
+	fmt.Printf("Deleting load balancer for service %s...\n", serviceID)
+	unsubscriber, exists := m.servicesEventsUnsubscribers.TryRemove(serviceID)
+	if !exists {
+		log.Printf("no events unsubscriber for service %s.\n", serviceID)
+	} else {
+		unsubscriber()
 	}
 
 	service, exists := m.services.TryRemove(serviceID)

@@ -7,7 +7,8 @@ journalctl -u docker.service --since "5m ago" | grep plugin= | sed -E -e 's/^[a-
 
 CONTAINER=15; nsenter --net=$(docker inspect $CONTAINER --format "{{.NetworkSettings.SandboxKey}}") ip a
 
-ip="10.1.5.68"; mark=$(iptables -t mangle -L PREROUTING -n -v --line-numbers | awk -v ip="$ip" '$0 ~ ip {print $NF; exit}') && [ -z "$mark" ] && echo "No entry in iptables" || (mark_dec=$(printf "%d" $mark); [ $mark_dec -gt 2147483647 ] && mark_dec=$((mark_dec - 4294967296)); echo $mark_dec; backends=$(ipvsadm -L -n --persistent-conn | awk -v mark="$mark_dec" '$1 == "FWM" && $2 == mark {flag=1; next} flag && $1 == "->" {print $2} flag && $1 != "->" {flag=0}'); [ -z "$backends" ] && echo "No entry in ipvsadm" || echo "$backends")
+ip="10.1.46.98"; mark=$(iptables -t mangle -L PREROUTING -n -v --line-numbers | awk -v ip="$ip" '$0 ~ ip {print $NF; exit}') && [ -z "$mark" ] && echo "No entry in iptables" || (mark_dec=$(printf "%d" $mark); [ $mark_dec -gt 2147483647 ] && mark_dec=$((mark_dec - 4294967296)); echo $mark_dec; backends=$(ipvsadm -L -n --persistent-conn | awk -v mark="$mark_dec" '$1 == "FWM" && $2 == mark {flag=1; next} flag && $1 == "->" {print $2} flag && $1 != "->" {flag=0}'); [ -z "$backends" ] && echo "No entry in ipvsadm" || echo "$backends")
+SERVICE=network-breaker-global-1; docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{"\n"}}{{end}}' $(docker ps --filter name=^$SERVICE --format "{{.Names}}")
 
 docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl get /flannel --prefix
 docker run --rm -e ETCDCTL_API=3 --net=host quay.io/coreos/etcd etcdctl del /flannel --prefix
@@ -109,28 +110,29 @@ latestTag=$(git tag --list 'v0.0.*' | sort -V | tail -n1 | sed -n 's/^v0\.0\.\([
 
 
 
-export CONTAINER=a29746ee6545
+export CONTAINER=7c07fe62a37f
 export NS=$(docker inspect --format '{{.NetworkSettings.SandboxKey}}' $CONTAINER)
 ip a > interfaces.log
 ip route show > routes.log
-iptables -L -n -t nat > iptables.nat.log
-iptables -L -n -t filter > iptables.filter.log
-iptables -L -n -t mangle > iptables.mangle.log
+iptables -L -n -v -t nat > iptables.nat.log
+iptables -L -n -v -t filter > iptables.filter.log
+iptables -L -n -v -t mangle > iptables.mangle.log
 ipvsadm -L -n > ipvsadm.log
 nsenter --net=$NS ip a > container.interfaces.log
 nsenter --net=$NS ip route show > container.routes.log
-nsenter --net=$NS iptables -L -n -t nat > container.iptables.nat.log
-nsenter --net=$NS iptables -L -n -t filter > container.iptables.filter.log
-nsenter --net=$NS iptables -L -n -t mangle > container.iptables.mangle.log
+nsenter --net=$NS iptables -L -n -v -t nat > container.iptables.nat.log
+nsenter --net=$NS iptables -L -n -v -t filter > container.iptables.filter.log
+nsenter --net=$NS iptables -L -n -v -t mangle > container.iptables.mangle.log
 nsenter --net=$NS ipvsadm -L -n > container.ipvsadm.log
-journalctl -u docker.service --since "5m ago" | grep plugin= | sed -E -e 's/^[a-zA-Z]* [0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} [^ ]+ dockerd\[[^]]*\]: time="([0-9-]*)T([0-9:Z]*)" ((level=(info) msg="?)|(level=(error) msg="?[0-9/: ]*))/\7\1 \2  /' -E -e 's/"? plugin=[a-z0-9]*$//' -E -e 's/\\t/\t/' | awk '{ if (/^error/) { gsub(/^error/, ""); print "\033[31m" $0 "\033[0m";} else {print; } }' > log
+journalctl -u docker.service --since "7m ago" | grep plugin= | sed -E -e 's/^[a-zA-Z]* [0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} [^ ]+ dockerd\[[^]]*\]: time="([0-9-]*)T([0-9:Z]*)" ((level=(info) msg="?)|(level=(error) msg="?[0-9/: ]*))/\7\1 \2  /' -E -e 's/"? plugin=[a-z0-9]*$//' -E -e 's/\\t/\t/' | awk '{ if (/^error/) { gsub(/^error/, ""); print "\033[31m" $0 "\033[0m";} else {print; } }' > log
+docker logs $CONTAINER > container.log
 docker inspect $CONTAINER > inspect.log
 
 
 cat log | rg --passthru -p $CONTAINER | less -R
 
-
-$serverIP = "168.119.224.80"
+cd flannel-analysis
+$serverIP = "49.12.78.200"
 
 scp `
   root@${serverIP}:/root/interfaces.log `
@@ -148,3 +150,5 @@ scp `
   root@${serverIP}:/root/log `
   root@${serverIP}:/root/inspect.log `
   .
+code flannel-analysis
+cd ..
