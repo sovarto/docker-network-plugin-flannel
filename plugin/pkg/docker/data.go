@@ -3,12 +3,12 @@ package docker
 import (
 	"context"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -48,18 +48,25 @@ func NewData(etcdClient etcd.Client,
 	dockerClient, err := client.NewClientWithOpts(
 		client.WithHost("unix:///var/run/docker.sock"),
 		client.WithAPIVersionNegotiation(),
-		client.WithTimeout(time.Second*5),
 	)
 
 	if err != nil {
 		return nil, errors.WithMessage(err, "error creating docker client")
 	}
 	fmt.Println("Before getting docker info")
-	info, err := dockerClient.Info(context.Background())
-	fmt.Printf("Docker info: %s\n", spew.Sdump(info))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	info, err := dockerClient.Info(ctx)
+
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		log.Fatalf("Docker API not available after 30 seconds.")
+	}
+
 	if err != nil {
 		return nil, errors.WithMessage(err, "Error getting docker info")
 	}
+
 	isManagerNode := info.Swarm.ControlAvailable
 
 	containers := etcd.NewShardedDistributedStore(etcdClient.CreateSubClient("containers"), hostname, containerHandlers)

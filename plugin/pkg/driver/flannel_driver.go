@@ -153,58 +153,68 @@ func (d *flannelDriver) Init() error {
 	d.serviceLbsManagement = serviceLbsManagement
 	fmt.Println("Initialized service load balancer management")
 
-	dockerData, err := docker.NewData(d.etcdClients.dockerData, containerCallbacks, serviceCallbacks, networkCallbacks)
-	if err != nil {
-		return errors.WithMessage(err, "Failed to create docker data handler")
+	dockerDataInitialized := make(chan struct{})
+	go func() {
+		dockerData, err := docker.NewData(d.etcdClients.dockerData, containerCallbacks, serviceCallbacks, networkCallbacks)
+		if err != nil {
+			log.Fatalf("Failed to create docker data handler: %+v\n", err)
+		}
+		d.dockerData = dockerData
+
+		err = dockerData.Init()
+		if err != nil {
+			log.Fatalf("Failed to initialize docker data handler: %+v\n", err)
+		}
+		fmt.Println("Initialized docker data handler")
+		existingNetworks := maps.Values(dockerData.GetNetworks().GetAll())
+		existingServices := maps.Values(dockerData.GetServices().GetAll())
+
+		fmt.Printf("Existing networks: %v\n", existingNetworks)
+		fmt.Printf("Existing services: %v\n", existingServices)
+
+		if err := flannel_network.CleanupStaleNetworks(d.etcdClients.networks, existingNetworks); err != nil {
+			log.Fatalf("Failed to cleanup stale flannel network data: %+v\n", err)
+		}
+
+		if err := service_lb.CleanUpStaleLoadBalancers(d.etcdClients.serviceLbs, lo.Map(existingServices, func(item docker.ServiceInfo, index int) string {
+			return item.ID
+		})); err != nil {
+			log.Fatalf("Failed to cleanup stale service load balancers: %+v\n", err)
+		}
+
+		//networkCallbacks.OnAdded(lo.Map(maps.Values(dockerData.GetNetworks().GetAll()),
+		//	func(item common.NetworkInfo, index int) etcd.Item[common.NetworkInfo] {
+		//		return etcd.Item[common.NetworkInfo]{
+		//			ID:    item.DockerID,
+		//			Value: item,
+		//		}
+		//	}))
+		//
+		//serviceCallbacks.OnAdded(lo.Map(maps.Values(dockerData.GetServices().GetAll()),
+		//	func(item docker.ServiceInfo, index int) etcd.Item[docker.ServiceInfo] {
+		//		return etcd.Item[docker.ServiceInfo]{
+		//			ID:    item.ID,
+		//			Value: item,
+		//		}
+		//	}))
+		//
+		//containerCallbacks.OnAdded(lo.Map(maps.Values(dockerData.GetContainers().GetAll()),
+		//	func(item map[string]docker.ContainerInfo, index int) etcd.Item[docker.ContainerInfo] {
+		//		return etcd.Item[docker.ContainerInfo]{
+		//			ID:    item.ID,
+		//			Value: item,
+		//		}
+		//	}))
+
+		d.injectNameserverIntoAlreadyRunningContainers()
+		close(dockerDataInitialized)
+	}()
+
+	select {
+	case <-dockerDataInitialized:
+	case <-time.After(5 * time.Second):
+		fmt.Println("Docker data not initialized after 5 seconds. This is expected if we are being started during docker startup. Docker data initialization will continue in the background.")
 	}
-	d.dockerData = dockerData
-
-	err = dockerData.Init()
-	if err != nil {
-		return errors.WithMessage(err, "Failed to initialize docker data handler")
-	}
-	fmt.Println("Initialized docker data handler")
-	existingNetworks := maps.Values(dockerData.GetNetworks().GetAll())
-	existingServices := maps.Values(dockerData.GetServices().GetAll())
-
-	fmt.Printf("Existing networks: %v\n", existingNetworks)
-	fmt.Printf("Existing services: %v\n", existingServices)
-
-	if err := flannel_network.CleanupStaleNetworks(d.etcdClients.networks, existingNetworks); err != nil {
-		return errors.WithMessage(err, "Failed to cleanup stale flannel network data")
-	}
-
-	if err := service_lb.CleanUpStaleLoadBalancers(d.etcdClients.serviceLbs, lo.Map(existingServices, func(item docker.ServiceInfo, index int) string {
-		return item.ID
-	})); err != nil {
-		return errors.WithMessage(err, "Failed to cleanup stale service load balancers")
-	}
-
-	//networkCallbacks.OnAdded(lo.Map(maps.Values(dockerData.GetNetworks().GetAll()),
-	//	func(item common.NetworkInfo, index int) etcd.Item[common.NetworkInfo] {
-	//		return etcd.Item[common.NetworkInfo]{
-	//			ID:    item.DockerID,
-	//			Value: item,
-	//		}
-	//	}))
-	//
-	//serviceCallbacks.OnAdded(lo.Map(maps.Values(dockerData.GetServices().GetAll()),
-	//	func(item docker.ServiceInfo, index int) etcd.Item[docker.ServiceInfo] {
-	//		return etcd.Item[docker.ServiceInfo]{
-	//			ID:    item.ID,
-	//			Value: item,
-	//		}
-	//	}))
-	//
-	//containerCallbacks.OnAdded(lo.Map(maps.Values(dockerData.GetContainers().GetAll()),
-	//	func(item map[string]docker.ContainerInfo, index int) etcd.Item[docker.ContainerInfo] {
-	//		return etcd.Item[docker.ContainerInfo]{
-	//			ID:    item.ID,
-	//			Value: item,
-	//		}
-	//	}))
-
-	d.injectNameserverIntoAlreadyRunningContainers()
 
 	d.isInitialized = true
 
