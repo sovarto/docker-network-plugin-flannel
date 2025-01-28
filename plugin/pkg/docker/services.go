@@ -7,6 +7,7 @@ import (
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/etcd"
 	"log"
 	"net"
@@ -114,7 +115,7 @@ func (d *data) getServiceInfoFromDocker(serviceID string) (serviceInfo *ServiceI
 		serviceInfo.IpamVIPs[endpoint.NetworkID] = ip
 	}
 
-	if len(serviceInfo.IpamVIPs) == 0 {
+	if len(serviceInfo.IpamVIPs) == 0 && serviceInfo.EndpointMode == common.ServiceEndpointModeVip {
 		return nil, true, nil
 	}
 
