@@ -82,7 +82,6 @@ func (s *readOnlyStore[T]) sync(callHandlers bool) error {
 	return nil
 }
 
-// watchEtcd watches etcd for changes and updates internal state accordingly
 func (s *readOnlyStore[T]) watchEventHandler(watchChan clientv3.WatchChan, prefix string) {
 	for wresp := range watchChan {
 		for _, ev := range wresp.Events {
