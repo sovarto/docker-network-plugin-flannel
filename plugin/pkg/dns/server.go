@@ -242,12 +242,15 @@ func (n *nameserver) setAllNetworksAsValid(dockerData docker.Data) error {
 
 	networks := dockerData.GetNetworks().GetAll()
 	for _, network := range networks {
-		for _, addresses := range linkAddresses {
-			for _, address := range addresses.addrs {
-				_, subnet, err := net.ParseCIDR(network.Subnet)
-				if err != nil {
-					log.Printf("Error parsing CIDR IPAM subnet %s: %v", network.Subnet, err)
-				} else {
+		if network.Subnet == "" {
+			continue
+		}
+		_, subnet, err := net.ParseCIDR(network.Subnet)
+		if err != nil {
+			log.Printf("Error parsing CIDR IPAM subnet %s: %v", network.Subnet, err)
+		} else {
+			for _, addresses := range linkAddresses {
+				for _, address := range addresses.addrs {
 					if subnet.Contains(address.IP) {
 						n.AddValidNetworkID(network.DockerID)
 					}
@@ -534,11 +537,11 @@ func waitForChainsWithRules(ipt *iptables.IPTables, table string, chainsGroups [
 
 func (n *nameserver) setNamespace(ctx context.Context) error {
 	// Retry mechanism for setting namespace
-	// Wait for 6 seconds max
+	// Wait for 10 seconds max
 	// TODO: And then what? Shouldn't we wait indefinitely? Or somehow crash the
 	//   container if we can't set the namespace and therefore the DNS server?)
 	var lastErr error
-	maxWaitTime := 6 * time.Second
+	maxWaitTime := 10 * time.Second
 	start := time.Now()
 	deadline := start.Add(maxWaitTime)
 	delay := 10 * time.Millisecond

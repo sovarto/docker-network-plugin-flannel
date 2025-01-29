@@ -89,7 +89,7 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 	ips := make(map[string]net.IP)
 	ipamIPs := make(map[string]net.IP)
 	endpoints := make(map[string]string)
-	aliases := make(map[string][]string)
+	dnsNames := make(map[string][]string)
 
 	containerInfo = &ContainerInfo{
 		ContainerInfo: common.ContainerInfo{
@@ -100,7 +100,7 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 			SandboxKey:  sandboxKey,
 			IPs:         ips,
 			Endpoints:   endpoints,
-			Aliases:     aliases,
+			DNSNames:    dnsNames,
 		},
 		IpamIPs: ipamIPs,
 	}
@@ -124,7 +124,7 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 			ipamIP := net.ParseIP(networkData.IPAMConfig.IPv4Address)
 			ipamIPs[networkID] = ipamIP
 		}
-		aliases[networkID] = networkData.Aliases
+		dnsNames[networkID] = networkData.DNSNames
 		endpoints[networkID] = networkData.EndpointID
 	}
 

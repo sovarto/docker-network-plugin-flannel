@@ -23,29 +23,19 @@ type Resolver interface {
 	RemoveService(service common.Service)
 }
 
-// We only need the service info here, but store the service instance because it's data will always
-// be up-to-date
-type serviceData struct {
-	byName map[string]common.Service
-	byID   map[string]common.Service
-}
-
-type containerAliasData struct {
+type containerDNSNameData struct {
 	containerID string
 	networkID   string
 	ip          net.IP
 }
 
-type containerData struct {
-	byName  map[string][]common.ContainerInfo // container names are only unique on a single node, but not in a cluster
-	byAlias map[string][]containerAliasData   // alias aren't unique, not even on a single node
-	byID    map[string]common.ContainerInfo
-}
 type resolver struct {
-	networkNameToID         map[string]string
-	networkIDToName         map[string]string
-	containerData           containerData
-	serviceData             serviceData
+	networkNameToID map[string]string
+	networkIDToName map[string]string
+	containerData   map[string][]containerDNSNameData
+	// We only need the service info here, but store the service instance because it's data will always
+	// be up-to-date
+	serviceData             map[string]common.Service
 	dockerCompatibilityMode bool
 	ttl                     uint32
 	sync.Mutex
@@ -97,16 +87,9 @@ func NewResolver(dockerCompatibilityMode bool) Resolver {
 		networkNameToID:         make(map[string]string),
 		networkIDToName:         make(map[string]string),
 		dockerCompatibilityMode: dockerCompatibilityMode,
-		containerData: containerData{
-			byAlias: make(map[string][]containerAliasData),
-			byID:    make(map[string]common.ContainerInfo),
-			byName:  make(map[string][]common.ContainerInfo),
-		},
-		serviceData: serviceData{
-			byName: make(map[string]common.Service),
-			byID:   make(map[string]common.Service),
-		},
-		ttl: 600,
+		containerData:           make(map[string][]containerDNSNameData),
+		serviceData:             make(map[string]common.Service),
+		ttl:                     600,
 	}
 }
 
@@ -116,8 +99,7 @@ func (r *resolver) AddService(service common.Service) {
 
 	serviceInfo := service.GetInfo()
 	fmt.Printf("Adding service to resolver %+v\n", serviceInfo)
-	r.serviceData.byName[serviceInfo.Name] = service
-	r.serviceData.byID[serviceInfo.ID] = service
+	r.serviceData[serviceInfo.Name] = service
 }
 
 func (r *resolver) RemoveService(service common.Service) {
@@ -126,8 +108,7 @@ func (r *resolver) RemoveService(service common.Service) {
 
 	serviceInfo := service.GetInfo()
 	fmt.Printf("Removing service from resolver %+v\n", serviceInfo)
-	delete(r.serviceData.byName, serviceInfo.Name)
-	delete(r.serviceData.byID, serviceInfo.ID)
+	delete(r.serviceData, serviceInfo.Name)
 }
 
 func (r *resolver) AddNetwork(network common.NetworkInfo) {
@@ -153,11 +134,9 @@ func (r *resolver) AddContainer(container common.ContainerInfo) {
 	defer r.Unlock()
 
 	fmt.Printf("Adding container to resolver %+v\n", container)
-	r.containerData.byID[container.ID] = container
-	add(r.containerData.byName, container.Name, container)
-	for networkID, aliases := range container.Aliases {
-		for _, alias := range aliases {
-			add(r.containerData.byAlias, alias, containerAliasData{
+	for networkID, dnsNames := range container.DNSNames {
+		for _, dnsName := range dnsNames {
+			add(r.containerData, dnsName, containerDNSNameData{
 				networkID:   networkID,
 				ip:          container.IPs[networkID],
 				containerID: container.ID,
@@ -171,17 +150,13 @@ func (r *resolver) RemoveContainer(container common.ContainerInfo) {
 	defer r.Unlock()
 
 	fmt.Printf("Removing container from resolver %+v\n", container)
-	delete(r.containerData.byID, container.ID)
-	for _, aliases := range container.Aliases {
-		for _, alias := range aliases {
-			remove(r.containerData.byAlias, alias, func(item containerAliasData) bool {
+	for _, dnsNames := range container.DNSNames {
+		for _, dnsName := range dnsNames {
+			remove(r.containerData, dnsName, func(item containerDNSNameData) bool {
 				return item.containerID == container.ID
 			})
 		}
 	}
-	remove(r.containerData.byName, container.Name, func(item common.ContainerInfo) bool {
-		return item.ID == container.ID
-	})
 }
 
 func (r *resolver) ResolveName(query string, validNetworkIDs []string) []dns.RR {
@@ -274,19 +249,12 @@ func (r *resolver) resolveName(requestedName string, requestedNetworkName string
 
 func (r *resolver) resolveContainerName(requestedName string, validNetworkID string) []net.IP {
 	result := []net.IP{}
-	aliasData, exists := r.containerData.byAlias[requestedName]
+	dnsNameData, exists := r.containerData[requestedName]
 	if exists {
-		for _, data := range aliasData {
+		for _, data := range dnsNameData {
 			if validNetworkID == data.networkID {
 				result = append(result, data.ip)
 			}
-		}
-	}
-
-	containers, exists := r.containerData.byName[requestedName]
-	if exists {
-		for _, container := range containers {
-			result = append(result, filterIPsByNetwork(container.IPs, validNetworkID)...)
 		}
 	}
 
@@ -296,7 +264,7 @@ func (r *resolver) resolveContainerName(requestedName string, validNetworkID str
 func (r *resolver) resolveServiceName(requestedName string, validNetworkID string) []net.IP {
 	result := []net.IP{}
 
-	service, exists := r.serviceData.byName[requestedName]
+	service, exists := r.serviceData[requestedName]
 	if exists {
 		serviceInfo := service.GetInfo()
 		if serviceInfo.EndpointMode == common.ServiceEndpointModeVip {

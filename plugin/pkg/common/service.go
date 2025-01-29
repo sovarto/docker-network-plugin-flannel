@@ -14,7 +14,7 @@ type ContainerInfo struct {
 	ServiceName string              `json:"ServiceName"`
 	SandboxKey  string              `json:"SandboxKey"`
 	IPs         map[string]net.IP   `json:"IPs"`       // networkID -> IP
-	Aliases     map[string][]string `json:"Aliases"`   // networkID -> aliases
+	DNSNames    map[string][]string `json:"DNSNames"`  // networkID -> DNS names
 	Endpoints   map[string]string   `json:"Endpoints"` // networkID -> endpoint ID
 }
 
