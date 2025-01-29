@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"time"
 )
 
 func (d *data) initContainers() error {
@@ -73,7 +74,11 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 	}
 
 	if !container.State.Running {
-		return nil, errors.Errorf("Container %s is not running", containerID)
+		finishedTime, err := time.Parse(time.RFC3339Nano, container.State.FinishedAt)
+		if err != nil {
+			return nil, fmt.Errorf("container %s is not running. Parsing the finished date %s failed", containerID, container.State.FinishedAt)
+		}
+		return nil, fmt.Errorf("container %s is not running. It stopped %s ago", containerID, time.Since(finishedTime))
 	}
 
 	serviceID := container.Config.Labels["com.docker.swarm.service.id"]
