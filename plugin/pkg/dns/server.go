@@ -8,7 +8,6 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
-	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
 	"github.com/vishvananda/netns"
@@ -42,7 +41,7 @@ type nameserver struct {
 	listenIP         string
 	tcpServer        *dns.Server
 	udpServer        *dns.Server
-	validNetworkIDs  []string
+	validNetworkIDs  *common.ConcurrentMap[string, struct{}]
 	isHookAvailable  bool
 	readyFile        string
 	initManager      *common.InitManager
@@ -60,7 +59,7 @@ func NewNameserver(networkNamespace string, resolver Resolver, isHookAvailable b
 		networkNamespace: adjustNamespacePath(networkNamespace),
 		resolver:         resolver,
 		listenIP:         "127.0.0.33",
-		validNetworkIDs:  make([]string, 0),
+		validNetworkIDs:  common.NewConcurrentMap[string, struct{}](),
 		isHookAvailable:  isHookAvailable,
 	}
 
@@ -138,16 +137,14 @@ func (n *nameserver) AddValidNetworkID(validNetworkID string) {
 	n.Lock()
 	defer n.Unlock()
 
-	n.validNetworkIDs = append(n.validNetworkIDs, validNetworkID)
+	n.validNetworkIDs.Set(validNetworkID, struct{}{})
 }
 
 func (n *nameserver) RemoveValidNetworkID(validNetworkID string) {
 	n.Lock()
 	defer n.Unlock()
 
-	n.validNetworkIDs = lo.Filter(n.validNetworkIDs, func(item string, index int) bool {
-		return item != validNetworkID
-	})
+	n.validNetworkIDs.Remove(validNetworkID)
 }
 
 // ServeDNS handles DNS queries
@@ -161,9 +158,9 @@ func (n *nameserver) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		if q.Qtype == dns.TypeA {
 			// TODO: This results in a parse error on the DNS client side if more than a single result
 			//   is being returned. Can be tested by creating a service with a fixed hostname
-			msg.Answer = append(msg.Answer, n.resolver.ResolveName(q.Name, n.validNetworkIDs)...)
+			msg.Answer = append(msg.Answer, n.resolver.ResolveName(q.Name, n.validNetworkIDs.Keys())...)
 		} else if q.Qtype == dns.TypePTR {
-			msg.Answer = append(msg.Answer, n.resolver.ResolveIP(q.Name, n.validNetworkIDs)...)
+			msg.Answer = append(msg.Answer, n.resolver.ResolveIP(q.Name, n.validNetworkIDs.Keys())...)
 		}
 
 		if len(msg.Answer) == 0 {
