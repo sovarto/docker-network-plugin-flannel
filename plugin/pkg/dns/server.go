@@ -6,6 +6,7 @@ import (
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
@@ -247,7 +248,8 @@ func (n *nameserver) setAllNetworksAsValid() error {
 	deadline := start.Add(8 * time.Second)
 
 	for {
-		containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{All: true})
+		containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{Filters: filters.NewArgs(filters.Arg("status", "created"), filters.Arg("status", "running"))})
+
 		if err != nil {
 			return errors.WithMessage(err, "Error listing containers")
 		}
