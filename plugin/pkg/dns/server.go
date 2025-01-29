@@ -259,6 +259,7 @@ func (n *nameserver) setAllNetworksAsValid() error {
 				for _, network := range listContainer.NetworkSettings.Networks {
 					n.AddValidNetworkID(network.NetworkID)
 				}
+				fmt.Printf("Added all networks of container %s as valid networks in namespace %s\n", listContainer.ID, n.networkNamespace)
 				return nil
 			} else {
 				fmt.Printf("%s != %s\n", adjustNamespacePath(container.NetworkSettings.SandboxKey), n.networkNamespace)
