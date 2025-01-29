@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/coreos/go-iptables/iptables"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/miekg/dns"
@@ -250,6 +251,7 @@ func (n *nameserver) setAllNetworksAsValid() error {
 		if err != nil {
 			return errors.WithMessage(err, "Error listing containers")
 		}
+		fmt.Printf("Found %d containers: %v\n", len(containers), spew.Sdump(containers))
 		for _, listContainer := range containers {
 			container, err := dockerClient.ContainerInspect(context.Background(), listContainer.ID)
 			if err != nil {
