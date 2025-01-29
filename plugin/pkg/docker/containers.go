@@ -72,6 +72,10 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 		return nil, errors.WithMessagef(err, "Error inspecting docker container %s", containerID)
 	}
 
+	if !container.State.Running {
+		return nil, errors.Errorf("Container %s is not running", containerID)
+	}
+
 	serviceID := container.Config.Labels["com.docker.swarm.service.id"]
 	serviceName := container.Config.Labels["com.docker.swarm.service.name"]
 	containerName := strings.TrimLeft(container.Name, "/")

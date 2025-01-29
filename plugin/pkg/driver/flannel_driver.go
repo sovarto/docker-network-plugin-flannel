@@ -518,6 +518,8 @@ func (d *flannelDriver) injectNameserverIntoAlreadyRunningContainers() {
 						return
 					}
 
+					fmt.Printf("Injecting nameserver for container %s. endpoints: %v\n", container, container.Endpoints)
+
 					for networkID, endpointID := range container.Endpoints {
 						d.nameserversByEndpointID.Set(endpointID, nameserver)
 						nameserver.AddValidNetworkID(networkID)
