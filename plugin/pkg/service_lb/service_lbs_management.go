@@ -286,7 +286,9 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 	go func() {
 		defer close(done)
 		m.networksChanged.L.Lock()
+		serviceInfo := service.GetInfo()
 		for m.hasMissingNetworks(service) {
+			fmt.Printf("Not all networks for service %s are known yet. Waiting... Expected networks: %v, known flannel networks: %v, known other networks: %v\n", serviceInfo.ID, serviceInfo.Networks, m.flannelNetworksByDockerID.Keys(), m.otherNetworksByDockerID.Keys())
 			m.networksChanged.Wait()
 		}
 		m.networksChanged.L.Unlock()
@@ -294,7 +296,6 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 		m.Lock()
 		defer m.Unlock()
 
-		serviceInfo := service.GetInfo()
 		m.services.Set(serviceInfo.ID, service)
 		lbs, exists, _ := m.loadBalancers.GetOrAdd(serviceInfo.ID, func() (*common.ConcurrentMap[string, NetworkSpecificServiceLb], error) {
 			return common.NewConcurrentMap[string, NetworkSpecificServiceLb](), nil
