@@ -246,7 +246,7 @@ func (n *nameserver) setAllNetworksAsValid() error {
 	deadline := start.Add(8 * time.Second)
 
 	for {
-		containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{})
+		containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{All: true})
 		if err != nil {
 			return errors.WithMessage(err, "Error listing containers")
 		}
