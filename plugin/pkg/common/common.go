@@ -19,6 +19,7 @@ type FlannelNetworkInfo struct {
 type NetworkInfo struct {
 	DockerID  string `json:"DockerID"`
 	FlannelID string `json:"FlannelID"`
+	Subnet    string `json:"Subnet"`
 	Name      string `json:"Name"`
 }
 

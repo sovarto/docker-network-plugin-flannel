@@ -476,7 +476,7 @@ func (d *flannelDriver) getOrAddNameserver(sandboxKey string) (dns.Nameserver, <
 		return nameserver, errCh
 	}
 
-	return nameserver, nameserver.Activate()
+	return nameserver, nameserver.Activate(d.dockerData)
 }
 
 func (d *flannelDriver) createService(id, name string) common.Service {

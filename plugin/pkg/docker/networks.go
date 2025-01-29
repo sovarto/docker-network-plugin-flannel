@@ -85,10 +85,15 @@ func (d *data) getNetworkInfoFromDocker(dockerNetworkID string) (networkInfo *co
 
 	flannelNetworkID := network.IPAM.Options["flannel-id"]
 
+	var subnet string
+	if len(network.IPAM.Config) > 0 {
+		subnet = network.IPAM.Config[0].Subnet
+	}
 	return &common.NetworkInfo{
 		DockerID:  dockerNetworkID,
 		FlannelID: flannelNetworkID,
 		Name:      network.Name,
+		Subnet:    subnet,
 	}, nil
 }
 

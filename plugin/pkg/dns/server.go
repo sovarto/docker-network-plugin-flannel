@@ -4,13 +4,11 @@ import (
 	"context"
 	"fmt"
 	"github.com/coreos/go-iptables/iptables"
-	"github.com/davecgh/go-spew/spew"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/docker"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
@@ -30,7 +28,7 @@ const (
 )
 
 type Nameserver interface {
-	Activate() <-chan error
+	Activate(dockerData docker.Data) <-chan error
 	DeactivateAndCleanup() error
 	AddValidNetworkID(validNetworkID string)
 	RemoveValidNetworkID(validNetworkID string)
@@ -47,7 +45,7 @@ type nameserver struct {
 	validNetworkIDs  *common.ConcurrentMap[string, struct{}]
 	isHookAvailable  bool
 	readyFile        string
-	initManager      *common.InitManager
+	initManager      *common.InitManager[docker.Data]
 	sync.Mutex
 }
 
@@ -76,12 +74,12 @@ func NewNameserver(networkNamespace string, resolver Resolver, isHookAvailable b
 		result.readyFile = filepath.Join(ReadyPath, namespaceKey)
 	}
 
-	result.initManager = common.NewInitManager(result.startDnsServersInNamespace)
+	result.initManager = common.NewInitManager[docker.Data](result.startDnsServersInNamespace)
 
 	return result, nil
 }
 
-func (n *nameserver) Activate() <-chan error {
+func (n *nameserver) Activate(dockerData docker.Data) <-chan error {
 	n.Lock()
 	defer n.Unlock()
 
@@ -90,7 +88,7 @@ func (n *nameserver) Activate() <-chan error {
 	fmt.Printf("Starting nameserver in namespace %s\n", n.networkNamespace)
 	go func() {
 		defer close(errCh)
-		n.initManager.Init()
+		n.initManager.Init(dockerData)
 		if err := n.initManager.Wait(); err != nil {
 			errCh <- errors.WithMessagef(err, "Error listening in namespace %s", n.networkNamespace)
 		}
@@ -194,19 +192,11 @@ func (n *nameserver) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 }
 
 // startDnsServersInNamespace sets up DNS servers within the specified network namespace
-func (n *nameserver) startDnsServersInNamespace(ctx context.Context) error {
+func (n *nameserver) startDnsServersInNamespace(ctx context.Context, dockerData docker.Data) error {
 	runtime.LockOSThread()
 
 	if err := n.setNamespace(ctx); err != nil {
 		return errors.WithMessagef(err, "Error setting namespace to %s", n.networkNamespace)
-	}
-
-	if !n.isHookAvailable {
-		go func() {
-			if err := n.setAllNetworksAsValid(); err != nil {
-				log.Printf("Error setting all networks as valid of container with namespace %s: %v", n.networkNamespace, err)
-			}
-		}()
 	}
 
 	portTCP, err := n.startDNSServer("tcp", ctx)
@@ -225,26 +215,15 @@ func (n *nameserver) startDnsServersInNamespace(ctx context.Context) error {
 		return errors.WithMessagef(err, "Failed to replace DNAT SNAT rules in namespace %s", n.networkNamespace)
 	}
 
-	if n.isHookAvailable {
-		if err := n.setAllNetworksAsValid(); err != nil {
-			log.Printf("Error setting all networks as valid of container with namespace %s: %v", n.networkNamespace, err)
-		}
+	if err := n.setAllNetworksAsValid(dockerData); err != nil {
+		return errors.WithMessagef(err, "Error setting all networks as valid of container with namespace %s", n.networkNamespace)
 	}
 
 	fmt.Printf("Namespace %s DNS servers listening on TCP: 127.0.0.33:%d, UDP: 127.0.0.33:%d\n", n.networkNamespace, portTCP, portUDP)
 	return nil
 }
 
-func (n *nameserver) setAllNetworksAsValid() error {
-	dockerClient, err := client.NewClientWithOpts(
-		client.WithHost("unix:///var/run/docker.sock"),
-		client.WithAPIVersionNegotiation(),
-	)
-
-	if err != nil {
-		return errors.WithMessage(err, "Error creating docker client")
-	}
-
+func (n *nameserver) setAllNetworksAsValid(dockerData docker.Data) error {
 	links, err := netlink.LinkList()
 	if err != nil {
 		return errors.WithMessagef(err, "error listing network interfaces when setting valid networks in namespace %s", n.networkNamespace)
@@ -260,24 +239,17 @@ func (n *nameserver) setAllNetworksAsValid() error {
 			addrs []netlink.Addr
 		}{item.Attrs().Name, addrs}
 	})
-	fmt.Printf("Found %d interfaces in container: %v\n", len(links), spew.Sdump(linkAddresses))
-	networks, err := dockerClient.NetworkList(context.Background(), network.ListOptions{})
+
+	networks := dockerData.GetNetworks().GetAll()
 	for _, network := range networks {
-		if network.EnableIPv6 {
-			continue
-		}
 		for _, addresses := range linkAddresses {
 			for _, address := range addresses.addrs {
-				if network.IPAM.Config != nil {
-					for _, ipamConfig := range network.IPAM.Config {
-						_, subnet, err := net.ParseCIDR(ipamConfig.Subnet)
-						if err != nil {
-							log.Printf("Error parsing CIDR IPAM subnet %s: %v", ipamConfig.Subnet, err)
-						} else {
-							if subnet.Contains(address.IP) {
-								n.AddValidNetworkID(network.ID)
-							}
-						}
+				_, subnet, err := net.ParseCIDR(network.Subnet)
+				if err != nil {
+					log.Printf("Error parsing CIDR IPAM subnet %s: %v", network.Subnet, err)
+				} else {
+					if subnet.Contains(address.IP) {
+						n.AddValidNetworkID(network.DockerID)
 					}
 				}
 			}
