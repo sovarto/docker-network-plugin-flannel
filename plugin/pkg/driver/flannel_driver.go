@@ -339,7 +339,7 @@ func (d *flannelDriver) handleNetworksAdded(added []etcd.Item[common.NetworkInfo
 				log.Printf("Failed to handle added or changed network %s / %s: %s\n", networkInfo.DockerID, networkInfo.FlannelID, err)
 			}
 		} else {
-			d.serviceLbsManagement.RegisterOtherNetwork(networkInfo.Name)
+			d.serviceLbsManagement.RegisterOtherNetwork(networkInfo.DockerID)
 		}
 	}
 }
