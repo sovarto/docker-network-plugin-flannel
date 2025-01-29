@@ -116,6 +116,7 @@ func (d *data) getServiceInfoFromDocker(serviceID string) (serviceInfo *ServiceI
 	}
 
 	if len(serviceInfo.IpamVIPs) == 0 && serviceInfo.EndpointMode == common.ServiceEndpointModeVip {
+		fmt.Printf("Ignoring service %s because it has no IPAM VIPs but has endpoint mode VIP", serviceID)
 		return nil, true, nil
 	}
 

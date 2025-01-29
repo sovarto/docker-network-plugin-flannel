@@ -31,7 +31,7 @@ TODO:
 - Release IPAM IP of container when actual IP differs (done)
   - -> etcd watcher on container data (done)
   - -> store IPAM IPs on containers (done)
-- restore state upon startup and resync from Docker
+- restore state upon startup and resync from Docker (done)
 - Periodic sync
 - Connection draining
   - -> Handle container kill
