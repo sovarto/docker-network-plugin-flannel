@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
+	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"log"
 	"net"
@@ -248,27 +248,30 @@ func (n *nameserver) setAllNetworksAsValid() error {
 	deadline := start.Add(8 * time.Second)
 
 	for {
-		containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{Filters: filters.NewArgs(filters.Arg("status", "created"), filters.Arg("status", "running"))})
-
+		links, err := netlink.LinkList()
 		if err != nil {
-			return errors.WithMessage(err, "Error listing containers")
+			return errors.WithMessagef(err, "error listing network interfaces when setting valid networks in namespace %s", n.networkNamespace)
 		}
-		fmt.Printf("Found %d containers: %v\n", len(containers), spew.Sdump(containers))
-		for _, listContainer := range containers {
-			container, err := dockerClient.ContainerInspect(context.Background(), listContainer.ID)
-			if err != nil {
-				continue
-			}
-			if adjustNamespacePath(container.NetworkSettings.SandboxKey) == n.networkNamespace {
-				for _, network := range listContainer.NetworkSettings.Networks {
-					n.AddValidNetworkID(network.NetworkID)
-				}
-				fmt.Printf("Added all networks of container %s as valid networks in namespace %s\n", listContainer.ID, n.networkNamespace)
-				return nil
-			} else {
-				fmt.Printf("%s != %s\n", adjustNamespacePath(container.NetworkSettings.SandboxKey), n.networkNamespace)
-			}
-		}
+
+		fmt.Printf("Found %d interfaces in container: %v\n", len(links), spew.Sdump(links))
+		networks, err := dockerClient.NetworkList(context.Background(), network.ListOptions{})
+		fmt.Printf("Found %d docker networks: %v\n", len(networks), spew.Sdump(networks))
+		return nil
+		//for _, listContainer := range containers {
+		//	container, err := dockerClient.ContainerInspect(context.Background(), listContainer.ID)
+		//	if err != nil {
+		//		continue
+		//	}
+		//	if adjustNamespacePath(container.NetworkSettings.SandboxKey) == n.networkNamespace {
+		//		for _, network := range listContainer.NetworkSettings.Networks {
+		//			n.AddValidNetworkID(network.NetworkID)
+		//		}
+		//		fmt.Printf("Added all networks of container %s as valid networks in namespace %s\n", listContainer.ID, n.networkNamespace)
+		//		return nil
+		//	} else {
+		//		fmt.Printf("%s != %s\n", adjustNamespacePath(container.NetworkSettings.SandboxKey), n.networkNamespace)
+		//	}
+		//}
 		if time.Now().After(deadline) {
 			return errors.New("timeout while waiting for container to be returned from docker API")
 		}
