@@ -364,6 +364,10 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 			if !ipExists {
 				network, exists := m.flannelNetworksByDockerID.Get(dockerNetworkID)
 				if !exists {
+					if _, exists := m.otherNetworksByDockerID.Get(dockerNetworkID); exists {
+						continue
+					}
+
 					done <- fmt.Errorf("network %s missing in internal state of service load balancer management", dockerNetworkID)
 					return
 				}
