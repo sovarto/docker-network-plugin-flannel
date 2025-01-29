@@ -355,15 +355,16 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 		fmt.Printf("Service %s (%s) has IPAM VIPs %v\n", serviceInfo.Name, serviceInfo.ID, serviceInfo.IpamVIPs)
 		// Assumption: for every network we also have an IPAM VIP
 		for dockerNetworkID, ipamVip := range serviceInfo.IpamVIPs {
+
+			if _, exists := m.otherNetworksByDockerID.Get(dockerNetworkID); exists {
+				data.FrontendIPs[dockerNetworkID] = ipamVip
+				continue
+			}
+
 			var ip net.IP
 			ipExists := false
 			if hasLoadBalancerData {
 				ip, ipExists = existingData.FrontendIPs[dockerNetworkID]
-			}
-
-			if _, exists := m.otherNetworksByDockerID.Get(dockerNetworkID); exists {
-				data.FrontendIPs[dockerNetworkID] = ip
-				continue
 			}
 
 			if !ipExists {
