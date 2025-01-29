@@ -116,7 +116,7 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 		}
 		ip := net.ParseIP(networkData.IPAddress)
 		if ip == nil {
-			log.Printf("Found network %s with invalid IP %s", networkID, networkData.IPAddress)
+			log.Printf("Container %s had network %s with invalid IP %s", container.ID, networkID, networkData.IPAddress)
 			continue
 		}
 		ips[networkID] = ip
@@ -134,7 +134,7 @@ func (d *data) getContainerInfoFromDocker(containerID string) (containerInfo *Co
 func (d *data) handleContainer(containerID string) error {
 	containerInfo, err := d.getContainerInfoFromDocker(containerID)
 	if err != nil {
-		return errors.WithMessagef(err, "Error inspecting docker container %s", containerID)
+		return err
 	}
 
 	if len(containerInfo.IPs) == 0 {

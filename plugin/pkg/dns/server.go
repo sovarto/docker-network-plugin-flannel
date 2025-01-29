@@ -260,6 +260,8 @@ func (n *nameserver) setAllNetworksAsValid() error {
 					n.AddValidNetworkID(network.NetworkID)
 				}
 				return nil
+			} else {
+				fmt.Printf("%s != %s\n", adjustNamespacePath(container.NetworkSettings.SandboxKey), n.networkNamespace)
 			}
 		}
 		if time.Now().After(deadline) {
