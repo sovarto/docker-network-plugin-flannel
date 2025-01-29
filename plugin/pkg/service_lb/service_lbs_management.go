@@ -405,9 +405,13 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 
 func (m *serviceLbManagement) hasMissingNetworks(service common.Service) bool {
 	for _, dockerNetworkID := range service.GetInfo().Networks {
-		if _, exists := m.flannelNetworksByDockerID.Get(dockerNetworkID); !exists {
-			return true
+		if _, exists := m.flannelNetworksByDockerID.Get(dockerNetworkID); exists {
+			continue
 		}
+		if _, exists := m.otherNetworksByDockerID.Get(dockerNetworkID); exists {
+			continue
+		}
+		return true
 	}
 	return false
 }
