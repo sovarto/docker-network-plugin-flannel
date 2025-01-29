@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/coreos/go-iptables/iptables"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
@@ -199,6 +201,10 @@ func (n *nameserver) startDnsServersInNamespace(ctx context.Context) error {
 		return errors.WithMessagef(err, "Error setting namespace to %s", n.networkNamespace)
 	}
 
+	if err := n.setAllNetworksAsValid(); err != nil {
+		return errors.WithMessagef(err, "Error setting all networks as valid of container with namespace %s", n.networkNamespace)
+	}
+
 	portTCP, err := n.startDNSServer("tcp", ctx)
 	if err != nil {
 		return errors.WithMessagef(err, "Failed to start DNS server TCP in namespace %s", n.networkNamespace)
@@ -211,13 +217,41 @@ func (n *nameserver) startDnsServersInNamespace(ctx context.Context) error {
 
 	fmt.Printf("Both servers for %s have been started\n", n.networkNamespace)
 
-	err = n.replaceDNATSNATRules(ctx)
-	if err != nil {
+	if err = n.replaceDNATSNATRules(ctx); err != nil {
 		return errors.WithMessagef(err, "Failed to replace DNAT SNAT rules in namespace %s", n.networkNamespace)
 	}
 
 	fmt.Printf("Namespace %s DNS servers listening on TCP: 127.0.0.33:%d, UDP: 127.0.0.33:%d\n", n.networkNamespace, portTCP, portUDP)
 	return nil
+}
+
+func (n *nameserver) setAllNetworksAsValid() error {
+	dockerClient, err := client.NewClientWithOpts(
+		client.WithHost("unix:///var/run/docker.sock"),
+		client.WithAPIVersionNegotiation(),
+	)
+
+	if err != nil {
+		return errors.WithMessage(err, "Error creating docker client")
+	}
+
+	containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{})
+	if err != nil {
+		return errors.WithMessage(err, "Error listing containers")
+	}
+	for _, listContainer := range containers {
+		container, err := dockerClient.ContainerInspect(context.Background(), listContainer.ID)
+		if err != nil {
+			continue
+		}
+		if adjustNamespacePath(container.NetworkSettings.SandboxKey) == n.networkNamespace {
+			for _, network := range listContainer.NetworkSettings.Networks {
+				n.AddValidNetworkID(network.NetworkID)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("container not found")
 }
 
 // startDNSServer initializes and starts the DNS server for either TCP or UDP
