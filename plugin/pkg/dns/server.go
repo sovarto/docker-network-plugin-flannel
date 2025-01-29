@@ -9,6 +9,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/networking"
 	"github.com/vishvananda/netlink"
@@ -244,40 +245,45 @@ func (n *nameserver) setAllNetworksAsValid() error {
 		return errors.WithMessage(err, "Error creating docker client")
 	}
 
-	start := time.Now()
-	deadline := start.Add(8 * time.Second)
-
-	for {
-		links, err := netlink.LinkList()
-		if err != nil {
-			return errors.WithMessagef(err, "error listing network interfaces when setting valid networks in namespace %s", n.networkNamespace)
-		}
-
-		fmt.Printf("Found %d interfaces in container: %v\n", len(links), spew.Sdump(links))
-		networks, err := dockerClient.NetworkList(context.Background(), network.ListOptions{})
-		fmt.Printf("Found %d docker networks: %v\n", len(networks), spew.Sdump(networks))
-		return nil
-		//for _, listContainer := range containers {
-		//	container, err := dockerClient.ContainerInspect(context.Background(), listContainer.ID)
-		//	if err != nil {
-		//		continue
-		//	}
-		//	if adjustNamespacePath(container.NetworkSettings.SandboxKey) == n.networkNamespace {
-		//		for _, network := range listContainer.NetworkSettings.Networks {
-		//			n.AddValidNetworkID(network.NetworkID)
-		//		}
-		//		fmt.Printf("Added all networks of container %s as valid networks in namespace %s\n", listContainer.ID, n.networkNamespace)
-		//		return nil
-		//	} else {
-		//		fmt.Printf("%s != %s\n", adjustNamespacePath(container.NetworkSettings.SandboxKey), n.networkNamespace)
-		//	}
-		//}
-		if time.Now().After(deadline) {
-			return errors.New("timeout while waiting for container to be returned from docker API")
-		}
-
-		time.Sleep(5 * time.Millisecond) // Wait before retrying
+	links, err := netlink.LinkList()
+	if err != nil {
+		return errors.WithMessagef(err, "error listing network interfaces when setting valid networks in namespace %s", n.networkNamespace)
 	}
+
+	linkAddresses := lo.Map(links, func(item netlink.Link, _ int) struct {
+		name  string
+		addrs []netlink.Addr
+	} {
+		addrs, _ := netlink.AddrList(item, netlink.FAMILY_ALL)
+		return struct {
+			name  string
+			addrs []netlink.Addr
+		}{item.Attrs().Name, addrs}
+	})
+	fmt.Printf("Found %d interfaces in container: %v\n", len(links), spew.Sdump(linkAddresses))
+	networks, err := dockerClient.NetworkList(context.Background(), network.ListOptions{})
+	for _, network := range networks {
+		if network.EnableIPv6 {
+			continue
+		}
+		for _, addresses := range linkAddresses {
+			for _, address := range addresses.addrs {
+				if network.IPAM.Config != nil {
+					for _, ipamConfig := range network.IPAM.Config {
+						_, subnet, err := net.ParseCIDR(ipamConfig.Subnet)
+						if err != nil {
+							log.Printf("Error parsing CIDR IPAM subnet %s: %v", ipamConfig.Subnet, err)
+						} else {
+							if subnet.Contains(address.IP) {
+								n.AddValidNetworkID(network.ID)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // startDNSServer initializes and starts the DNS server for either TCP or UDP
