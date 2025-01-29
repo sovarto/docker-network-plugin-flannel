@@ -297,7 +297,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 		defer m.Unlock()
 
 		m.services.Set(serviceInfo.ID, service)
-		lbs, exists, _ := m.loadBalancers.GetOrAdd(serviceInfo.ID, func() (*common.ConcurrentMap[string, NetworkSpecificServiceLb], error) {
+		lbs, hasLoadBalancerData, _ := m.loadBalancers.GetOrAdd(serviceInfo.ID, func() (*common.ConcurrentMap[string, NetworkSpecificServiceLb], error) {
 			return common.NewConcurrentMap[string, NetworkSpecificServiceLb](), nil
 		})
 
@@ -350,24 +350,25 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 			FrontendIPs: make(map[string]net.IP),
 		}
 
-		existingData, exists := m.loadBalancersData.GetItem(serviceInfo.ID)
+		existingData, hasLoadBalancerData := m.loadBalancersData.GetItem(serviceInfo.ID)
 
 		fmt.Printf("Service %s (%s) has IPAM VIPs %v\n", serviceInfo.Name, serviceInfo.ID, serviceInfo.IpamVIPs)
 		// Assumption: for every network we also have an IPAM VIP
 		for dockerNetworkID, ipamVip := range serviceInfo.IpamVIPs {
 			var ip net.IP
 			ipExists := false
-			if exists {
+			if hasLoadBalancerData {
 				ip, ipExists = existingData.FrontendIPs[dockerNetworkID]
+			}
+
+			if _, exists := m.otherNetworksByDockerID.Get(dockerNetworkID); exists {
+				data.FrontendIPs[dockerNetworkID] = ip
+				continue
 			}
 
 			if !ipExists {
 				network, exists := m.flannelNetworksByDockerID.Get(dockerNetworkID)
 				if !exists {
-					if _, exists := m.otherNetworksByDockerID.Get(dockerNetworkID); exists {
-						continue
-					}
-
 					done <- fmt.Errorf("network %s missing in internal state of service load balancer management", dockerNetworkID)
 					return
 				}
