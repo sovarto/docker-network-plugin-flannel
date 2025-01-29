@@ -201,8 +201,12 @@ func (n *nameserver) startDnsServersInNamespace(ctx context.Context) error {
 		return errors.WithMessagef(err, "Error setting namespace to %s", n.networkNamespace)
 	}
 
-	if err := n.setAllNetworksAsValid(); err != nil {
-		return errors.WithMessagef(err, "Error setting all networks as valid of container with namespace %s", n.networkNamespace)
+	if !n.isHookAvailable {
+		go func() {
+			if err := n.setAllNetworksAsValid(); err != nil {
+				log.Printf("Error setting all networks as valid of container with namespace %s: %v", n.networkNamespace, err)
+			}
+		}()
 	}
 
 	portTCP, err := n.startDNSServer("tcp", ctx)
@@ -221,6 +225,12 @@ func (n *nameserver) startDnsServersInNamespace(ctx context.Context) error {
 		return errors.WithMessagef(err, "Failed to replace DNAT SNAT rules in namespace %s", n.networkNamespace)
 	}
 
+	if n.isHookAvailable {
+		if err := n.setAllNetworksAsValid(); err != nil {
+			log.Printf("Error setting all networks as valid of container with namespace %s: %v", n.networkNamespace, err)
+		}
+	}
+
 	fmt.Printf("Namespace %s DNS servers listening on TCP: 127.0.0.33:%d, UDP: 127.0.0.33:%d\n", n.networkNamespace, portTCP, portUDP)
 	return nil
 }
@@ -235,23 +245,32 @@ func (n *nameserver) setAllNetworksAsValid() error {
 		return errors.WithMessage(err, "Error creating docker client")
 	}
 
-	containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{})
-	if err != nil {
-		return errors.WithMessage(err, "Error listing containers")
-	}
-	for _, listContainer := range containers {
-		container, err := dockerClient.ContainerInspect(context.Background(), listContainer.ID)
+	start := time.Now()
+	deadline := start.Add(8 * time.Second)
+
+	for {
+		containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{})
 		if err != nil {
-			continue
+			return errors.WithMessage(err, "Error listing containers")
 		}
-		if adjustNamespacePath(container.NetworkSettings.SandboxKey) == n.networkNamespace {
-			for _, network := range listContainer.NetworkSettings.Networks {
-				n.AddValidNetworkID(network.NetworkID)
+		for _, listContainer := range containers {
+			container, err := dockerClient.ContainerInspect(context.Background(), listContainer.ID)
+			if err != nil {
+				continue
 			}
-			return nil
+			if adjustNamespacePath(container.NetworkSettings.SandboxKey) == n.networkNamespace {
+				for _, network := range listContainer.NetworkSettings.Networks {
+					n.AddValidNetworkID(network.NetworkID)
+				}
+				return nil
+			}
 		}
+		if time.Now().After(deadline) {
+			return errors.New("timeout while waiting for container to be returned from docker API")
+		}
+
+		time.Sleep(5 * time.Millisecond) // Wait before retrying
 	}
-	return fmt.Errorf("container not found")
 }
 
 // startDNSServer initializes and starts the DNS server for either TCP or UDP
