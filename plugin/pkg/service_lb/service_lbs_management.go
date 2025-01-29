@@ -23,7 +23,8 @@ import (
 // ServiceLbsManagement: global, across networks and services
 
 type ServiceLbsManagement interface {
-	SetNetwork(dockerNetworkID string, network flannel_network.Network) error
+	SetFlannelNetwork(dockerNetworkID string, network flannel_network.Network) error
+	RegisterOtherNetwork(dockerNetworkID string)
 	DeleteNetwork(dockerNetworkID string) error
 	CreateLoadBalancer(service common.Service) <-chan error
 	DeleteLoadBalancer(serviceID string) error
@@ -48,7 +49,8 @@ type serviceLbManagement struct {
 	loadBalancers               *common.ConcurrentMap[string, *common.ConcurrentMap[string, NetworkSpecificServiceLb]]
 	loadBalancersData           etcd.WriteOnlyStore[loadBalancerData]
 	fwmarksManagement           FwmarksManagement
-	networksByDockerID          *common.ConcurrentMap[string, flannel_network.Network]
+	flannelNetworksByDockerID   *common.ConcurrentMap[string, flannel_network.Network]
+	otherNetworksByDockerID     *common.ConcurrentMap[string, struct{}]
 	hostname                    string
 	networksChanged             *sync.Cond
 	sync.Mutex
@@ -69,7 +71,8 @@ func NewServiceLbManagement(etcdClient etcd.Client) (ServiceLbsManagement, error
 		loadBalancers:               common.NewConcurrentMap[string, *common.ConcurrentMap[string, NetworkSpecificServiceLb]](),
 		loadBalancersData:           loadBalancerData,
 		fwmarksManagement:           NewFwmarksManagement(etcdClient.CreateSubClient(hostname, "fwmarks")),
-		networksByDockerID:          common.NewConcurrentMap[string, flannel_network.Network](),
+		flannelNetworksByDockerID:   common.NewConcurrentMap[string, flannel_network.Network](),
+		otherNetworksByDockerID:     common.NewConcurrentMap[string, struct{}](),
 		hostname:                    hostname,
 		services:                    common.NewConcurrentMap[string, common.Service](),
 		servicesEventsUnsubscribers: common.NewConcurrentMap[string, func()](),
@@ -77,20 +80,26 @@ func NewServiceLbManagement(etcdClient etcd.Client) (ServiceLbsManagement, error
 	}, nil
 }
 
-func (m *serviceLbManagement) SetNetwork(dockerNetworkID string, network flannel_network.Network) error {
+func (m *serviceLbManagement) SetFlannelNetwork(dockerNetworkID string, network flannel_network.Network) error {
 	if dockerNetworkID == "" {
 		return fmt.Errorf("error adding network: docker network id is empty for network %s", network.GetInfo().FlannelID)
 	}
-	m.networksByDockerID.Set(dockerNetworkID, network)
+	m.flannelNetworksByDockerID.Set(dockerNetworkID, network)
 	m.networksChanged.Broadcast()
 	return nil
+}
+
+func (m *serviceLbManagement) RegisterOtherNetwork(dockerNetworkID string) {
+	m.otherNetworksByDockerID.Set(dockerNetworkID, struct{}{})
+	m.networksChanged.Broadcast()
 }
 
 func (m *serviceLbManagement) DeleteNetwork(dockerNetworkID string) error {
 	if dockerNetworkID == "" {
 		return fmt.Errorf("error removing network: docker network id is empty")
 	}
-	m.networksByDockerID.Remove(dockerNetworkID)
+	m.flannelNetworksByDockerID.Remove(dockerNetworkID)
+	m.otherNetworksByDockerID.Remove(dockerNetworkID)
 	m.networksChanged.Broadcast()
 	return nil
 }
@@ -256,7 +265,7 @@ func (m *serviceLbManagement) deleteForNetwork(serviceInfo common.ServiceInfo, l
 
 	// Only release VIP if we allocated it - that's the case when IpamVIP and actual VIP differ
 	if lb.GetFrontendIP() != nil && !serviceInfo.IpamVIPs[dockerNetworkID].Equal(serviceInfo.VIPs[dockerNetworkID]) {
-		network, exists := m.networksByDockerID.Get(dockerNetworkID)
+		network, exists := m.flannelNetworksByDockerID.Get(dockerNetworkID)
 		if !exists {
 			return fmt.Errorf("no network found for docker network ID %s", dockerNetworkID)
 		}
@@ -294,8 +303,11 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 		deleted, _ := lo.Difference(lbs.Keys(), serviceInfo.Networks)
 
 		for _, dockerNetworkID := range serviceInfo.Networks {
-			network, exists := m.networksByDockerID.Get(dockerNetworkID)
+			network, exists := m.flannelNetworksByDockerID.Get(dockerNetworkID)
 			if !exists {
+				if _, exists := m.otherNetworksByDockerID.Get(dockerNetworkID); exists {
+					continue
+				}
 				done <- fmt.Errorf("network %s missing in internal state of service load balancer management. This is a bug", dockerNetworkID)
 				return
 			}
@@ -349,7 +361,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 			}
 
 			if !ipExists {
-				network, exists := m.networksByDockerID.Get(dockerNetworkID)
+				network, exists := m.flannelNetworksByDockerID.Get(dockerNetworkID)
 				if !exists {
 					done <- fmt.Errorf("network %s missing in internal state of service load balancer management", dockerNetworkID)
 					return
@@ -393,7 +405,7 @@ func (m *serviceLbManagement) createOrUpdateLoadBalancer(service common.Service)
 
 func (m *serviceLbManagement) hasMissingNetworks(service common.Service) bool {
 	for _, dockerNetworkID := range service.GetInfo().Networks {
-		if _, exists := m.networksByDockerID.Get(dockerNetworkID); !exists {
+		if _, exists := m.flannelNetworksByDockerID.Get(dockerNetworkID); !exists {
 			return true
 		}
 	}

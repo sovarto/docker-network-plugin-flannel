@@ -319,7 +319,7 @@ func (d *flannelDriver) getOrCreateNetwork(dockerNetworkID string, flannelNetwor
 	}
 
 	if dockerNetworkID != "" {
-		err := d.serviceLbsManagement.SetNetwork(dockerNetworkID, network)
+		err := d.serviceLbsManagement.SetFlannelNetwork(dockerNetworkID, network)
 		if err != nil {
 			return nil, errors.WithMessagef(err, "Failed to add network '%s' to service load balancer management", flannelNetworkID)
 		}
@@ -333,9 +333,13 @@ func (d *flannelDriver) handleNetworksAdded(added []etcd.Item[common.NetworkInfo
 		networkInfo := addedItem.Value
 		fmt.Printf("Handling added network %s (%s / %s)\n", networkInfo.Name, networkInfo.DockerID, networkInfo.FlannelID)
 		d.dnsResolver.AddNetwork(networkInfo)
-		_, err := d.getOrCreateNetwork(networkInfo.DockerID, networkInfo.FlannelID)
-		if err != nil {
-			log.Printf("Failed to handle added or changed network %s / %s: %s\n", networkInfo.DockerID, networkInfo.FlannelID, err)
+		if networkInfo.IsFlannelNetwork() {
+			_, err := d.getOrCreateNetwork(networkInfo.DockerID, networkInfo.FlannelID)
+			if err != nil {
+				log.Printf("Failed to handle added or changed network %s / %s: %s\n", networkInfo.DockerID, networkInfo.FlannelID, err)
+			}
+		} else {
+			d.serviceLbsManagement.RegisterOtherNetwork(networkInfo.Name)
 		}
 	}
 }
@@ -343,9 +347,13 @@ func (d *flannelDriver) handleNetworksAdded(added []etcd.Item[common.NetworkInfo
 func (d *flannelDriver) handleNetworksChanged(changed []etcd.ItemChange[common.NetworkInfo]) {
 	for _, changedItem := range changed {
 		networkInfo := changedItem.Current
-		_, err := d.getOrCreateNetwork(networkInfo.DockerID, networkInfo.FlannelID)
-		if err != nil {
-			log.Printf("Failed to handle added or changed network %s / %s: %s\n", networkInfo.DockerID, networkInfo.FlannelID, err)
+		if networkInfo.IsFlannelNetwork() {
+			_, err := d.getOrCreateNetwork(networkInfo.DockerID, networkInfo.FlannelID)
+			if err != nil {
+				log.Printf("Failed to handle added or changed network %s / %s: %s\n", networkInfo.DockerID, networkInfo.FlannelID, err)
+			}
+		} else {
+			d.serviceLbsManagement.RegisterOtherNetwork(networkInfo.Name)
 		}
 	}
 }
@@ -383,6 +391,7 @@ func (d *flannelDriver) handleContainersAdded(added []etcd.ShardItem[docker.Cont
 		for dockerNetworkID, ipamIP := range containerInfo.IpamIPs {
 			network, exists, _ := d.networks.Get(networkKey{dockerID: dockerNetworkID})
 			if !exists {
+				// This is the case for networks for other drivers
 				continue
 			}
 

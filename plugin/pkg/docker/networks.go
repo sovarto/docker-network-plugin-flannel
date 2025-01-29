@@ -66,12 +66,9 @@ func (d *data) getNetworksInfosFromDocker() (networkInfos map[string]common.Netw
 	networkInfos = map[string]common.NetworkInfo{}
 
 	for _, network := range rawNetworks {
-		networkInfo, ignored, err := d.getNetworkInfoFromDocker(network.ID)
+		networkInfo, err := d.getNetworkInfoFromDocker(network.ID)
 		if err != nil {
 			log.Printf("Error getting network info for network with ID %s. Skipping...\n", network.ID)
-			continue
-		}
-		if ignored {
 			continue
 		}
 		networkInfos[networkInfo.DockerID] = *networkInfo
@@ -80,35 +77,28 @@ func (d *data) getNetworksInfosFromDocker() (networkInfos map[string]common.Netw
 	return
 }
 
-func (d *data) getNetworkInfoFromDocker(dockerNetworkID string) (networkInfo *common.NetworkInfo, ignored bool, err error) {
+func (d *data) getNetworkInfoFromDocker(dockerNetworkID string) (networkInfo *common.NetworkInfo, err error) {
 	network, err := d.dockerClient.NetworkInspect(context.Background(), dockerNetworkID, network.InspectOptions{})
 	if err != nil {
-		return nil, false, errors.WithMessagef(err, "Error inspecting docker network %s", dockerNetworkID)
+		return nil, errors.WithMessagef(err, "Error inspecting docker network %s", dockerNetworkID)
 	}
 
-	flannelNetworkID, exists := network.IPAM.Options["flannel-id"]
-	if !exists {
-		// Ignore, it's not for us, or it's misconfigured
-		return nil, true, nil
-	}
+	flannelNetworkID := network.IPAM.Options["flannel-id"]
 
 	return &common.NetworkInfo{
 		DockerID:  dockerNetworkID,
 		FlannelID: flannelNetworkID,
 		Name:      network.Name,
-	}, false, nil
+	}, nil
 }
 
 func (d *data) handleNetwork(dockerNetworkID string) error {
 	fmt.Printf("Handling docker network %s\n", dockerNetworkID)
-	networkInfo, ignored, err := d.getNetworkInfoFromDocker(dockerNetworkID)
+	networkInfo, err := d.getNetworkInfoFromDocker(dockerNetworkID)
 	if err != nil {
 		return errors.WithMessagef(err, "Error inspecting docker network %s", dockerNetworkID)
 	}
 
-	if ignored {
-		return nil
-	}
 	err = d.networks.(etcd.WriteOnlyStore[common.NetworkInfo]).AddOrUpdateItem(dockerNetworkID, *networkInfo)
 	if err != nil {
 		return errors.WithMessagef(err, "Error adding or updating network info %s", dockerNetworkID)

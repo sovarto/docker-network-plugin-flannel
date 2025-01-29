@@ -22,6 +22,8 @@ type NetworkInfo struct {
 	Name      string `json:"Name"`
 }
 
+func (n NetworkInfo) IsFlannelNetwork() bool { return n.FlannelID != "" }
+
 func SubnetToKey(subnet string) string {
 	return strings.ReplaceAll(subnet, "/", "-")
 }
@@ -68,12 +70,12 @@ func Max[T Ordered](a, b T) T {
 	return b
 }
 
-func (c NetworkInfo) Equals(other Equaler) bool {
+func (n NetworkInfo) Equals(other Equaler) bool {
 	o, ok := other.(NetworkInfo)
 	if !ok {
 		return false
 	}
-	if c.FlannelID != o.FlannelID || c.Name != o.Name {
+	if n.FlannelID != o.FlannelID || n.Name != o.Name {
 		return false
 	}
 
