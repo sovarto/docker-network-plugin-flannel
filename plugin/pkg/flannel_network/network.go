@@ -695,7 +695,7 @@ func CleanupStaleNetworks(etcdClient etcd.Client, existingNetworks []common.Netw
 
 		networksToDelete := map[string]struct{}{}
 		for _, kv := range resp.Kvs {
-			key := strings.TrimLeft(strings.TrimLeft(string(kv.Key), etcdClient.GetKey()), "/")
+			key := strings.TrimLeft(strings.TrimPrefix(string(kv.Key), etcdClient.GetKey()), "/")
 			keyParts := strings.Split(key, "/")
 			flannelNetworkID := keyParts[0]
 			if !lo.SomeBy(existingNetworks, func(item common.NetworkInfo) bool {
