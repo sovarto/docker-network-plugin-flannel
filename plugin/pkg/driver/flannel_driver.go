@@ -501,7 +501,9 @@ func (d *flannelDriver) createService(id, name string) common.Service {
 }
 
 func (d *flannelDriver) injectNameserverIntoAlreadyRunningContainers() {
-	ourNetworkIDs := maps.Keys(d.dockerData.GetNetworks().GetAll())
+	ourNetworkIDs := maps.Keys(lo.PickBy(d.dockerData.GetNetworks().GetAll(), func(key string, value common.NetworkInfo) bool {
+		return value.IsFlannelNetwork()
+	}))
 	containersStore := d.dockerData.GetContainers()
 	for shardKey, shardContainers := range containersStore.GetAll() {
 		if shardKey != containersStore.GetLocalShardKey() {
