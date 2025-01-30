@@ -243,11 +243,9 @@ func (d *flannelDriver) getEndpoint(dockerNetworkID, endpointID string) (flannel
 func (d *flannelDriver) handleServicesAdded(added []etcd.Item[docker.ServiceInfo]) {
 	for _, addedItem := range added {
 		serviceInfo := addedItem.Value
+		fmt.Printf("Handling added service %s (%s)\n", serviceInfo.Name, serviceInfo.ID)
 		service, _, _ := d.services.GetOrAdd(serviceInfo.ID, func() (common.Service, error) {
-			service := d.createService(serviceInfo.ID, serviceInfo.Name)
-			service.SetEndpointMode(serviceInfo.EndpointMode)
-			service.SetNetworks(serviceInfo.Networks, serviceInfo.IpamVIPs)
-			return service, nil
+			return d.createService(serviceInfo.ID, serviceInfo.Name), nil
 		})
 		// We set these two values in any case, even if the service already existed, because
 		// the service may have been added by its container (see handleContainersAdded) and
@@ -260,6 +258,7 @@ func (d *flannelDriver) handleServicesAdded(added []etcd.Item[docker.ServiceInfo
 func (d *flannelDriver) handleServicesChanged(changed []etcd.ItemChange[docker.ServiceInfo]) {
 	for _, changedItem := range changed {
 		serviceInfo := changedItem.Current
+		fmt.Printf("Handling changed service %s (%s)\n", serviceInfo.Name, serviceInfo.ID)
 		service, _, _ := d.services.GetOrAdd(serviceInfo.ID, func() (common.Service, error) {
 			log.Printf("Received a change event for unknown service %s\n", serviceInfo.ID)
 			return d.createService(serviceInfo.ID, serviceInfo.Name), nil
@@ -272,6 +271,7 @@ func (d *flannelDriver) handleServicesChanged(changed []etcd.ItemChange[docker.S
 func (d *flannelDriver) handleServicesRemoved(removed []etcd.Item[docker.ServiceInfo]) {
 	for _, removedItem := range removed {
 		serviceInfo := removedItem.Value
+		fmt.Printf("Handling removed service %s (%s)\n", serviceInfo.Name, serviceInfo.ID)
 		service, wasRemoved := d.services.TryRemove(serviceInfo.ID)
 		if !wasRemoved {
 			log.Printf("Received a remove event for unknown service %s\n", serviceInfo.ID)

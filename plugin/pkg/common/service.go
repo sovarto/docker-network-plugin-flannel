@@ -118,7 +118,9 @@ func (s *service) Events() ServiceEvents {
 }
 
 func (s *service) IsInitialized() bool {
-	return s.id != "" && s.name != "" && s.networks != nil && len(s.networks) > 0 && s.endpointMode != "" && s.ipamVIPs != nil && len(s.ipamVIPs) > 0
+	return s.id != "" && s.name != "" && s.networks != nil && len(s.networks) > 0 &&
+		(s.endpointMode == ServiceEndpointModeDnsrr ||
+			(s.endpointMode == ServiceEndpointModeVip && s.ipamVIPs != nil && len(s.ipamVIPs) > 0))
 }
 
 func (s *service) GetInfo() ServiceInfo {
