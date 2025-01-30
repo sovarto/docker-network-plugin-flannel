@@ -42,17 +42,6 @@ func (c ContainerInfo) Equals(other common.Equaler) bool {
 	return true
 }
 
-type ContainerInfo struct {
-	ID          string              `json:"ContainerID"`
-	Name        string              `json:"ContainerName"`
-	ServiceID   string              `json:"ServiceID"`
-	ServiceName string              `json:"ServiceName"`
-	SandboxKey  string              `json:"SandboxKey"`
-	IPs         map[string]net.IP   `json:"IPs"`       // networkID -> IP
-	DNSNames    map[string][]string `json:"DNSNames"`  // networkID -> DNS names
-	Endpoints   map[string]string   `json:"Endpoints"` // networkID -> endpoint ID
-}
-
 func (c ServiceInfo) Equals(other common.Equaler) bool {
 	o, ok := other.(ServiceInfo)
 	if !ok {
