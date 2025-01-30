@@ -159,10 +159,12 @@ func (d *data) handleDisconnectedContainer(networkID, containerID string) error 
 	if shardKey != d.containers.GetLocalShardKey() {
 		return fmt.Errorf("container %s is not from the local node. This is a bug", containerID)
 	}
+	fmt.Printf("Disconnected container %s. Data before: %v\n", containerID, container)
 	delete(container.Endpoints, networkID)
 	delete(container.IPs, networkID)
 	delete(container.IpamIPs, networkID)
 	delete(container.DNSNames, networkID)
+	fmt.Printf("Disconnected container %s. Data after: %v\n", containerID, container)
 
 	if err := d.containers.AddOrUpdateItem(containerID, container); err != nil {
 		return errors.WithMessagef(err, "Error updating container info %s after network disconnection", containerID)
