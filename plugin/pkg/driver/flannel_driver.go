@@ -419,6 +419,24 @@ func (d *flannelDriver) handleContainersAdded(added []etcd.ShardItem[docker.Cont
 
 func (d *flannelDriver) handleContainersChanged(changed []etcd.ShardItemChange[docker.ContainerInfo]) {
 	for _, changedItem := range changed {
+		containerInfo := changedItem.Current
+		fmt.Printf("Handling changed container %s (%s)\n", containerInfo.Name, containerInfo.ID)
+		nameserver, exists := d.nameserversBySandboxKey.Get(containerInfo.SandboxKey)
+		if exists {
+			// Only handle changed networks if we already have a nameserver for this container, because
+			// we only care about containers that are connected to at least one of our networks and
+			// for such containers we create a nameserver in the call to Join
+
+			removed, added := lo.Difference(maps.Keys(changedItem.Previous.Endpoints), maps.Keys(changedItem.Current.Endpoints))
+			for _, removedNetworkID := range removed {
+				d.nameserversByEndpointID.Remove(changedItem.Previous.Endpoints[removedNetworkID])
+				nameserver.RemoveValidNetworkID(removedNetworkID)
+			}
+			for _, addedNetworkID := range added {
+				d.nameserversByEndpointID.Set(changedItem.Current.Endpoints[addedNetworkID], nameserver)
+				nameserver.AddValidNetworkID(addedNetworkID)
+			}
+		}
 		log.Printf("Received container changed info for container %s on host %s. Currently not handling it. Previous: %+v, Current: %+v\n", changedItem.ID, changedItem.ShardKey, changedItem.Previous, changedItem.Current)
 	}
 }
