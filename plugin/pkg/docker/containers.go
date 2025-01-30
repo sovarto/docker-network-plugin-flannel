@@ -165,6 +165,8 @@ func (d *data) handleDisconnectedContainer(networkID, containerID string) error 
 	delete(container.IpamIPs, networkID)
 	delete(container.DNSNames, networkID)
 	fmt.Printf("Disconnected container %s. Data after: %v\n", containerID, container)
+	_, containerFromStore, _ := d.containers.GetItem(containerID)
+	fmt.Printf("Disconnected container %s. Data from store after: %v\n", containerID, containerFromStore)
 
 	if err := d.containers.AddOrUpdateItem(containerID, container); err != nil {
 		return errors.WithMessagef(err, "Error updating container info %s after network disconnection", containerID)

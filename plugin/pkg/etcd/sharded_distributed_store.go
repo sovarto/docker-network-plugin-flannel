@@ -151,8 +151,10 @@ func (s *shardedDistributedStore[T]) AddOrUpdateItem(itemID string, item T) erro
 		return err
 	}
 
+	fmt.Printf("AddOrUpdateItem %s %v", itemID, exists)
 	if exists {
 		if !previousItem.Equals(item) {
+			fmt.Printf("AddOrUpdateItem: not equal", itemID, exists)
 			if s.handlers.OnChanged != nil {
 				s.handlers.OnChanged([]ShardItemChange[T]{{ShardKey: shardKey, ID: itemID, Previous: previousItem, Current: item}})
 			}
