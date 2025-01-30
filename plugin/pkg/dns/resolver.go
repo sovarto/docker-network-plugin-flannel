@@ -18,6 +18,7 @@ type Resolver interface {
 	AddNetwork(network common.NetworkInfo)
 	RemoveNetwork(network common.NetworkInfo)
 	AddContainer(container common.ContainerInfo)
+	UpdateContainer(container common.ContainerInfo)
 	RemoveContainer(container common.ContainerInfo)
 	AddService(service common.Service)
 	RemoveService(service common.Service)

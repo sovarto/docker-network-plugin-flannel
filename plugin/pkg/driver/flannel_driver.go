@@ -421,6 +421,7 @@ func (d *flannelDriver) handleContainersChanged(changed []etcd.ShardItemChange[d
 	for _, changedItem := range changed {
 		containerInfo := changedItem.Current
 		fmt.Printf("Handling changed container %s (%s)\n", containerInfo.Name, containerInfo.ID)
+		d.dnsResolver.UpdateContainer(containerInfo.ContainerInfo)
 		nameserver, exists := d.nameserversBySandboxKey.Get(containerInfo.SandboxKey)
 		if exists {
 			// Only handle changed networks if we already have a nameserver for this container, because
