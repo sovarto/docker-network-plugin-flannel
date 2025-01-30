@@ -32,10 +32,10 @@ type containerDNSNameData struct {
 type resolver struct {
 	networkNameToID map[string]string
 	networkIDToName map[string]string
-	containerData   map[string][]containerDNSNameData
+	containerData   map[string][]containerDNSNameData // dns name -> data
 	// We only need the service info here, but store the service instance because it's data will always
 	// be up-to-date
-	serviceData             map[string]common.Service
+	serviceData             map[string]common.Service // service name -> data
 	dockerCompatibilityMode bool
 	ttl                     uint32
 	sync.Mutex
@@ -154,6 +154,57 @@ func (r *resolver) RemoveContainer(container common.ContainerInfo) {
 		for _, dnsName := range dnsNames {
 			remove(r.containerData, dnsName, func(item containerDNSNameData) bool {
 				return item.containerID == container.ID
+			})
+		}
+	}
+}
+
+func (r *resolver) UpdateContainer(container common.ContainerInfo) {
+	r.Lock()
+	defer r.Unlock()
+
+	fmt.Printf("Updating container in resolver %+v\n", container)
+
+	knownDnsNames := make(map[string]map[string]struct{}) // network ID -> dns names
+
+	for dnsName, data := range r.containerData {
+		for _, item := range data {
+			if item.containerID == container.ID {
+				networkData, exists := knownDnsNames[item.networkID]
+				if !exists {
+					networkData = make(map[string]struct{})
+					knownDnsNames[item.networkID] = networkData
+				}
+				networkData[dnsName] = struct{}{}
+			}
+		}
+	}
+
+	for networkID, dnsNames := range container.DNSNames {
+		for _, dnsName := range dnsNames {
+			networkData, exists := knownDnsNames[networkID]
+			needsToBeAdded := true
+			if exists {
+				if _, ok := networkData[dnsName]; ok {
+					needsToBeAdded = false
+					delete(networkData, dnsName)
+				}
+			}
+
+			if needsToBeAdded {
+				add(r.containerData, dnsName, containerDNSNameData{
+					networkID:   networkID,
+					ip:          container.IPs[networkID],
+					containerID: container.ID,
+				})
+			}
+		}
+	}
+
+	for networkID, dnsNames := range knownDnsNames {
+		for dnsName, _ := range dnsNames {
+			remove(r.containerData, dnsName, func(item containerDNSNameData) bool {
+				return item.containerID == container.ID && item.networkID == networkID
 			})
 		}
 	}

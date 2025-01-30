@@ -437,7 +437,6 @@ func (d *flannelDriver) handleContainersChanged(changed []etcd.ShardItemChange[d
 				nameserver.AddValidNetworkID(addedNetworkID)
 			}
 		}
-		log.Printf("Received container changed info for container %s on host %s. Currently not handling it. Previous: %+v, Current: %+v\n", changedItem.ID, changedItem.ShardKey, changedItem.Previous, changedItem.Current)
 	}
 }
 
