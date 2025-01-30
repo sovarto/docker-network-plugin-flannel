@@ -40,20 +40,78 @@ type Equaler interface {
 }
 
 func CompareIPMaps(a, b map[string]net.IP) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
 	if len(a) != len(b) {
 		return false
 	}
 
 	for key, valA := range a {
 		valB, exists := b[key]
-		if !exists {
-			return false
-		}
-		if !valA.Equal(valB) {
+		if !exists || !valA.Equal(valB) {
 			return false
 		}
 	}
 
+	return true
+}
+
+func CompareStringMaps(a, b map[string]string) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	if len(a) != len(b) {
+		return false
+	}
+
+	for key, valA := range a {
+		valB, exists := b[key]
+		if !exists || valA != valB {
+			return false
+		}
+	}
+
+	return true
+}
+
+func CompareStringArrayMaps(a, b map[string][]string) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	if len(a) != len(b) {
+		return false
+	}
+
+	for key, valA := range a {
+		valB, exists := b[key]
+		if !exists || !compareStringSlices(valA, valB) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Helper function to compare two string slices
+func compareStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
 	return true
 }
 

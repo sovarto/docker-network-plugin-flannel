@@ -23,7 +23,7 @@ func (c ContainerInfo) Equals(other common.Equaler) bool {
 	if !ok {
 		return false
 	}
-	if c.ID != o.ID || c.Name != o.Name || c.ServiceID != o.ServiceID || c.ServiceName != o.ServiceName {
+	if c.ID != o.ID || c.Name != o.Name || c.ServiceID != o.ServiceID || c.ServiceName != o.ServiceName || c.SandboxKey != o.SandboxKey {
 		return false
 	}
 	if !common.CompareIPMaps(c.IPs, o.IPs) {
@@ -32,8 +32,25 @@ func (c ContainerInfo) Equals(other common.Equaler) bool {
 	if !common.CompareIPMaps(c.IpamIPs, o.IpamIPs) {
 		return false
 	}
+	if !common.CompareStringMaps(c.Endpoints, o.Endpoints) {
+		return false
+	}
+	if !common.CompareStringArrayMaps(c.DNSNames, o.DNSNames) {
+		return false
+	}
 
 	return true
+}
+
+type ContainerInfo struct {
+	ID          string              `json:"ContainerID"`
+	Name        string              `json:"ContainerName"`
+	ServiceID   string              `json:"ServiceID"`
+	ServiceName string              `json:"ServiceName"`
+	SandboxKey  string              `json:"SandboxKey"`
+	IPs         map[string]net.IP   `json:"IPs"`       // networkID -> IP
+	DNSNames    map[string][]string `json:"DNSNames"`  // networkID -> DNS names
+	Endpoints   map[string]string   `json:"Endpoints"` // networkID -> endpoint ID
 }
 
 func (c ServiceInfo) Equals(other common.Equaler) bool {
