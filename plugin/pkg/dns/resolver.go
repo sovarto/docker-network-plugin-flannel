@@ -188,15 +188,16 @@ func (r *resolver) ResolveName(query string, validNetworkIDs []string) []dns.RR 
 			break
 		}
 	}
-
+	result = lo.Shuffle(lo.UniqBy(result, func(item net.IP) string {
+		return item.String()
+	}))
 	dnsRecords := lo.Map(result, func(item net.IP, index int) dns.RR {
 		return &dns.A{
 			Hdr: dns.RR_Header{
-				Name:     query,
-				Rrtype:   dns.TypeA,
-				Class:    dns.ClassINET,
-				Ttl:      r.ttl,
-				Rdlength: 0,
+				Name:   query,
+				Rrtype: dns.TypeA,
+				Class:  dns.ClassINET,
+				Ttl:    r.ttl,
 			},
 			A: item,
 		}
@@ -241,9 +242,7 @@ func (r *resolver) resolveName(requestedName string, requestedNetworkName string
 	result = append(result, r.resolveServiceName(requestedName, validNetworkID)...)
 	result = append(result, r.resolveContainerName(requestedName, validNetworkID)...)
 
-	return lo.Shuffle(lo.UniqBy(result, func(item net.IP) string {
-		return item.String()
-	}))
+	return result
 }
 
 func (r *resolver) resolveContainerName(requestedName string, validNetworkID string) []net.IP {
@@ -256,7 +255,7 @@ func (r *resolver) resolveContainerName(requestedName string, validNetworkID str
 			}
 		}
 	}
-	fmt.Printf("Got %v for container name %s\n", result, requestedName)
+
 	return result
 }
 
@@ -274,7 +273,6 @@ func (r *resolver) resolveServiceName(requestedName string, validNetworkID strin
 			}
 		}
 	}
-	fmt.Printf("Got %v for service name %s\n", result, requestedName)
 	return result
 }
 

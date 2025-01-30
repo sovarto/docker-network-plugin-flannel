@@ -152,7 +152,8 @@ func (n *nameserver) RemoveValidNetworkID(validNetworkID string) {
 func (n *nameserver) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	msg := dns.Msg{}
 	msg.SetReply(r)
-	msg.Authoritative = true
+	msg.Authoritative = false
+	msg.RecursionAvailable = true
 
 	// Iterate through all questions (usually one)
 	for _, q := range r.Question {
@@ -181,7 +182,21 @@ func (n *nameserver) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 			msg.Answer = append(msg.Answer, in.Answer...)
 			msg.Ns = append(msg.Ns, in.Ns...)
 			msg.Extra = append(msg.Extra, in.Extra...)
-			msg.Authoritative = false
+		} else {
+			// We are the authoritative DNS server for this request so it's
+			// on us to truncate the response message to the size limit
+			// negotiated by the client.
+			maxSize := dns.MinMsgSize
+			if w.LocalAddr().Network() == "tcp" {
+				maxSize = dns.MaxMsgSize
+			} else {
+				if optRR := r.IsEdns0(); optRR != nil {
+					if udpsize := int(optRR.UDPSize()); udpsize > maxSize {
+						maxSize = udpsize
+					}
+				}
+			}
+			msg.Truncate(maxSize)
 		}
 	}
 
