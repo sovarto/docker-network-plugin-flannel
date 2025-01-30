@@ -40,7 +40,7 @@ func (d *data) handleEvent(event events.Message) error {
 		case events.ActionConnect:
 			return d.handleContainer(event.Actor.Attributes["container"])
 		case events.ActionDisconnect:
-			return d.handleDeletedContainer(event.Actor.Attributes["container"])
+			return d.handleDisconnectedContainer(event.Actor.ID, event.Actor.Attributes["container"])
 		}
 	case events.ContainerEventType:
 		switch event.Action {
