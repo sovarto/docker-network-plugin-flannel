@@ -150,3 +150,22 @@ func (d *data) handleContainer(containerID string) error {
 func (d *data) handleDeletedContainer(containerID string) error {
 	return d.containers.DeleteItem(containerID)
 }
+
+func (d *data) handleDisconnectedContainer(networkID, containerID string) error {
+	shardKey, container, exists := d.containers.GetItem(containerID)
+	if !exists {
+		return fmt.Errorf("container %s does not exist", containerID)
+	}
+	if shardKey != d.containers.GetLocalShardKey() {
+		return fmt.Errorf("container %s is not from the local node. This is a bug", containerID)
+	}
+	delete(container.Endpoints, networkID)
+	delete(container.IPs, networkID)
+	delete(container.IpamIPs, networkID)
+	delete(container.DNSNames, networkID)
+
+	if err := d.containers.AddOrUpdateItem(containerID, container); err != nil {
+		return errors.WithMessagef(err, "Error updating container info %s after network disconnection", containerID)
+	}
+	return nil
+}

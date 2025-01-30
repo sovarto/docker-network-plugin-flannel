@@ -44,10 +44,14 @@ func (d *data) handleEvent(event events.Message) error {
 		}
 	case events.ContainerEventType:
 		switch event.Action {
-		case events.ActionCreate:
-		case events.ActionStart:
+		//case events.ActionCreate:
+		//case events.ActionStart:
 		case events.ActionKill:
-			// TODO: Implement connection draining on service LB
+		// TODO: Implement connection draining on service LB
+		case events.ActionDie:
+			return d.handleDeletedContainer(event.Actor.ID)
+		case events.ActionDestroy:
+			return d.handleDeletedContainer(event.Actor.ID)
 		}
 	case events.ServiceEventType:
 		switch event.Action {
