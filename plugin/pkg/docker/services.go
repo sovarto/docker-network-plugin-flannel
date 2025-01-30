@@ -99,7 +99,7 @@ func (d *data) getServiceInfoFromDocker(serviceID string) (serviceInfo *ServiceI
 	serviceInfo = &ServiceInfo{
 		ID:           serviceID,
 		Name:         service.Spec.Name,
-		EndpointMode: string(service.Endpoint.Spec.Mode),
+		EndpointMode: string(service.Spec.EndpointSpec.Mode),
 		Networks:     networks,
 		IpamVIPs:     ipamVIPs,
 	}
