@@ -2,6 +2,7 @@ package dns
 
 import (
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/miekg/dns"
 	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
@@ -204,9 +205,9 @@ func (r *resolver) ResolveName(query string, validNetworkIDs []string) []dns.RR 
 	})
 
 	fmt.Printf("Received request to resolve %s in networks %v. Resolved to %v\n", query, validNetworkIDs, dnsRecords)
-	//if len(dnsRecords) == 0 {
-	//	fmt.Printf("Available data:\n%s\n", spew.Sdump(r))
-	//}
+	if len(dnsRecords) == 0 {
+		fmt.Printf("Available data:\n%s\n", spew.Sdump(r))
+	}
 
 	return dnsRecords
 }
