@@ -243,7 +243,7 @@ func (d *flannelDriver) getEndpoint(dockerNetworkID, endpointID string) (flannel
 func (d *flannelDriver) handleServicesAdded(added []etcd.Item[docker.ServiceInfo]) {
 	for _, addedItem := range added {
 		serviceInfo := addedItem.Value
-		fmt.Printf("Handling added service %s (%s)\n", serviceInfo.Name, serviceInfo.ID)
+		fmt.Printf("Handling added service %s (%s): %+v\n", serviceInfo.Name, serviceInfo.ID, serviceInfo)
 		service, _, _ := d.services.GetOrAdd(serviceInfo.ID, func() (common.Service, error) {
 			return d.createService(serviceInfo.ID, serviceInfo.Name), nil
 		})
