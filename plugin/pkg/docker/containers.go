@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"log"
 	"net"
@@ -160,10 +161,18 @@ func (d *data) handleDisconnectedContainer(networkID, containerID string) error 
 		return fmt.Errorf("container %s is not from the local node. This is a bug", containerID)
 	}
 	fmt.Printf("Disconnected container %s. Data before: %v\n", containerID, container)
-	delete(container.Endpoints, networkID)
-	delete(container.IPs, networkID)
-	delete(container.IpamIPs, networkID)
-	delete(container.DNSNames, networkID)
+	container.Endpoints = lo.PickBy(container.Endpoints, func(key string, value string) bool {
+		return key != networkID
+	})
+	container.IPs = lo.PickBy(container.IPs, func(key string, value net.IP) bool {
+		return key != networkID
+	})
+	container.IpamIPs = lo.PickBy(container.IpamIPs, func(key string, value net.IP) bool {
+		return key != networkID
+	})
+	container.DNSNames = lo.PickBy(container.DNSNames, func(key string, value []string) bool {
+		return key != networkID
+	})
 	fmt.Printf("Disconnected container %s. Data after: %v\n", containerID, container)
 	_, containerFromStore, _ := d.containers.GetItem(containerID)
 	fmt.Printf("Disconnected container %s. Data from store after: %v\n", containerID, containerFromStore)
