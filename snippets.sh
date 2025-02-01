@@ -111,7 +111,7 @@ latestTag=$(git tag --list 'v0.0.*' | sort -V | tail -n1 | sed -n 's/^v0\.0\.\([
 
 
 
-export CONTAINER=7c07fe62a37f
+export CONTAINER=bd0
 export NS=$(docker inspect --format '{{.NetworkSettings.SandboxKey}}' $CONTAINER)
 ip a > interfaces.log
 ip route show > routes.log

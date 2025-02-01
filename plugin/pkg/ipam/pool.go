@@ -210,6 +210,7 @@ func (p *etcdPool) allocateFreeIP(random bool, allocator func(ip net.IP) (IPAllo
 			ipStr := result.Allocation.ip.String()
 			delete(p.unusedIPs, ipStr)
 			p.allocatedIPs[ipStr] = result.Allocation
+			fmt.Printf("IP %s has been allocated: %+v\n", ipStr, result.Allocation)
 			return &result.Allocation.ip, nil
 		}
 	}
@@ -223,7 +224,7 @@ func (p *etcdPool) ReleaseIP(ip string) error {
 	if !wasReleased {
 		return fmt.Errorf("IP %s is not reserved in pool %s. Can't release it", ip, p.poolID)
 	}
-
+	fmt.Printf("IP %s has been released\n", ip)
 	return nil
 }
 
