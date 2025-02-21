@@ -1,0 +1,119 @@
+{
+  "description": "Flannel plugin for Docker vDEV",
+  "documentation": "https://github.com/sovarto/docker-network-plugin-flannel/",
+  "entrypoint": [
+    "/network-plugin-flannel"
+  ],
+  "mounts": [
+    {
+      "destination": "/var/run/docker.sock",
+      "name": "var_run_docker_sock",
+      "options": [
+        "rbind"
+      ],
+      "source": "/var/run/docker.sock",
+      "type": "bind"
+    },
+    {
+      "destination": "/hostfs/var/run/",
+      "name": "var_run_docker",
+      "options": [
+        "rbind"
+      ],
+      "source": "/var/run/",
+      "type": "bind"
+    },
+    {
+      "destination": "/lib/modules",
+      "name": "lib_modules",
+      "options": [
+        "rbind"
+      ],
+      "source": "/lib/modules",
+      "type": "bind"
+    }
+  ],
+  "env": [
+    {
+      "name": "ETCD_ENDPOINTS",
+      "settable": [
+        "value"
+      ],
+      "value": ""
+    },
+    {
+      "name": "ETCD_PREFIX",
+      "settable": [
+        "value"
+      ],
+      "value": "/flannel"
+    },
+    {
+      "name": "DEFAULT_FLANNEL_OPTIONS",
+      "settable": [
+        "value"
+      ],
+      "value": ""
+    },
+    {
+      "name": "AVAILABLE_SUBNETS",
+      "settable": [
+        "value"
+      ],
+      "value": ""
+    },
+    {
+      "name": "NETWORK_SUBNET_SIZE",
+      "settable": [
+        "value"
+      ],
+      "value": "20"
+    },
+    {
+      "name": "DEFAULT_HOST_SUBNET_SIZE",
+      "settable": [
+        "value"
+      ],
+      "value": "25"
+    },
+    {
+      "name": "VNI_START",
+      "settable": [
+        "value"
+      ],
+      "value": "6514"
+    },
+    {
+      "name": "DNS_DOCKER_COMPATIBILITY_MODE",
+      "settable": [
+        "value"
+      ],
+      "value": "true"
+    },
+    {
+      "name": "IS_HOOK_AVAILABLE",
+      "settable": [
+        "value"
+      ],
+      "value": "false"
+    }
+  ],
+  "network": {
+    "type": "host"
+  },
+  "propagatedMount": "/flannel-env",
+  "interface": {
+    "types": [
+      "docker.networkdriver/1.0",
+      "docker.ipamdriver/1.0"
+    ],
+    "socket": "flannel-np.sock"
+  },
+  "linux": {
+    "capabilities": [
+      "CAP_SYS_ADMIN",
+      "CAP_NET_ADMIN",
+      "CAP_SYS_MODULE"
+    ]
+  }
+}
