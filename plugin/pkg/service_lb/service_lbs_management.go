@@ -138,6 +138,10 @@ func (m *serviceLbManagement) removeBackendIPsFromLoadBalancer(serviceID string,
 	for dockerNetworkID, ip := range ips {
 		lb, exists := lbs.Get(dockerNetworkID)
 		if !exists {
+			if _, exists := m.otherNetworksByDockerID.Get(dockerNetworkID); exists {
+				continue
+			}
+
 			return fmt.Errorf("no load balancer for network %s for service %s found. This is a bug", dockerNetworkID, serviceID)
 		}
 		err := lb.RemoveBackend(ip)
