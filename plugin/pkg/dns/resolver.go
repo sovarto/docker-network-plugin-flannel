@@ -2,14 +2,15 @@ package dns
 
 import (
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
-	"github.com/miekg/dns"
-	"github.com/samber/lo"
-	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 	"net"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/davecgh/go-spew/spew"
+	"github.com/miekg/dns"
+	"github.com/samber/lo"
+	"github.com/sovarto/FlannelNetworkPlugin/pkg/common"
 )
 
 type Resolver interface {
@@ -45,13 +46,14 @@ type resolver struct {
 // NewResolver
 // dockerCompatibilityMode: The resolver of the internal docker DNS doesn't return the IP address
 // of all possible matches. In fact, it sometimes returns no IP address for a match.
-// Here is how docker DNS works: It iterates through the networks of the requesting container, alphabetically
-// For each network, it gets the matching containers and services. If this results in a non-empty list
+// Here is how docker DNS works:
+// - It iterates through the networks of the requesting container, alphabetically
+// - For each network, it gets the matching containers and services. If this results in a non-empty list
 // it returns that list and is done.
-// If the requested name is ambiguous, because it contains one or multiple dots, it iterates through
+// - If the requested name is ambiguous, because it contains one or multiple dots, it iterates through
 // the variations, starting with the variation where the complete string is considered the name and
 // no part is considered the network.
-// And for each variation, it then performs the network iteration explained above and returns the results
+// - And for each variation, it then performs the network iteration explained above and returns the results
 // as soon as there are some.
 // Scenarios:
 // In all scenarios:
